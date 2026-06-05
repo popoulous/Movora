@@ -10,6 +10,10 @@ import re
 from movora.subtitles.ass_model import AssDocument, Event, StyleStats
 
 _OVERRIDE_BLOCK_RE = re.compile(r"\{[^}]*\}")
+# Heavy typesetting overrides almost never used by dialogue: font changes,
+# rotation, clipping, scaling, transforms, origin.
+_STYLING_RE = re.compile(r"\\(?:fn|fr[xyz]|i?clip|fsc[xy]|t\(|org\()", re.IGNORECASE)
+_SENTENCE_PUNCT = "!?.…—"
 
 
 def _visible_text(text: str) -> str:
@@ -19,8 +23,14 @@ def _visible_text(text: str) -> str:
 
 
 def _is_prose(text: str) -> bool:
-    """A dialogue-like line: multi-word, has lower-case, not a tiny label."""
-    return len(text) >= 8 and " " in text and any(c.islower() for c in text)
+    """A dialogue-like line: multi-word and either has lower-case or punctuation.
+
+    Punctuation lets an all-caps shout ("GET OUT!") count as dialogue, while a
+    bare UPPERCASE caption ("WESTERN PROVINCES") does not.
+    """
+    if len(text) < 8 or " " not in text:
+        return False
+    return any(c.islower() for c in text) or any(c in _SENTENCE_PUNCT for c in text)
 
 
 def _is_allcaps(text: str) -> bool:
@@ -75,6 +85,7 @@ def compute_style_stats(doc: AssDocument) -> dict[str, StyleStats]:
             karaoke_fraction=sum(e.has_karaoke for e in events) / count,
             prose_fraction=sum(_is_prose(t) for t in nonempty) / denom,
             allcaps_fraction=sum(_is_allcaps(t) for t in nonempty) / denom,
+            styling_fraction=sum(bool(_STYLING_RE.search(e.text)) for e in events) / count,
             avg_text_length=sum(len(t) for t in texts) / count,
         )
     return stats

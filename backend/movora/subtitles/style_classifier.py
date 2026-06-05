@@ -1,18 +1,21 @@
-"""Content-based, keep-biased classifier: dialogue vs. signs / songs / typesetting.
+"""Content- and structure-based, keep-biased classifier: dialogue vs. signs / songs.
 
-Lesson from the real corpus: huge line counts do NOT mean dialogue — animated
-signs (per-character reveals) and karaoke effects inflate counts. The reliable
-discriminator is the *content*: dialogue reads like prose (multi-word, mixed
-case), while signs are short labels, single letters or UPPERCASE map captions.
+Lessons from the real corpus:
+- Huge line counts do NOT mean dialogue — animated signs (per-character reveals)
+  and karaoke effects inflate counts.
+- Dialogue reads like prose (multi-word, mixed case or punctuation); signs are
+  short labels, single letters or UPPERCASE captions.
+- Songs read like prose too, so they are caught structurally (karaoke timing or
+  OP/ED/insert style names).
+- Typesetting (multi-word signs that read like prose) is caught structurally:
+  it is almost always positioned (\\pos) with heavy overrides (font changes,
+  rotation, clipping) — things dialogue essentially never uses.
 
-Songs read like prose too, so they are caught structurally (karaoke timing or
-OP/ED/insert style names), not by content. Style names are trusted only for the
-reliable English sign/song markers; the *dialogue* style name is unreliable
-(often Hungarian: Szöveg, Jelzés, Formázás), so dialogue is recognised by
-content, not by name.
-
-Thresholds are biased towards KEEP: dropping real dialogue is the only costly
-error, since the SRT is a fallback and the soft ASS is always preserved.
+Style names are trusted only for the reliable English sign/song markers; the
+*dialogue* style name is unreliable (often Hungarian: Szöveg, Jelzés, Formázás),
+so dialogue is recognised by content and structure, not by name. Thresholds are
+biased towards KEEP: dropping real dialogue is the only costly error, since the
+SRT is a fallback and the soft ASS is always preserved.
 """
 
 from __future__ import annotations
@@ -50,7 +53,23 @@ def classify_style(stats: StyleStats) -> StyleVerdict:
     if _SONG_NAME_RE.search(stats.name):
         add(-10, "song style name (OP/ED/insert)")
 
-    # Primary signal: does the text read like dialogue prose?
+    # Typesetting: almost every line positioned AND heavily overridden (font /
+    # rotation / clip). Dialogue is essentially never both — not even top-placed
+    # dialogue (which is positioned but plain).
+    if (
+        stats.prose_fraction < 0.75
+        and stats.positioned_fraction >= 0.8
+        and stats.styling_fraction >= 0.3
+    ):
+        # Positioned, heavily styled AND not clearly prose. Overlap/top dialogue
+        # is also positioned and styled, but reads as prose, so it is spared.
+        add(-10, "positioned + heavy overrides + non-prose -> typesetting")
+    elif stats.positioned_fraction >= 0.5:
+        add(-2, f"mostly positioned ({stats.positioned_fraction:.0%})")
+    elif stats.styling_fraction >= 0.5:
+        add(-2, f"heavy overrides ({stats.styling_fraction:.0%})")
+
+    # Primary content signal: does the text read like dialogue prose?
     if stats.prose_fraction >= 0.45:
         add(4, f"mostly prose ({stats.prose_fraction:.0%})")
     elif stats.prose_fraction >= 0.25:
@@ -60,13 +79,14 @@ def classify_style(stats: StyleStats) -> StyleVerdict:
     else:
         add(-4, f"no prose, labels/letters ({stats.prose_fraction:.0%})")
 
-    # Corroborating sign signals.
+    # Sign corroboration.
     if _SIGN_NAME_RE.search(stats.name):
         add(-3, "sign-like style name")
-    if stats.allcaps_fraction >= 0.5:
+    # UPPERCASE counts as a sign signal only with corroboration, so a fully
+    # shouted (all-caps) dialogue style is not mistaken for a caption.
+    sign_named = bool(_SIGN_NAME_RE.search(stats.name))
+    if stats.allcaps_fraction >= 0.5 and (stats.positioned_fraction >= 0.3 or sign_named):
         add(-3, f"mostly UPPERCASE ({stats.allcaps_fraction:.0%}) -> captions")
-    if stats.positioned_fraction >= 0.5:
-        add(-2, f"mostly positioned ({stats.positioned_fraction:.0%}) -> signs")
     if stats.avg_text_length <= 3:
         add(-2, "ultra-short text (animated)")
     if stats.coverage >= 0.5:

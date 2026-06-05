@@ -53,6 +53,7 @@ class StyleStats:
     karaoke_fraction: float
     prose_fraction: float  # fraction of lines that read like dialogue sentences
     allcaps_fraction: float  # fraction of UPPERCASE-only lines (map labels / signs)
+    styling_fraction: float  # fraction with heavy typeset overrides (font/rotation/clip)
     avg_text_length: float
 
     @property
