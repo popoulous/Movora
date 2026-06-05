@@ -52,6 +52,8 @@ def test_enrich_library_updates_matched_only_and_is_idempotent() -> None:
 
         # Re-running enriches nothing new (Railgun already has an id; the other never matches).
         assert enrich_library(session, library, _StubProvider()) == 0
+        # force=True re-fetches the already-enriched series.
+        assert enrich_library(session, library, _StubProvider(), force=True) == 1
 
 
 def test_enrich_endpoint_sets_cover_and_year(tmp_path: Path) -> None:

@@ -75,8 +75,10 @@ export const api = {
     }).then(asJson<Library>),
   scanLibrary: (id: number): Promise<ScanResult> =>
     fetch(`/api/libraries/${id}/scan`, { method: "POST" }).then(asJson<ScanResult>),
-  enrichLibrary: (id: number): Promise<EnrichResult> =>
-    fetch(`/api/libraries/${id}/enrich`, { method: "POST" }).then(asJson<EnrichResult>),
+  enrichLibrary: (id: number, force = false): Promise<EnrichResult> =>
+    fetch(`/api/libraries/${id}/enrich${force ? "?force=true" : ""}`, { method: "POST" }).then(
+      asJson<EnrichResult>,
+    ),
   updateLibrary: (id: number, body: { name?: string; kind?: LibraryKind }): Promise<Library> =>
     fetch(`/api/libraries/${id}`, {
       method: "PATCH",
