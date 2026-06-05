@@ -73,7 +73,7 @@ export function SeriesDetailPage(): JSX.Element {
           <img
             src={series.banner_image_url}
             alt=""
-            className="absolute inset-0 h-full w-full scale-110 object-cover opacity-20 blur-xl"
+            className="absolute inset-0 h-full w-full scale-105 object-cover opacity-20 blur-[6px]"
           />
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-[#0a0812] via-[#0a0812]/70 to-transparent" />
