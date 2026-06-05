@@ -1,5 +1,6 @@
 import { Bell, Film, Home, type LucideIcon, Plus, Settings, Sparkles, Tv } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 
 import { api, type Library, type LibraryKind } from "../api";
@@ -20,6 +21,7 @@ const navClass = ({ isActive }: { isActive: boolean }): string =>
   }`;
 
 export function Layout(): JSX.Element {
+  const { t, i18n } = useTranslation();
   const [libraries, setLibraries] = useState<Library[]>([]);
   const [picking, setPicking] = useState(false);
   const navigate = useNavigate();
@@ -39,6 +41,13 @@ export function Layout(): JSX.Element {
     navigate(`/library/${library.id}`);
   };
 
+  const lang = i18n.language.startsWith("hu") ? "hu" : "en";
+  const toggleLang = (): void => {
+    const next = lang === "hu" ? "en" : "hu";
+    void i18n.changeLanguage(next);
+    localStorage.setItem("movora.lang", next);
+  };
+
   return (
     <LibrariesContext.Provider value={{ libraries, reload: loadLibraries }}>
       <div className="flex min-h-screen">
@@ -51,15 +60,15 @@ export function Layout(): JSX.Element {
           <nav className="space-y-1">
             <NavLink to="/" end className={navClass}>
               <Home className="h-4 w-4 shrink-0" />
-              Home
+              {t("nav.home")}
             </NavLink>
           </nav>
 
           <div className="mt-8 mb-2 flex items-center justify-between px-3 text-xs font-semibold tracking-wide text-neutral-500 uppercase">
-            <span>Libraries</span>
+            <span>{t("nav.libraries")}</span>
             <button
               onClick={() => setPicking(true)}
-              title="Add library"
+              title={t("nav.addLibrary")}
               className="-m-1 rounded p-1 text-neutral-400 transition hover:bg-white/10 hover:text-violet-300"
             >
               <Plus className="h-4 w-4" />
@@ -76,16 +85,14 @@ export function Layout(): JSX.Element {
               );
             })}
             {libraries.length === 0 && (
-              <p className="px-3 py-2 text-xs text-neutral-600">
-                No libraries yet — add one with +
-              </p>
+              <p className="px-3 py-2 text-xs text-neutral-600">{t("nav.noLibraries")}</p>
             )}
           </nav>
 
           <nav className="mt-auto space-y-1 pt-8">
             <NavLink to="/settings" className={navClass}>
               <Settings className="h-4 w-4 shrink-0" />
-              Settings
+              {t("nav.settings")}
             </NavLink>
           </nav>
         </aside>
@@ -94,16 +101,17 @@ export function Layout(): JSX.Element {
           <header className="flex items-center border-b border-white/5 px-6 py-3">
             <div className="ml-auto flex items-center gap-2">
               <button
-                title="Activity"
+                title={t("topbar.activity")}
                 className="rounded-lg bg-white/5 p-2 text-neutral-300 ring-1 ring-white/10 transition hover:bg-white/10"
               >
                 <Bell className="h-4 w-4" />
               </button>
               <button
-                title="Language"
+                title={t("topbar.language")}
+                onClick={toggleLang}
                 className="rounded-lg bg-white/5 px-3 py-2 text-sm text-neutral-300 ring-1 ring-white/10 transition hover:bg-white/10"
               >
-                EN
+                {lang.toUpperCase()}
               </button>
             </div>
           </header>

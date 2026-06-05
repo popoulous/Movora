@@ -1,4 +1,5 @@
 import { type FormEvent, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { api, type FsListing, type Library, type LibraryKind } from "../api";
 
@@ -19,6 +20,7 @@ function basename(path: string): string {
 }
 
 export function FolderPicker({ onClose, onAdded }: Props): JSX.Element {
+  const { t } = useTranslation();
   const [listing, setListing] = useState<FsListing | null>(null);
   const [name, setName] = useState("");
   const [kind, setKind] = useState<LibraryKind>("anime");
@@ -39,7 +41,7 @@ export function FolderPicker({ onClose, onAdded }: Props): JSX.Element {
   const submit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
     if (currentPath === null) {
-      setError("Open a folder first, then add it.");
+      setError(t("folder.pickFirst"));
       return;
     }
     api
@@ -49,7 +51,7 @@ export function FolderPicker({ onClose, onAdded }: Props): JSX.Element {
   };
 
   const canGoUp = listing !== null && listing.parent !== null;
-  const canGoToRoots = currentPath !== null; // back out to drive/root list
+  const canGoToRoots = currentPath !== null;
 
   return (
     <div
@@ -61,7 +63,7 @@ export function FolderPicker({ onClose, onAdded }: Props): JSX.Element {
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-white/10 px-5 py-3">
-          <h2 className="font-semibold">Add library</h2>
+          <h2 className="font-semibold">{t("folder.title")}</h2>
           <button onClick={onClose} className="text-neutral-400 hover:text-white">
             ✕
           </button>
@@ -74,9 +76,9 @@ export function FolderPicker({ onClose, onAdded }: Props): JSX.Element {
               disabled={!canGoUp && !canGoToRoots}
               className="rounded px-2 py-1 ring-1 ring-white/10 hover:bg-white/10 disabled:opacity-40"
             >
-              ◂ Up
+              ◂ {t("folder.up")}
             </button>
-            <code className="truncate text-neutral-400">{currentPath ?? "This PC"}</code>
+            <code className="truncate text-neutral-400">{currentPath ?? t("folder.thisPc")}</code>
           </div>
 
           <ul className="h-56 overflow-auto rounded-md bg-neutral-950/50 ring-1 ring-white/10">
@@ -92,7 +94,7 @@ export function FolderPicker({ onClose, onAdded }: Props): JSX.Element {
               </li>
             ))}
             {listing !== null && listing.directories.length === 0 && (
-              <li className="px-3 py-2 text-sm text-neutral-600">No sub-folders here</li>
+              <li className="px-3 py-2 text-sm text-neutral-600">{t("folder.noSubfolders")}</li>
             )}
           </ul>
         </div>
@@ -103,7 +105,7 @@ export function FolderPicker({ onClose, onAdded }: Props): JSX.Element {
         >
           <input
             className="min-w-[8rem] flex-1 rounded-md bg-neutral-950 px-3 py-1.5 text-sm ring-1 ring-white/10 placeholder:text-neutral-500"
-            placeholder={currentPath !== null ? basename(currentPath) : "Library name"}
+            placeholder={currentPath !== null ? basename(currentPath) : t("folder.name")}
             value={name}
             onChange={(event) => setName(event.target.value)}
           />
@@ -123,7 +125,7 @@ export function FolderPicker({ onClose, onAdded }: Props): JSX.Element {
             disabled={currentPath === null}
             className="rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 px-3 py-1.5 text-sm font-medium text-white transition hover:from-violet-500 hover:to-fuchsia-500 disabled:opacity-40"
           >
-            Add this folder
+            {t("folder.add")}
           </button>
           {error !== null && <p className="w-full text-sm text-red-400">{error}</p>}
         </form>

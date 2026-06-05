@@ -1,4 +1,5 @@
 import { type FormEvent, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { api, type Library, type LibraryKind } from "../api";
 
@@ -13,6 +14,7 @@ interface Props {
 }
 
 export function LibrarySettings({ library, onClose, onSaved, onDeleted }: Props): JSX.Element {
+  const { t } = useTranslation();
   const [name, setName] = useState(library.name);
   const [kind, setKind] = useState<LibraryKind>(library.kind);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -35,7 +37,7 @@ export function LibrarySettings({ library, onClose, onSaved, onDeleted }: Props)
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-white/10 px-5 py-3">
-          <h2 className="font-semibold">Library settings</h2>
+          <h2 className="font-semibold">{t("librarySettings.title")}</h2>
           <button onClick={onClose} className="text-neutral-400 hover:text-white">
             ✕
           </button>
@@ -43,7 +45,7 @@ export function LibrarySettings({ library, onClose, onSaved, onDeleted }: Props)
 
         <form onSubmit={save} className="space-y-3 px-5 py-4">
           <label className="block text-sm">
-            <span className="text-neutral-400">Name</span>
+            <span className="text-neutral-400">{t("librarySettings.name")}</span>
             <input
               className={fieldClass}
               value={name}
@@ -52,7 +54,7 @@ export function LibrarySettings({ library, onClose, onSaved, onDeleted }: Props)
             />
           </label>
           <label className="block text-sm">
-            <span className="text-neutral-400">Type</span>
+            <span className="text-neutral-400">{t("librarySettings.type")}</span>
             <select
               className={fieldClass}
               value={kind}
@@ -66,8 +68,7 @@ export function LibrarySettings({ library, onClose, onSaved, onDeleted }: Props)
             </select>
           </label>
           <p className="text-xs text-neutral-500">
-            Folder: <code className="text-neutral-400">{library.path}</code> — delete and re-add to
-            change it.
+            {t("librarySettings.folderNote", { path: library.path })}
           </p>
           {error !== null && <p className="text-sm text-red-400">{error}</p>}
 
@@ -78,7 +79,7 @@ export function LibrarySettings({ library, onClose, onSaved, onDeleted }: Props)
                 onClick={() => api.deleteLibrary(library.id).then(onDeleted).catch(fail)}
                 className="rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium hover:bg-red-500"
               >
-                Confirm delete
+                {t("librarySettings.confirmDelete")}
               </button>
             ) : (
               <button
@@ -86,14 +87,14 @@ export function LibrarySettings({ library, onClose, onSaved, onDeleted }: Props)
                 onClick={() => setConfirmDelete(true)}
                 className="rounded-md px-3 py-1.5 text-sm text-red-400 ring-1 ring-red-500/30 hover:bg-red-500/10"
               >
-                Delete library
+                {t("librarySettings.delete")}
               </button>
             )}
             <button
               type="submit"
               className="rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 px-3 py-1.5 text-sm font-medium text-white transition hover:from-violet-500 hover:to-fuchsia-500"
             >
-              Save
+              {t("librarySettings.save")}
             </button>
           </div>
         </form>

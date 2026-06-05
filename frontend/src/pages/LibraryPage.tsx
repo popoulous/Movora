@@ -1,5 +1,6 @@
 import { Star } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { api, type SeriesSummary } from "../api";
@@ -12,6 +13,7 @@ const accent =
   "rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 px-3 py-1.5 text-sm font-medium text-white shadow-lg shadow-violet-900/30 transition hover:from-violet-500 hover:to-fuchsia-500";
 
 export function LibraryPage(): JSX.Element {
+  const { t } = useTranslation();
   const { id } = useParams();
   const libraryId = Number(id);
   const navigate = useNavigate();
@@ -38,7 +40,7 @@ export function LibraryPage(): JSX.Element {
   }, [libraryId]);
 
   const scan = (): void => {
-    setBusy("Scanning…");
+    setBusy(t("library.scanning"));
     api
       .scanLibrary(libraryId)
       .then(() => {
@@ -49,7 +51,7 @@ export function LibraryPage(): JSX.Element {
   };
 
   const enrich = (): void => {
-    setBusy("Fetching metadata…");
+    setBusy(t("library.fetching"));
     api
       .enrichLibrary(libraryId)
       .then(() => {
@@ -62,17 +64,25 @@ export function LibraryPage(): JSX.Element {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <h1 className="text-2xl font-bold tracking-tight">{library?.name ?? "Library"}</h1>
-        <span className="text-sm text-neutral-500">{series.length} series</span>
+        <h1 className="text-2xl font-bold tracking-tight">
+          {library?.name ?? t("library.defaultName")}
+        </h1>
+        <span className="text-sm text-neutral-500">
+          {t("library.seriesCount", { count: series.length })}
+        </span>
         <div className="ml-auto flex gap-2">
           <button className={secondary} onClick={scan}>
-            Scan
+            {t("library.scan")}
           </button>
           <button className={accent} onClick={enrich}>
-            Fetch metadata
+            {t("library.fetchMetadata")}
           </button>
           {library !== null && (
-            <button className={secondary} title="Library settings" onClick={() => setEditing(true)}>
+            <button
+              className={secondary}
+              title={t("library.settings")}
+              onClick={() => setEditing(true)}
+            >
               ⚙
             </button>
           )}
@@ -87,7 +97,7 @@ export function LibraryPage(): JSX.Element {
       {busy !== null && <p className="text-sm text-violet-300">{busy}</p>}
 
       {series.length === 0 ? (
-        <p className="text-sm text-neutral-500">No series yet — run a Scan.</p>
+        <p className="text-sm text-neutral-500">{t("library.noSeries")}</p>
       ) : (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
           {series.map((summary) => (

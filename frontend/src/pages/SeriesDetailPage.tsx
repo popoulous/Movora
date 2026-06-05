@@ -1,5 +1,6 @@
 import { Play, Star } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { api, type SeriesDetail } from "../api";
@@ -12,6 +13,7 @@ function stripHtml(text: string): string {
 }
 
 export function SeriesDetailPage(): JSX.Element {
+  const { t } = useTranslation();
   const { id } = useParams();
   const seriesId = Number(id);
   const navigate = useNavigate();
@@ -29,7 +31,7 @@ export function SeriesDetailPage(): JSX.Element {
     return <p className="text-sm text-red-400">{error}</p>;
   }
   if (series === null) {
-    return <p className="text-sm text-neutral-500">Loading…</p>;
+    return <p className="text-sm text-neutral-500">{t("series.loading")}</p>;
   }
 
   const genres = series.genres?.split(", ").filter(Boolean) ?? [];
@@ -41,7 +43,7 @@ export function SeriesDetailPage(): JSX.Element {
         onClick={() => navigate(-1)}
         className="text-sm text-neutral-400 transition hover:text-white"
       >
-        ◂ Back
+        ◂ {t("series.back")}
       </button>
 
       <div className="relative overflow-hidden rounded-2xl ring-1 ring-white/10">
@@ -77,7 +79,7 @@ export function SeriesDetailPage(): JSX.Element {
                 </span>
               )}
               <span className="rounded-md bg-white/5 px-2 py-1 ring-1 ring-white/10">
-                {episodeCount} episodes
+                {t("series.episodes", { count: episodeCount })}
               </span>
             </div>
 
@@ -105,7 +107,7 @@ export function SeriesDetailPage(): JSX.Element {
               title="Playback comes with the streaming layer"
               className="mt-5 inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 px-4 py-2 text-sm font-medium text-white opacity-50"
             >
-              <Play className="h-4 w-4 fill-current" /> Play
+              <Play className="h-4 w-4 fill-current" /> {t("series.play")}
             </button>
           </div>
         </div>
@@ -113,7 +115,9 @@ export function SeriesDetailPage(): JSX.Element {
 
       {series.seasons.map((season) => (
         <section key={season.id}>
-          <h2 className="mb-3 text-lg font-semibold">Season {season.number}</h2>
+          <h2 className="mb-3 text-lg font-semibold">
+            {t("series.season", { number: season.number })}
+          </h2>
           <ul className="divide-y divide-white/5 overflow-hidden rounded-xl bg-white/5 ring-1 ring-white/10">
             {[...season.episodes]
               .sort((a, b) => a.number - b.number)
@@ -125,7 +129,9 @@ export function SeriesDetailPage(): JSX.Element {
                   <span className="w-8 text-right tabular-nums text-neutral-500">
                     {episode.number}
                   </span>
-                  <span className="text-neutral-200">{episode.title ?? "(untitled)"}</span>
+                  <span className="text-neutral-200">
+                    {episode.title ?? t("series.untitled")}
+                  </span>
                 </li>
               ))}
           </ul>
