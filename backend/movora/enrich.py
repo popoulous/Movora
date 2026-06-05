@@ -37,6 +37,9 @@ def enrich_library(
         series.genres = metadata.genres
         series.display_title = metadata.title
         series.native_title = metadata.native_title
+        series.format = metadata.format
+        series.episode_duration = metadata.episode_duration
+        series.end_year = metadata.end_year
         updated += 1
     session.commit()
     return updated

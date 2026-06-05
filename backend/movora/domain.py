@@ -49,3 +49,6 @@ class SeriesMetadata:
     score: int | None = None  # 0-100
     genres: str | None = None  # comma-joined
     native_title: str | None = None  # e.g. Japanese
+    format: str | None = None  # e.g. TV, MOVIE
+    episode_duration: int | None = None  # minutes per episode
+    end_year: int | None = None

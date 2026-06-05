@@ -29,6 +29,8 @@ query ($search: String) {
       genres
       description(asHtml: false)
       format
+      duration
+      endDate { year }
     }
   }
 }
@@ -68,6 +70,9 @@ def _to_metadata(media: dict[str, Any], fallback_title: str) -> SeriesMetadata:
         description=media.get("description"),
         score=media.get("averageScore"),
         genres=", ".join(genres) if genres else None,
+        format=media.get("format"),
+        episode_duration=media.get("duration"),
+        end_year=(media.get("endDate") or {}).get("year"),
     )
 
 

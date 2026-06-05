@@ -64,6 +64,9 @@ class SeriesDetail(BaseModel):
     display_title: str | None = None
     native_title: str | None = None
     year: int | None = None
+    end_year: int | None = None
+    format: str | None = None
+    episode_duration: int | None = None
     score: int | None = None
     cover_image_url: str | None = None
     banner_image_url: str | None = None

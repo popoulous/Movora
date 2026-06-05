@@ -57,6 +57,9 @@ class Series(Base):
     genres: Mapped[str | None] = mapped_column(default=None)  # comma-joined
     display_title: Mapped[str | None] = mapped_column(default=None)  # canonical provider title
     native_title: Mapped[str | None] = mapped_column(default=None)  # e.g. Japanese
+    format: Mapped[str | None] = mapped_column(default=None)  # e.g. TV, MOVIE, OVA
+    episode_duration: Mapped[int | None] = mapped_column(default=None)  # minutes per episode
+    end_year: Mapped[int | None] = mapped_column(default=None)
 
     library: Mapped[Library] = relationship(back_populates="series")
     seasons: Mapped[list[Season]] = relationship(
