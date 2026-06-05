@@ -15,3 +15,23 @@ body {
     radial-gradient(45rem 30rem at -8% 108%, rgba(217, 70, 239, 0.1), transparent 60%);
   background-attachment: fixed;
 }
+
+/* Rounded gradient border with a fully transparent center (mask compositing). */
+.gradient-border {
+  position: relative;
+}
+
+.gradient-border::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(to right, rgb(139 92 246), rgb(217 70 239));
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
