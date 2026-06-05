@@ -1,11 +1,18 @@
-"""Keep-biased, transparent classifier: dialogue vs. signs / songs / typesetting.
+"""Content-based, keep-biased classifier: dialogue vs. signs / songs / typesetting.
 
-The unit of decision is the *style* (fansubbers group lines by style). Each style
-is scored from several signals and gets a KEEP / DROP / ASK verdict plus the
-reasons behind it. Because dropping real dialogue is far worse than keeping a
-stray sign, the thresholds are deliberately biased towards KEEP.
+Lesson from the real corpus: huge line counts do NOT mean dialogue — animated
+signs (per-character reveals) and karaoke effects inflate counts. The reliable
+discriminator is the *content*: dialogue reads like prose (multi-word, mixed
+case), while signs are short labels, single letters or UPPERCASE map captions.
 
-The thresholds below are the tunable knobs to refine against the benchmark set.
+Songs read like prose too, so they are caught structurally (karaoke timing or
+OP/ED/insert style names), not by content. Style names are trusted only for the
+reliable English sign/song markers; the *dialogue* style name is unreliable
+(often Hungarian: Szöveg, Jelzés, Formázás), so dialogue is recognised by
+content, not by name.
+
+Thresholds are biased towards KEEP: dropping real dialogue is the only costly
+error, since the SRT is a fallback and the soft ASS is always preserved.
 """
 
 from __future__ import annotations
@@ -14,11 +21,12 @@ import re
 
 from movora.subtitles.ass_model import Decision, StyleStats, StyleVerdict
 
-_DIALOGUE_NAME_RE = re.compile(
-    r"^(default|main|narration|flashback|dialog|alt|overlap)|italic", re.IGNORECASE
+_SONG_NAME_RE = re.compile(
+    r"^(op|ed)([_\-\s/]|magyar|romaji|hun|rom|\d|$)|opening|ending|karaoke|insert|song|zene",
+    re.IGNORECASE,
 )
 _SIGN_NAME_RE = re.compile(
-    r"sign|title|credits?|karaoke|eyecatch|^op\b|^op[-_ ]|^ed\b|^ed[-_ ]|song$|^copy of|caption",
+    r"sign|title|credits?|caption|eyecatch|^note|^next|logo|preview|staff|^ep[\s_]|episode",
     re.IGNORECASE,
 )
 
@@ -35,41 +43,34 @@ def classify_style(stats: StyleStats) -> StyleVerdict:
         score += delta
         reasons.append(reason)
 
-    if _DIALOGUE_NAME_RE.search(stats.name):
-        add(3, "dialogue-like style name (+3)")
+    # Songs are never dialogue, but their translated lyrics read like prose, so
+    # they must be caught structurally rather than by content.
+    if stats.karaoke_fraction >= 0.2:
+        add(-10, f"{stats.karaoke_fraction:.0%} karaoke timing -> song")
+    if _SONG_NAME_RE.search(stats.name):
+        add(-10, "song style name (OP/ED/insert)")
+
+    # Primary signal: does the text read like dialogue prose?
+    if stats.prose_fraction >= 0.45:
+        add(4, f"mostly prose ({stats.prose_fraction:.0%})")
+    elif stats.prose_fraction >= 0.25:
+        add(2, f"some prose ({stats.prose_fraction:.0%})")
+    elif stats.prose_fraction >= 0.1:
+        add(-2, f"little prose ({stats.prose_fraction:.0%})")
+    else:
+        add(-4, f"no prose, labels/letters ({stats.prose_fraction:.0%})")
+
+    # Corroborating sign signals.
     if _SIGN_NAME_RE.search(stats.name):
-        add(-2, "sign/song-like style name (-2)")
-
-    if stats.line_share >= 0.5:
-        add(3, f"dominant share {stats.line_share:.0%} (+3)")
-    elif stats.line_share >= 0.15:
-        add(1, f"sizeable share {stats.line_share:.0%} (+1)")
-    elif stats.line_share < 0.03:
-        add(-1, f"rare style {stats.line_share:.0%} (-1)")
-
-    if stats.coverage >= 0.5:
-        add(2, f"spans {stats.coverage:.0%} of runtime (+2)")
-    elif stats.coverage < 0.1:
-        add(-1, f"covers only {stats.coverage:.0%} of runtime (-1)")
-
+        add(-3, "sign-like style name")
+    if stats.allcaps_fraction >= 0.5:
+        add(-3, f"mostly UPPERCASE ({stats.allcaps_fraction:.0%}) -> captions")
     if stats.positioned_fraction >= 0.5:
-        add(-3, f"{stats.positioned_fraction:.0%} positioned, sign-like (-3)")
-    elif stats.positioned_fraction >= 0.2:
-        add(-1, f"{stats.positioned_fraction:.0%} positioned (-1)")
-
-    if stats.karaoke_fraction >= 0.3:
-        add(-4, f"{stats.karaoke_fraction:.0%} karaoke, song-like (-4)")
-
-    if stats.drawing_fraction >= 0.5:
-        add(-2, f"{stats.drawing_fraction:.0%} vector drawing (-2)")
-
-    if not stats.is_bottom_aligned:
-        add(-1, f"non-bottom alignment {stats.alignment} (-1)")
-
-    if stats.avg_text_length >= 15:
-        add(1, "sentence-length text (+1)")
-    elif stats.avg_text_length <= 3:
-        add(-1, "very short text (-1)")
+        add(-2, f"mostly positioned ({stats.positioned_fraction:.0%}) -> signs")
+    if stats.avg_text_length <= 3:
+        add(-2, "ultra-short text (animated)")
+    if stats.coverage >= 0.5:
+        add(1, f"spans {stats.coverage:.0%} of the runtime")
 
     if score >= KEEP_THRESHOLD:
         decision = Decision.KEEP

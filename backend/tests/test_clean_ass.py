@@ -18,7 +18,7 @@ def test_keeps_only_dialogue() -> None:
 
     texts = [cue.text for cue in result.cues]
     assert "The first line of dialogue." in texts
-    assert all("Shop Name" not in t for t in texts)  # sign dropped
+    assert all("TOKYO STATION" not in t for t in texts)  # sign dropped
     assert all("La la la" not in t for t in texts)  # karaoke dropped
 
 
@@ -34,4 +34,4 @@ def test_user_override_forces_keep() -> None:
         _raw("synthetic_basic.ass"), overrides={"Sign01": Decision.KEEP}
     )
     assert "Sign01" in result.kept_styles
-    assert any("Shop Name" in cue.text for cue in result.cues)
+    assert any("TOKYO STATION" in cue.text for cue in result.cues)

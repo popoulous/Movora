@@ -1,4 +1,7 @@
-"""Aggregate per-style statistics that feed the classifier."""
+"""Aggregate per-style statistics that feed the classifier.
+
+Drawing lines (vector graphics) are excluded — they are typesetting, not text.
+"""
 
 from __future__ import annotations
 
@@ -12,11 +15,21 @@ _OVERRIDE_BLOCK_RE = re.compile(r"\{[^}]*\}")
 def _visible_text(text: str) -> str:
     cleaned = _OVERRIDE_BLOCK_RE.sub("", text)
     cleaned = cleaned.replace(r"\N", " ").replace(r"\n", " ").replace(r"\h", " ")
-    return cleaned.strip()
+    return " ".join(cleaned.split())
+
+
+def _is_prose(text: str) -> bool:
+    """A dialogue-like line: multi-word, has lower-case, not a tiny label."""
+    return len(text) >= 8 and " " in text and any(c.islower() for c in text)
+
+
+def _is_allcaps(text: str) -> bool:
+    """An UPPERCASE caption (e.g. a map label): letters present, none lower-case."""
+    letters = [c for c in text if c.isalpha()]
+    return len(letters) >= 3 and not any(c.islower() for c in letters)
 
 
 def _union_length(intervals: list[tuple[float, float]]) -> float:
-    """Total length covered by a set of (start, end) intervals, ignoring overlaps."""
     if not intervals:
         return 0.0
     ordered = sorted(intervals)
@@ -33,9 +46,9 @@ def _union_length(intervals: list[tuple[float, float]]) -> float:
 
 
 def compute_style_stats(doc: AssDocument) -> dict[str, StyleStats]:
-    dialogue = [event for event in doc.events if not event.is_comment]
+    dialogue = [e for e in doc.events if not e.is_comment and not e.has_drawing]
     total_lines = len(dialogue)
-    runtime = max((event.end for event in dialogue), default=0.0)
+    runtime = max((e.end for e in dialogue), default=0.0)
 
     by_style: dict[str, list[Event]] = {}
     for event in dialogue:
@@ -44,8 +57,14 @@ def compute_style_stats(doc: AssDocument) -> dict[str, StyleStats]:
     stats: dict[str, StyleStats] = {}
     for name, events in by_style.items():
         count = len(events)
-        intervals = [(event.start, event.end) for event in events]
-        coverage = (_union_length(intervals) / runtime) if runtime > 0 else 0.0
+        texts = [_visible_text(e.text) for e in events]
+        nonempty = [t for t in texts if t]
+        denom = len(nonempty) or 1
+        coverage = (
+            _union_length([(e.start, e.end) for e in events]) / runtime
+            if runtime > 0
+            else 0.0
+        )
         stats[name] = StyleStats(
             name=name,
             alignment=doc.styles[name].alignment if name in doc.styles else 2,
@@ -54,7 +73,8 @@ def compute_style_stats(doc: AssDocument) -> dict[str, StyleStats]:
             coverage=min(coverage, 1.0),
             positioned_fraction=sum(e.has_position for e in events) / count,
             karaoke_fraction=sum(e.has_karaoke for e in events) / count,
-            drawing_fraction=sum(e.has_drawing for e in events) / count,
-            avg_text_length=sum(len(_visible_text(e.text)) for e in events) / count,
+            prose_fraction=sum(_is_prose(t) for t in nonempty) / denom,
+            allcaps_fraction=sum(_is_allcaps(t) for t in nonempty) / denom,
+            avg_text_length=sum(len(t) for t in texts) / count,
         )
     return stats

@@ -51,16 +51,13 @@ class StyleStats:
     coverage: float  # fraction of the runtime this style's lines span [0..1]
     positioned_fraction: float
     karaoke_fraction: float
-    drawing_fraction: float
+    prose_fraction: float  # fraction of lines that read like dialogue sentences
+    allcaps_fraction: float  # fraction of UPPERCASE-only lines (map labels / signs)
     avg_text_length: float
 
     @property
     def line_share(self) -> float:
         return self.line_count / self.total_lines if self.total_lines else 0.0
-
-    @property
-    def is_bottom_aligned(self) -> bool:
-        return self.alignment in (1, 2, 3)
 
 
 class Decision(str, Enum):
