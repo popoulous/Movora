@@ -67,14 +67,8 @@ export function SeriesDetailPage(): JSX.Element {
 
   return (
     <div className="space-y-6">
-      <button
-        onClick={() => navigate(-1)}
-        className="text-sm text-neutral-400 transition hover:text-white"
-      >
-        ◂ {t("series.back")}
-      </button>
-
-      <div className="relative overflow-hidden rounded-2xl ring-1 ring-white/10">
+      {/* Full-bleed banner backdrop spanning the whole content area (no card box). */}
+      <div className="relative -mx-6 -mt-6 overflow-hidden">
         {series.banner_image_url !== null && (
           <img
             src={series.banner_image_url}
@@ -82,85 +76,96 @@ export function SeriesDetailPage(): JSX.Element {
             className="absolute inset-0 h-full w-full object-cover opacity-25"
           />
         )}
-        <div className="absolute inset-0 bg-gradient-to-tr from-[#0a0812] via-[#0a0812]/85 to-[#0a0812]/40" />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#0a0812] via-[#0a0812]/70 to-transparent" />
 
-        <div className="relative flex flex-col gap-6 p-6 lg:flex-row">
-          <div className="relative w-48 shrink-0 self-start sm:w-56">
-            <div className="rounded-xl bg-gradient-to-br from-violet-500/60 to-fuchsia-500/60 p-px shadow-2xl">
-              <div className="aspect-[2/3] overflow-hidden rounded-[11px]">
-                {series.cover_image_url !== null ? (
-                  <img
-                    src={series.cover_image_url}
-                    alt={series.display_title ?? series.title}
-                    className="h-full w-full object-cover"
+        <div className="relative px-6 pt-6 pb-6">
+          <button
+            onClick={() => navigate(-1)}
+            className="text-sm text-neutral-400 transition hover:text-white"
+          >
+            ◂ {t("series.back")}
+          </button>
+
+          <div className="mt-5 flex flex-col gap-6 lg:flex-row">
+            <div className="relative w-48 shrink-0 self-start sm:w-56">
+              <div className="rounded-xl bg-gradient-to-br from-violet-500/60 to-fuchsia-500/60 p-px shadow-2xl">
+                <div className="aspect-[2/3] overflow-hidden rounded-[11px]">
+                  {series.cover_image_url !== null ? (
+                    <img
+                      src={series.cover_image_url}
+                      alt={series.display_title ?? series.title}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="h-full w-full bg-gradient-to-br from-violet-900/40 to-fuchsia-900/30" />
+                  )}
+                </div>
+              </div>
+              <button
+                disabled
+                title="Playback comes with the streaming layer"
+                className="absolute bottom-3 left-3 flex h-12 w-12 items-center justify-center rounded-full bg-violet-500 text-white shadow-lg shadow-violet-900/40 transition hover:bg-violet-400"
+              >
+                <Play className="h-5 w-5 fill-current" />
+              </button>
+            </div>
+
+            <div className="flex min-w-0 flex-1 flex-col">
+              <h1 className="text-3xl font-bold tracking-tight">
+                {series.display_title ?? series.title}
+              </h1>
+              {series.native_title !== null && (
+                <p className="mt-1 text-sm text-neutral-400">{series.native_title}</p>
+              )}
+
+              <div className="mt-4 flex flex-wrap gap-x-7 gap-y-3">
+                {score !== null && (
+                  <Stat
+                    value={
+                      <span>
+                        <span className="text-amber-400">★</span> {score}
+                      </span>
+                    }
+                    label={t("series.rating")}
                   />
-                ) : (
-                  <div className="h-full w-full bg-gradient-to-br from-violet-900/40 to-fuchsia-900/30" />
+                )}
+                {aired !== null && <Stat value={aired} label={t("series.aired")} />}
+                {series.format !== null && (
+                  <Stat value={series.format} label={t("series.format")} />
+                )}
+                <Stat value={String(episodeCount)} label={t("series.episodesLabel")} />
+                {series.episode_duration !== null && (
+                  <Stat value={`${series.episode_duration}m`} label={t("series.perEp")} />
                 )}
               </div>
-            </div>
-            <button
-              disabled
-              title="Playback comes with the streaming layer"
-              className="absolute bottom-3 left-3 flex h-12 w-12 items-center justify-center rounded-full bg-violet-500 text-white shadow-lg shadow-violet-900/40 transition hover:bg-violet-400"
-            >
-              <Play className="h-5 w-5 fill-current" />
-            </button>
-          </div>
 
-          <div className="flex min-w-0 flex-1 flex-col">
-            <h1 className="text-3xl font-bold tracking-tight">
-              {series.display_title ?? series.title}
-            </h1>
-            {series.native_title !== null && (
-              <p className="mt-1 text-sm text-neutral-400">{series.native_title}</p>
-            )}
+              {synopsis !== null && (
+                <p className="mt-4 line-clamp-3 max-w-2xl text-sm leading-relaxed text-neutral-300">
+                  {synopsis}
+                </p>
+              )}
 
-            <div className="mt-4 flex flex-wrap gap-x-7 gap-y-3">
-              {score !== null && (
-                <Stat
-                  value={
-                    <span>
-                      <span className="text-amber-400">★</span> {score}
+              {genres.length > 0 && (
+                <div className="mt-4 flex flex-wrap gap-1.5">
+                  {genres.map((genre) => (
+                    <span
+                      key={genre}
+                      className="gradient-border rounded-full bg-gradient-to-r from-violet-500/20 to-fuchsia-500/20 px-3 py-1 text-xs font-medium text-neutral-100"
+                    >
+                      {genre}
                     </span>
-                  }
-                  label={t("series.rating")}
-                />
+                  ))}
+                </div>
               )}
-              {aired !== null && <Stat value={aired} label={t("series.aired")} />}
-              {series.format !== null && <Stat value={series.format} label={t("series.format")} />}
-              <Stat value={String(episodeCount)} label={t("series.episodesLabel")} />
-              {series.episode_duration !== null && (
-                <Stat value={`${series.episode_duration}m`} label={t("series.perEp")} />
-              )}
+
+              <button
+                disabled
+                title="Playback comes with the streaming layer"
+                className="mt-auto inline-flex cursor-not-allowed items-center gap-2 self-start rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 px-5 py-2 text-sm font-medium text-white shadow-lg shadow-violet-900/30"
+              >
+                <Play className="h-4 w-4 fill-current" /> {t("series.play")}
+              </button>
             </div>
-
-            {synopsis !== null && (
-              <p className="mt-4 line-clamp-3 max-w-2xl text-sm leading-relaxed text-neutral-300">
-                {synopsis}
-              </p>
-            )}
-
-            {genres.length > 0 && (
-              <div className="mt-4 flex flex-wrap gap-1.5">
-                {genres.map((genre) => (
-                  <span
-                    key={genre}
-                    className="gradient-border rounded-full bg-gradient-to-r from-violet-500/20 to-fuchsia-500/20 px-3 py-1 text-xs font-medium text-neutral-100"
-                  >
-                    {genre}
-                  </span>
-                ))}
-              </div>
-            )}
-
-            <button
-              disabled
-              title="Playback comes with the streaming layer"
-              className="mt-auto inline-flex cursor-not-allowed items-center gap-2 self-start rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 px-5 py-2 text-sm font-medium text-white shadow-lg shadow-violet-900/30"
-            >
-              <Play className="h-4 w-4 fill-current" /> {t("series.play")}
-            </button>
           </div>
         </div>
       </div>
