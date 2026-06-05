@@ -57,7 +57,7 @@ export function FolderPicker({ onClose, onAdded }: Props): JSX.Element {
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg rounded-xl bg-neutral-900 ring-1 ring-white/10"
+        className="w-full max-w-lg rounded-xl bg-[#120e1d] ring-1 ring-white/10"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-white/10 px-5 py-3">
@@ -121,7 +121,7 @@ export function FolderPicker({ onClose, onAdded }: Props): JSX.Element {
           <button
             type="submit"
             disabled={currentPath === null}
-            className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium hover:bg-indigo-500 disabled:opacity-40"
+            className="rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 px-3 py-1.5 text-sm font-medium text-white transition hover:from-violet-500 hover:to-fuchsia-500 disabled:opacity-40"
           >
             Add this folder
           </button>

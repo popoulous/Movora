@@ -5,8 +5,10 @@ import { api, type SeriesDetail, type SeriesSummary } from "../api";
 import { LibrarySettings } from "../components/LibrarySettings";
 import { useLibraries } from "../LibrariesContext";
 
-const btn =
-  "rounded-md bg-neutral-800 px-3 py-1.5 text-sm font-medium ring-1 ring-white/10 transition hover:bg-neutral-700";
+const secondary =
+  "rounded-lg bg-white/5 px-3 py-1.5 text-sm font-medium text-neutral-200 ring-1 ring-white/10 transition hover:bg-white/10";
+const accent =
+  "rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 px-3 py-1.5 text-sm font-medium text-white shadow-lg shadow-violet-900/30 transition hover:from-violet-500 hover:to-fuchsia-500";
 
 export function LibraryPage(): JSX.Element {
   const { id } = useParams();
@@ -64,14 +66,14 @@ export function LibraryPage(): JSX.Element {
         <h1 className="text-2xl font-bold tracking-tight">{library?.name ?? "Library"}</h1>
         <span className="text-sm text-neutral-500">{series.length} series</span>
         <div className="ml-auto flex gap-2">
-          <button className={btn} onClick={scan}>
+          <button className={secondary} onClick={scan}>
             Scan
           </button>
-          <button className={btn} onClick={enrich}>
+          <button className={accent} onClick={enrich}>
             Fetch metadata
           </button>
           {library !== null && (
-            <button className={btn} title="Library settings" onClick={() => setEditing(true)}>
+            <button className={secondary} title="Library settings" onClick={() => setEditing(true)}>
               ⚙
             </button>
           )}
@@ -79,11 +81,11 @@ export function LibraryPage(): JSX.Element {
       </div>
 
       {error !== null && (
-        <div className="rounded-md bg-red-500/10 px-3 py-2 text-sm text-red-300 ring-1 ring-red-500/30">
+        <div className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-300 ring-1 ring-red-500/30">
           {error}
         </div>
       )}
-      {busy !== null && <p className="text-sm text-indigo-400">{busy}</p>}
+      {busy !== null && <p className="text-sm text-violet-300">{busy}</p>}
 
       {series.length === 0 ? (
         <p className="text-sm text-neutral-500">No series yet — run a Scan.</p>
@@ -95,7 +97,7 @@ export function LibraryPage(): JSX.Element {
               onClick={() => api.getSeries(summary.id).then(setDetail).catch(fail)}
               className="group text-left"
             >
-              <div className="aspect-[2/3] overflow-hidden rounded-lg bg-neutral-800 ring-1 ring-white/10">
+              <div className="aspect-[2/3] overflow-hidden rounded-xl bg-white/5 ring-1 ring-white/10 transition group-hover:ring-violet-400/40">
                 {summary.cover_image_url !== null ? (
                   <img
                     src={summary.cover_image_url}
@@ -103,7 +105,7 @@ export function LibraryPage(): JSX.Element {
                     className="h-full w-full object-cover transition group-hover:scale-105"
                   />
                 ) : (
-                  <div className="flex h-full items-center justify-center bg-gradient-to-br from-neutral-700 to-neutral-900 p-3 text-center text-sm text-neutral-300">
+                  <div className="flex h-full items-center justify-center bg-gradient-to-br from-violet-900/40 to-fuchsia-900/30 p-3 text-center text-sm text-neutral-300">
                     {summary.title}
                   </div>
                 )}
@@ -118,11 +120,11 @@ export function LibraryPage(): JSX.Element {
       )}
 
       {detail !== null && (
-        <section className="rounded-lg bg-neutral-900 p-5 ring-1 ring-white/10">
+        <section className="rounded-xl bg-white/5 p-5 ring-1 ring-white/10">
           <div className="mb-4 flex items-baseline gap-3">
             <h2 className="text-lg font-semibold">{detail.title}</h2>
             {detail.year !== null && <span className="text-neutral-500">{detail.year}</span>}
-            <button className={`${btn} ml-auto`} onClick={() => setDetail(null)}>
+            <button className={`${secondary} ml-auto`} onClick={() => setDetail(null)}>
               Close
             </button>
           </div>

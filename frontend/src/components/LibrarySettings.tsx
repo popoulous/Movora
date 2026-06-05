@@ -31,7 +31,7 @@ export function LibrarySettings({ library, onClose, onSaved, onDeleted }: Props)
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md rounded-xl bg-neutral-900 ring-1 ring-white/10"
+        className="w-full max-w-md rounded-xl bg-[#120e1d] ring-1 ring-white/10"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-white/10 px-5 py-3">
@@ -91,7 +91,7 @@ export function LibrarySettings({ library, onClose, onSaved, onDeleted }: Props)
             )}
             <button
               type="submit"
-              className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium hover:bg-indigo-500"
+              className="rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 px-3 py-1.5 text-sm font-medium text-white transition hover:from-violet-500 hover:to-fuchsia-500"
             >
               Save
             </button>

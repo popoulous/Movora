@@ -8,6 +8,10 @@ body,
 
 body {
   margin: 0;
-  background-color: #0a0a0a;
-  color: #fafafa;
+  color: #ece9f5;
+  background-color: #0a0812;
+  background-image:
+    radial-gradient(55rem 38rem at 85% -8%, rgba(139, 92, 246, 0.14), transparent 60%),
+    radial-gradient(45rem 30rem at -8% 108%, rgba(217, 70, 239, 0.1), transparent 60%);
+  background-attachment: fixed;
 }
