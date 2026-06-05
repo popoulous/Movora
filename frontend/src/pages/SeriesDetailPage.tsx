@@ -73,7 +73,7 @@ export function SeriesDetailPage(): JSX.Element {
           <img
             src={series.banner_image_url}
             alt=""
-            className="absolute inset-0 h-full w-full object-cover opacity-25"
+            className="absolute inset-0 h-full w-full scale-110 object-cover opacity-20 blur-xl"
           />
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-[#0a0812] via-[#0a0812]/70 to-transparent" />
@@ -87,9 +87,9 @@ export function SeriesDetailPage(): JSX.Element {
           </button>
 
           <div className="mt-5 flex flex-col gap-6 lg:flex-row">
-            <div className="relative w-48 shrink-0 self-start sm:w-56">
-              <div className="rounded-xl bg-gradient-to-br from-violet-500/60 to-fuchsia-500/60 p-px shadow-2xl">
-                <div className="aspect-[2/3] overflow-hidden rounded-[11px]">
+            <div className="relative w-60 shrink-0 self-start sm:w-72">
+              <div className="rounded-2xl bg-gradient-to-br from-violet-500/60 to-fuchsia-500/60 p-px shadow-2xl shadow-violet-700/40">
+                <div className="aspect-[2/3] overflow-hidden rounded-[15px]">
                   {series.cover_image_url !== null ? (
                     <img
                       src={series.cover_image_url}
@@ -104,7 +104,7 @@ export function SeriesDetailPage(): JSX.Element {
               <button
                 disabled
                 title="Playback comes with the streaming layer"
-                className="absolute bottom-3 left-3 flex h-12 w-12 items-center justify-center rounded-full bg-violet-500 text-white shadow-lg shadow-violet-900/40 transition hover:bg-violet-400"
+                className="absolute bottom-3 left-3 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white shadow-lg shadow-fuchsia-500/40 transition hover:from-violet-400 hover:to-fuchsia-400"
               >
                 <Play className="h-5 w-5 fill-current" />
               </button>
@@ -190,7 +190,7 @@ export function SeriesDetailPage(): JSX.Element {
               <h2 className="mb-3 inline-flex items-center rounded-lg bg-white/5 px-3 py-1.5 text-sm font-medium ring-1 ring-white/10">
                 {t("series.season", { number: season.number })}
               </h2>
-              <ul className="divide-y divide-white/5 overflow-hidden rounded-xl bg-white/5 ring-1 ring-white/10">
+              <ul className="divide-y divide-white/5 overflow-hidden rounded-2xl bg-white/[0.03] ring-1 ring-white/10 backdrop-blur">
                 {[...season.episodes]
                   .sort((a, b) => a.number - b.number)
                   .map((episode) => (

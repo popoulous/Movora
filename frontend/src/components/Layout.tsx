@@ -46,7 +46,7 @@ export function Layout(): JSX.Element {
   return (
     <LibrariesContext.Provider value={{ libraries, reload: loadLibraries }}>
       <div className="flex min-h-screen">
-        <aside className="flex w-64 shrink-0 flex-col border-r border-white/5 bg-[#0d0a16]/50 p-3 backdrop-blur">
+        <aside className="flex w-64 shrink-0 flex-col border-r border-white/5 bg-[#050509]/80 p-3 backdrop-blur-xl">
           <Link to="/" className="mb-8 flex items-center gap-2 px-2 pt-2">
             <img src="/movora_logo.png" alt="" className="h-7 w-7" />
             <span className="text-lg font-bold tracking-tight">Movora</span>
