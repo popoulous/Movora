@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 
 import { api, type SeriesDetail, type SeriesSummary } from "../api";
+import { LibrarySettings } from "../components/LibrarySettings";
+import { useLibraries } from "../LibrariesContext";
 
 const btn =
   "rounded-md bg-neutral-800 px-3 py-1.5 text-sm font-medium ring-1 ring-white/10 transition hover:bg-neutral-700";
@@ -9,9 +11,13 @@ const btn =
 export function LibraryPage(): JSX.Element {
   const { id } = useParams();
   const libraryId = Number(id);
+  const navigate = useNavigate();
+  const { libraries, reload } = useLibraries();
+  const library = libraries.find((item) => item.id === libraryId) ?? null;
 
   const [series, setSeries] = useState<SeriesSummary[]>([]);
   const [detail, setDetail] = useState<SeriesDetail | null>(null);
+  const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -55,7 +61,7 @@ export function LibraryPage(): JSX.Element {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <h1 className="text-2xl font-bold tracking-tight">Library</h1>
+        <h1 className="text-2xl font-bold tracking-tight">{library?.name ?? "Library"}</h1>
         <span className="text-sm text-neutral-500">{series.length} series</span>
         <div className="ml-auto flex gap-2">
           <button className={btn} onClick={scan}>
@@ -64,6 +70,11 @@ export function LibraryPage(): JSX.Element {
           <button className={btn} onClick={enrich}>
             Fetch metadata
           </button>
+          {library !== null && (
+            <button className={btn} title="Library settings" onClick={() => setEditing(true)}>
+              ⚙
+            </button>
+          )}
         </div>
       </div>
 
@@ -131,6 +142,22 @@ export function LibraryPage(): JSX.Element {
             </div>
           ))}
         </section>
+      )}
+
+      {editing && library !== null && (
+        <LibrarySettings
+          library={library}
+          onClose={() => setEditing(false)}
+          onSaved={() => {
+            setEditing(false);
+            reload();
+          }}
+          onDeleted={() => {
+            setEditing(false);
+            reload();
+            navigate("/");
+          }}
+        />
       )}
     </div>
   );

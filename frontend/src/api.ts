@@ -72,6 +72,18 @@ export const api = {
     fetch(`/api/libraries/${id}/scan`, { method: "POST" }).then(asJson<ScanResult>),
   enrichLibrary: (id: number): Promise<EnrichResult> =>
     fetch(`/api/libraries/${id}/enrich`, { method: "POST" }).then(asJson<EnrichResult>),
+  updateLibrary: (id: number, body: { name?: string; kind?: LibraryKind }): Promise<Library> =>
+    fetch(`/api/libraries/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(asJson<Library>),
+  deleteLibrary: (id: number): Promise<void> =>
+    fetch(`/api/libraries/${id}`, { method: "DELETE" }).then((response) => {
+      if (!response.ok) {
+        throw new Error(`${response.status} ${response.statusText}`);
+      }
+    }),
   listSeries: (libraryId: number): Promise<SeriesSummary[]> =>
     fetch(`/api/libraries/${libraryId}/series`).then(asJson<SeriesSummary[]>),
   getSeries: (id: number): Promise<SeriesDetail> =>
