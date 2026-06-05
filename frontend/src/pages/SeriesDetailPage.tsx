@@ -44,10 +44,10 @@ export function SeriesDetailPage(): JSX.Element {
   const synopsis = series.description !== null ? stripHtml(series.description) : null;
 
   const tabClass = (value: Tab): string =>
-    `px-3 py-2 text-sm font-medium transition ${
+    `rounded-lg px-4 py-2 text-sm font-medium transition ${
       tab === value
-        ? "border-b-2 border-violet-400 text-white"
-        : "text-neutral-400 hover:text-neutral-200"
+        ? "bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow"
+        : "text-neutral-400 hover:bg-white/5 hover:text-neutral-200"
     }`;
 
   return (
@@ -94,7 +94,12 @@ export function SeriesDetailPage(): JSX.Element {
 
           {/* Main info */}
           <div className="min-w-0 flex-1">
-            <h1 className="text-3xl font-bold tracking-tight">{series.title}</h1>
+            <h1 className="text-3xl font-bold tracking-tight">
+              {series.display_title ?? series.title}
+            </h1>
+            {series.native_title !== null && (
+              <p className="mt-1 text-sm text-neutral-400">{series.native_title}</p>
+            )}
 
             <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-neutral-300">
               {score !== null && (
@@ -124,7 +129,7 @@ export function SeriesDetailPage(): JSX.Element {
                 {genres.map((genre) => (
                   <span
                     key={genre}
-                    className="rounded-full bg-white/5 px-2.5 py-0.5 text-xs text-neutral-300 ring-1 ring-white/10"
+                    className="rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-neutral-200 ring-1 ring-white/10"
                   >
                     {genre}
                   </span>
@@ -158,7 +163,7 @@ export function SeriesDetailPage(): JSX.Element {
         </div>
       </div>
 
-      <div className="flex gap-1 border-b border-white/10">
+      <div className="flex gap-2">
         <button className={tabClass("episodes")} onClick={() => setTab("episodes")}>
           {t("series.tabEpisodes")}
         </button>

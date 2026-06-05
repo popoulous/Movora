@@ -110,12 +110,12 @@ export function LibraryPage(): JSX.Element {
                 {summary.cover_image_url !== null ? (
                   <img
                     src={summary.cover_image_url}
-                    alt={summary.title}
+                    alt={(summary.display_title ?? summary.title)}
                     className="h-full w-full object-cover transition group-hover:scale-105"
                   />
                 ) : (
                   <div className="flex h-full items-center justify-center bg-gradient-to-br from-violet-900/40 to-fuchsia-900/30 p-3 text-center text-sm text-neutral-300">
-                    {summary.title}
+                    {(summary.display_title ?? summary.title)}
                   </div>
                 )}
                 {summary.score !== null && (
@@ -125,7 +125,7 @@ export function LibraryPage(): JSX.Element {
                   </span>
                 )}
               </div>
-              <div className="mt-2 truncate text-sm font-medium">{summary.title}</div>
+              <div className="mt-2 truncate text-sm font-medium">{(summary.display_title ?? summary.title)}</div>
               {summary.year !== null && (
                 <div className="text-xs text-neutral-500">{summary.year}</div>
               )}

@@ -10,6 +10,7 @@ export interface Library {
 export interface SeriesSummary {
   id: number;
   title: string;
+  display_title: string | null;
   year: number | null;
   score: number | null;
   cover_image_url: string | null;
@@ -30,6 +31,8 @@ export interface Season {
 export interface SeriesDetail {
   id: number;
   title: string;
+  display_title: string | null;
+  native_title: string | null;
   year: number | null;
   score: number | null;
   cover_image_url: string | null;

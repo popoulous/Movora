@@ -7,6 +7,7 @@ import { api, type Library, type LibraryKind } from "../api";
 import { LibrariesContext } from "../LibrariesContext";
 import { ActivityBell } from "./ActivityBell";
 import { FolderPicker } from "./FolderPicker";
+import { LanguageMenu } from "./LanguageMenu";
 
 const KIND_ICON: Record<LibraryKind, LucideIcon> = {
   anime: Sparkles,
@@ -17,12 +18,12 @@ const KIND_ICON: Record<LibraryKind, LucideIcon> = {
 const navClass = ({ isActive }: { isActive: boolean }): string =>
   `flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition ${
     isActive
-      ? "bg-violet-500/15 font-medium text-white ring-1 ring-violet-400/20"
+      ? "bg-gradient-to-r from-violet-600/30 to-fuchsia-600/20 font-medium text-white ring-1 ring-violet-400/20"
       : "text-neutral-400 hover:bg-white/5 hover:text-neutral-200"
   }`;
 
 export function Layout(): JSX.Element {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const [libraries, setLibraries] = useState<Library[]>([]);
   const [picking, setPicking] = useState(false);
   const navigate = useNavigate();
@@ -40,13 +41,6 @@ export function Layout(): JSX.Element {
     setPicking(false);
     loadLibraries();
     navigate(`/library/${library.id}`);
-  };
-
-  const lang = i18n.language.startsWith("hu") ? "hu" : "en";
-  const toggleLang = (): void => {
-    const next = lang === "hu" ? "en" : "hu";
-    void i18n.changeLanguage(next);
-    localStorage.setItem("movora.lang", next);
   };
 
   return (
@@ -102,13 +96,7 @@ export function Layout(): JSX.Element {
           <header className="flex items-center border-b border-white/5 px-6 py-3">
             <div className="ml-auto flex items-center gap-2">
               <ActivityBell />
-              <button
-                title={t("topbar.language")}
-                onClick={toggleLang}
-                className="rounded-lg bg-white/5 px-3 py-2 text-sm text-neutral-300 ring-1 ring-white/10 transition hover:bg-white/10"
-              >
-                {lang.toUpperCase()}
-              </button>
+              <LanguageMenu />
             </div>
           </header>
           <main className="min-w-0 flex-1 overflow-auto p-6">
