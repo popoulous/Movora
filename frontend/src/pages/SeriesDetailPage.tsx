@@ -146,7 +146,7 @@ export function SeriesDetailPage(): JSX.Element {
                 {genres.map((genre) => (
                   <span
                     key={genre}
-                    className="gradient-border rounded-full px-3 py-1 text-xs font-medium text-neutral-200"
+                    className="gradient-border rounded-full bg-gradient-to-r from-violet-500/20 to-fuchsia-500/20 px-3 py-1 text-xs font-medium text-neutral-100"
                   >
                     {genre}
                   </span>
