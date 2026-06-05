@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import Session, selectinload
 
 from movora.api.deps import MetadataProviderDep, SessionDep
 from movora.api.schemas import (
     EnrichResult,
     FsEntry,
     FsListing,
+    JobRead,
     LibraryCreate,
     LibraryRead,
     LibraryUpdate,
@@ -18,7 +21,7 @@ from movora.api.schemas import (
     SeriesDetail,
     SeriesRead,
 )
-from movora.db.models import Library, Season, Series
+from movora.db.models import Job, JobStatus, Library, Season, Series
 from movora.enrich import enrich_library
 from movora.filesystem import list_directories
 from movora.scanner import scan_library
@@ -70,7 +73,9 @@ def scan(library_id: int, session: SessionDep) -> ScanResult:
     library = session.get(Library, library_id)
     if library is None:
         raise HTTPException(status_code=404, detail="library not found")
-    return ScanResult(added=scan_library(session, library))
+    added = scan_library(session, library)
+    _log_job(session, "scan", library_id, f"{added} added")
+    return ScanResult(added=added)
 
 
 @router.post("/libraries/{library_id}/enrich", response_model=EnrichResult)
@@ -83,7 +88,9 @@ def enrich(
     library = session.get(Library, library_id)
     if library is None:
         raise HTTPException(status_code=404, detail="library not found")
-    return EnrichResult(enriched=enrich_library(session, library, provider, force=force))
+    enriched = enrich_library(session, library, provider, force=force)
+    _log_job(session, "enrich", library_id, f"{enriched} updated")
+    return EnrichResult(enriched=enriched)
 
 
 @router.get("/libraries/{library_id}/series", response_model=list[SeriesRead])
@@ -114,3 +121,23 @@ def browse_fs(path: str | None = None) -> FsListing:
         parent=listing.parent,
         directories=[FsEntry(name=entry.name, path=entry.path) for entry in listing.directories],
     )
+
+
+@router.get("/jobs", response_model=list[JobRead])
+def list_jobs(session: SessionDep) -> list[Job]:
+    return list(
+        session.scalars(select(Job).order_by(Job.created_at.desc(), Job.id.desc()).limit(20))
+    )
+
+
+def _log_job(session: Session, kind: str, library_id: int, message: str) -> None:
+    session.add(
+        Job(
+            kind=kind,
+            library_id=library_id,
+            status=JobStatus.DONE,
+            message=message,
+            finished_at=datetime.now(timezone.utc),
+        )
+    )
+    session.commit()

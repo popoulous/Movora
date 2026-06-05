@@ -190,3 +190,17 @@ class ConversionJob(Base):
     status: Mapped[JobStatus] = mapped_column(default=JobStatus.PENDING)
     source_hash: Mapped[str | None] = mapped_column(default=None)  # idempotency key
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class Job(Base):
+    """An activity record (scan / metadata fetch) surfaced in the activity bell."""
+
+    __tablename__ = "job"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str]  # "scan" | "enrich"
+    library_id: Mapped[int | None] = mapped_column(ForeignKey("library.id"), default=None)
+    status: Mapped[JobStatus] = mapped_column(default=JobStatus.DONE)
+    message: Mapped[str | None] = mapped_column(default=None)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column(default=None)

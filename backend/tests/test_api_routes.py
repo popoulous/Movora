@@ -67,3 +67,16 @@ def test_update_and_delete_library(tmp_path: Path) -> None:
     assert client.get("/api/libraries").json() == []
     assert client.patch(f"/api/libraries/{library_id}", json={"name": "x"}).status_code == 404
     assert client.delete(f"/api/libraries/{library_id}").status_code == 404
+
+
+def test_scan_is_recorded_as_a_job(tmp_path: Path) -> None:
+    client, media = _make_client(tmp_path)
+    library = client.post(
+        "/api/libraries", json={"path": str(media), "name": "A", "kind": "anime"}
+    ).json()
+    client.post(f"/api/libraries/{library['id']}/scan")
+
+    jobs = client.get("/api/jobs").json()
+    assert len(jobs) >= 1
+    assert jobs[0]["kind"] == "scan"
+    assert jobs[0]["status"] == "done"

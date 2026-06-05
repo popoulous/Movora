@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict
 
 from movora.db.models import LibraryKind
@@ -84,3 +86,15 @@ class FsListing(BaseModel):
     path: str | None
     parent: str | None
     directories: list[FsEntry]
+
+
+class JobRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    kind: str
+    library_id: int | None = None
+    status: str
+    message: str | None = None
+    created_at: datetime
+    finished_at: datetime | None = None
