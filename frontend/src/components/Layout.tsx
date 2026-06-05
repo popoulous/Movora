@@ -1,12 +1,19 @@
+import { Bell, Film, Home, type LucideIcon, Plus, Settings, Sparkles, Tv } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 
-import { api, type Library } from "../api";
+import { api, type Library, type LibraryKind } from "../api";
 import { LibrariesContext } from "../LibrariesContext";
 import { FolderPicker } from "./FolderPicker";
 
+const KIND_ICON: Record<LibraryKind, LucideIcon> = {
+  anime: Sparkles,
+  movie: Film,
+  series: Tv,
+};
+
 const navClass = ({ isActive }: { isActive: boolean }): string =>
-  `block truncate rounded-lg px-3 py-2 text-sm transition ${
+  `flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition ${
     isActive
       ? "bg-violet-500/15 font-medium text-white ring-1 ring-violet-400/20"
       : "text-neutral-400 hover:bg-white/5 hover:text-neutral-200"
@@ -35,41 +42,49 @@ export function Layout(): JSX.Element {
   return (
     <LibrariesContext.Provider value={{ libraries, reload: loadLibraries }}>
       <div className="flex min-h-screen">
-        <aside className="flex w-60 shrink-0 flex-col border-r border-white/5 bg-[#0d0a16]/50 p-3 backdrop-blur">
-          <Link to="/" className="mb-6 flex items-center gap-2 px-2 pt-2">
+        <aside className="flex w-64 shrink-0 flex-col border-r border-white/5 bg-[#0d0a16]/50 p-3 backdrop-blur">
+          <Link to="/" className="mb-8 flex items-center gap-2 px-2 pt-2">
             <img src="/movora_logo.png" alt="" className="h-7 w-7" />
             <span className="text-lg font-bold tracking-tight">Movora</span>
           </Link>
 
           <nav className="space-y-1">
             <NavLink to="/" end className={navClass}>
+              <Home className="h-4 w-4 shrink-0" />
               Home
             </NavLink>
           </nav>
 
-          <div className="mt-6 mb-1 flex items-center justify-between px-3 text-xs font-semibold tracking-wide text-neutral-500 uppercase">
+          <div className="mt-8 mb-2 flex items-center justify-between px-3 text-xs font-semibold tracking-wide text-neutral-500 uppercase">
             <span>Libraries</span>
             <button
               onClick={() => setPicking(true)}
               title="Add library"
-              className="rounded px-1 text-base leading-none text-neutral-400 hover:text-violet-300"
+              className="-m-1 rounded p-1 text-neutral-400 transition hover:bg-white/10 hover:text-violet-300"
             >
-              +
+              <Plus className="h-4 w-4" />
             </button>
           </div>
           <nav className="space-y-1">
-            {libraries.map((library) => (
-              <NavLink key={library.id} to={`/library/${library.id}`} className={navClass}>
-                {library.name}
-              </NavLink>
-            ))}
+            {libraries.map((library) => {
+              const Icon = KIND_ICON[library.kind];
+              return (
+                <NavLink key={library.id} to={`/library/${library.id}`} className={navClass}>
+                  <Icon className="h-4 w-4 shrink-0 text-neutral-400" />
+                  <span className="truncate">{library.name}</span>
+                </NavLink>
+              );
+            })}
             {libraries.length === 0 && (
-              <p className="px-3 text-xs text-neutral-600">No libraries yet</p>
+              <p className="px-3 py-2 text-xs text-neutral-600">
+                No libraries yet — add one with +
+              </p>
             )}
           </nav>
 
-          <nav className="mt-6 space-y-1">
+          <nav className="mt-auto space-y-1 pt-8">
             <NavLink to="/settings" className={navClass}>
+              <Settings className="h-4 w-4 shrink-0" />
               Settings
             </NavLink>
           </nav>
@@ -80,15 +95,15 @@ export function Layout(): JSX.Element {
             <div className="ml-auto flex items-center gap-2">
               <button
                 title="Activity"
-                className="rounded-lg bg-white/5 p-2 text-sm ring-1 ring-white/10 hover:bg-white/10"
+                className="rounded-lg bg-white/5 p-2 text-neutral-300 ring-1 ring-white/10 transition hover:bg-white/10"
               >
-                🔔
+                <Bell className="h-4 w-4" />
               </button>
               <button
                 title="Language"
-                className="rounded-lg bg-white/5 px-2.5 py-2 text-sm ring-1 ring-white/10 hover:bg-white/10"
+                className="rounded-lg bg-white/5 px-3 py-2 text-sm text-neutral-300 ring-1 ring-white/10 transition hover:bg-white/10"
               >
-                EN ▾
+                EN
               </button>
             </div>
           </header>

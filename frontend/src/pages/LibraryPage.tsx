@@ -1,7 +1,8 @@
+import { Star } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { api, type SeriesDetail, type SeriesSummary } from "../api";
+import { api, type SeriesSummary } from "../api";
 import { LibrarySettings } from "../components/LibrarySettings";
 import { useLibraries } from "../LibrariesContext";
 
@@ -18,7 +19,6 @@ export function LibraryPage(): JSX.Element {
   const library = libraries.find((item) => item.id === libraryId) ?? null;
 
   const [series, setSeries] = useState<SeriesSummary[]>([]);
-  const [detail, setDetail] = useState<SeriesDetail | null>(null);
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -33,7 +33,6 @@ export function LibraryPage(): JSX.Element {
   };
 
   useEffect(() => {
-    setDetail(null);
     setError(null);
     api.listSeries(libraryId).then(setSeries).catch(fail);
   }, [libraryId]);
@@ -94,10 +93,10 @@ export function LibraryPage(): JSX.Element {
           {series.map((summary) => (
             <button
               key={summary.id}
-              onClick={() => api.getSeries(summary.id).then(setDetail).catch(fail)}
+              onClick={() => navigate(`/series/${summary.id}`)}
               className="group text-left"
             >
-              <div className="aspect-[2/3] overflow-hidden rounded-xl bg-white/5 ring-1 ring-white/10 transition group-hover:ring-violet-400/40">
+              <div className="relative aspect-[2/3] overflow-hidden rounded-xl bg-white/5 ring-1 ring-white/10 transition group-hover:ring-violet-400/40">
                 {summary.cover_image_url !== null ? (
                   <img
                     src={summary.cover_image_url}
@@ -109,6 +108,12 @@ export function LibraryPage(): JSX.Element {
                     {summary.title}
                   </div>
                 )}
+                {summary.score !== null && (
+                  <span className="absolute top-1.5 right-1.5 inline-flex items-center gap-0.5 rounded-md bg-black/60 px-1.5 py-0.5 text-xs font-medium text-amber-300 backdrop-blur">
+                    <Star className="h-3 w-3 fill-current" />
+                    {(summary.score / 10).toFixed(1)}
+                  </span>
+                )}
               </div>
               <div className="mt-2 truncate text-sm font-medium">{summary.title}</div>
               {summary.year !== null && (
@@ -117,33 +122,6 @@ export function LibraryPage(): JSX.Element {
             </button>
           ))}
         </div>
-      )}
-
-      {detail !== null && (
-        <section className="rounded-xl bg-white/5 p-5 ring-1 ring-white/10">
-          <div className="mb-4 flex items-baseline gap-3">
-            <h2 className="text-lg font-semibold">{detail.title}</h2>
-            {detail.year !== null && <span className="text-neutral-500">{detail.year}</span>}
-            <button className={`${secondary} ml-auto`} onClick={() => setDetail(null)}>
-              Close
-            </button>
-          </div>
-          {detail.seasons.map((season) => (
-            <div key={season.id} className="mb-4">
-              <h3 className="mb-2 text-sm font-semibold text-neutral-400">Season {season.number}</h3>
-              <ul className="space-y-1">
-                {[...season.episodes]
-                  .sort((a, b) => a.number - b.number)
-                  .map((episode) => (
-                    <li key={episode.id} className="text-sm text-neutral-300">
-                      <span className="text-neutral-500">{episode.number}.</span>{" "}
-                      {episode.title ?? "(untitled)"}
-                    </li>
-                  ))}
-              </ul>
-            </div>
-          ))}
-        </section>
       )}
 
       {editing && library !== null && (

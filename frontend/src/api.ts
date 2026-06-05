@@ -11,6 +11,7 @@ export interface SeriesSummary {
   id: number;
   title: string;
   year: number | null;
+  score: number | null;
   cover_image_url: string | null;
 }
 
@@ -30,7 +31,11 @@ export interface SeriesDetail {
   id: number;
   title: string;
   year: number | null;
+  score: number | null;
   cover_image_url: string | null;
+  banner_image_url: string | null;
+  description: string | null;
+  genres: string | null;
   seasons: Season[];
 }
 

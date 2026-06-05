@@ -3,6 +3,7 @@ import { Route, Routes } from "react-router-dom";
 import { Layout } from "./components/Layout";
 import { HomePage } from "./pages/HomePage";
 import { LibraryPage } from "./pages/LibraryPage";
+import { SeriesDetailPage } from "./pages/SeriesDetailPage";
 import { SettingsPage } from "./pages/SettingsPage";
 
 export function App(): JSX.Element {
@@ -11,6 +12,7 @@ export function App(): JSX.Element {
       <Route element={<Layout />}>
         <Route index element={<HomePage />} />
         <Route path="library/:id" element={<LibraryPage />} />
+        <Route path="series/:id" element={<SeriesDetailPage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>
     </Routes>
