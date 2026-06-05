@@ -78,7 +78,7 @@ export function SeriesDetailPage(): JSX.Element {
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-[#0a0812] via-[#0a0812]/70 to-transparent" />
 
-        <div className="relative px-6 pt-6 pb-6">
+        <div className="relative px-6 pt-16 pb-8">
           <button
             onClick={() => navigate(-1)}
             className="text-sm text-neutral-400 transition hover:text-white"
