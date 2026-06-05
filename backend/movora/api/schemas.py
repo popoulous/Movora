@@ -63,3 +63,14 @@ class ScanResult(BaseModel):
 
 class EnrichResult(BaseModel):
     enriched: int
+
+
+class FsEntry(BaseModel):
+    name: str
+    path: str
+
+
+class FsListing(BaseModel):
+    path: str | None
+    parent: str | None
+    directories: list[FsEntry]

@@ -9,6 +9,8 @@ from sqlalchemy.orm import selectinload
 from movora.api.deps import MetadataProviderDep, SessionDep
 from movora.api.schemas import (
     EnrichResult,
+    FsEntry,
+    FsListing,
     LibraryCreate,
     LibraryRead,
     ScanResult,
@@ -17,6 +19,7 @@ from movora.api.schemas import (
 )
 from movora.db.models import Library, Season, Series
 from movora.enrich import enrich_library
+from movora.filesystem import list_directories
 from movora.scanner import scan_library
 
 router = APIRouter(prefix="/api")
@@ -69,3 +72,16 @@ def series_detail(series_id: int, session: SessionDep) -> Series:
     if series is None:
         raise HTTPException(status_code=404, detail="series not found")
     return series
+
+
+@router.get("/fs", response_model=FsListing)
+def browse_fs(path: str | None = None) -> FsListing:
+    try:
+        listing = list_directories(path)
+    except OSError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return FsListing(
+        path=listing.path,
+        parent=listing.parent,
+        directories=[FsEntry(name=entry.name, path=entry.path) for entry in listing.directories],
+    )
