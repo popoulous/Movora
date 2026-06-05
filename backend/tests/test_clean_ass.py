@@ -2,6 +2,7 @@ from pathlib import Path
 
 from movora.subtitles.ass_model import Decision
 from movora.subtitles.clean_ass import clean_ass_text
+from movora.subtitles.labels import JsonLabelStore
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -27,6 +28,12 @@ def test_override_blocks_are_stripped() -> None:
     texts = [cue.text for cue in result.cues]
     assert any("italicised line" in t for t in texts)
     assert all("{" not in t and "}" not in t for t in texts)
+
+
+def test_label_store_overrides_heuristic() -> None:
+    store = JsonLabelStore({"grp": {"Default": Decision.DROP}})
+    result = clean_ass_text(_raw("synthetic_basic.ass"), label_store=store, group="grp")
+    assert "Default" in result.dropped_styles  # the stored override wins over the heuristic
 
 
 def test_user_override_forces_keep() -> None:

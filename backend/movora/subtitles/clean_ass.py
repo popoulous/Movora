@@ -3,17 +3,22 @@
 This feeds the SRT fallback for "dumb" clients. The original soft ASS is never
 mutated — it stays the source of truth, rendered client-side by JASSUB. When a
 style is ambiguous (ASK) and the user has not decided, it is kept (keep-bias).
+
+A SubtitleLabelStore can override the heuristic per (release group, style), so
+the output is exactly right on a user's library; the soft ASS is unaffected.
 """
 
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from pathlib import Path
 
 from movora.subtitles.ass_model import Decision, StyleVerdict
 from movora.subtitles.ass_parser import parse_ass
 from movora.subtitles.encoding import normalize_bytes
 from movora.subtitles.features import compute_style_stats
+from movora.subtitles.labels import SubtitleLabelStore, release_group
 from movora.subtitles.style_classifier import classify_style
 
 _OVERRIDE_BLOCK_RE = re.compile(r"\{[^}]*\}")
@@ -43,7 +48,6 @@ class CleanResult:
 
 
 def _to_plain_text(ass_text: str) -> str:
-    """Strip override tags and convert ASS line breaks to plain (SRT-ready) text."""
     text = _OVERRIDE_BLOCK_RE.sub("", ass_text)
     text = text.replace(r"\N", "\n").replace(r"\n", "\n").replace(r"\h", " ")
     lines = (_INLINE_WS_RE.sub(" ", line).strip() for line in text.split("\n"))
@@ -51,7 +55,10 @@ def _to_plain_text(ass_text: str) -> str:
 
 
 def clean_ass_document(
-    text: str, overrides: dict[str, Decision] | None = None
+    text: str,
+    overrides: dict[str, Decision] | None = None,
+    label_store: SubtitleLabelStore | None = None,
+    group: str | None = None,
 ) -> CleanResult:
     overrides = overrides or {}
     doc = parse_ass(text)
@@ -64,7 +71,13 @@ def clean_ass_document(
     keep_set: set[str] = set()
 
     for name, verdict in verdicts.items():
-        decision = overrides.get(name, verdict.decision)
+        # Explicit per-call override first, then the stored label, then the heuristic.
+        decision = overrides.get(name)
+        if decision is None and label_store is not None:
+            decision = label_store.decision_for(group, name)
+        if decision is None:
+            decision = verdict.decision
+
         if decision is Decision.DROP:
             dropped_styles.append(name)
         elif decision is Decision.ASK:
@@ -93,7 +106,17 @@ def clean_ass_document(
 
 
 def clean_ass_text(
-    raw: bytes, overrides: dict[str, Decision] | None = None
+    raw: bytes,
+    overrides: dict[str, Decision] | None = None,
+    label_store: SubtitleLabelStore | None = None,
+    group: str | None = None,
 ) -> CleanResult:
     """Normalise encoding, parse, classify and extract dialogue from raw bytes."""
-    return clean_ass_document(normalize_bytes(raw), overrides)
+    return clean_ass_document(normalize_bytes(raw), overrides, label_store, group)
+
+
+def clean_ass_file(path: Path, store: SubtitleLabelStore | None = None) -> CleanResult:
+    """Clean one .ass file, applying any stored overrides for its release group."""
+    return clean_ass_text(
+        path.read_bytes(), label_store=store, group=release_group(path.name)
+    )
