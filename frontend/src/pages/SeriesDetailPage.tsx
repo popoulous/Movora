@@ -87,9 +87,9 @@ export function SeriesDetailPage(): JSX.Element {
           </button>
 
           <div className="mt-5 flex flex-col gap-6 lg:flex-row">
-            <div className="relative w-60 shrink-0 self-start sm:w-72">
-              <div className="rounded-2xl bg-gradient-to-br from-violet-500/60 to-fuchsia-500/60 p-px shadow-2xl shadow-violet-700/40">
-                <div className="aspect-[2/3] overflow-hidden rounded-[15px]">
+            <div className="relative w-64 shrink-0 self-start sm:w-80">
+              <div className="rounded-3xl bg-gradient-to-br from-violet-500/60 to-fuchsia-500/60 p-px shadow-2xl shadow-violet-700/40">
+                <div className="aspect-[2/3] overflow-hidden rounded-[23px]">
                   {series.cover_image_url !== null ? (
                     <img
                       src={series.cover_image_url}
@@ -104,21 +104,21 @@ export function SeriesDetailPage(): JSX.Element {
               <button
                 disabled
                 title="Playback comes with the streaming layer"
-                className="absolute bottom-3 left-3 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white shadow-lg shadow-fuchsia-500/40 transition hover:from-violet-400 hover:to-fuchsia-400"
+                className="absolute bottom-4 left-4 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-[#7A4DFF] to-[#EC4899] text-white shadow-[0_0_40px_rgba(168,85,247,0.6)] transition hover:brightness-110"
               >
                 <Play className="h-5 w-5 fill-current" />
               </button>
             </div>
 
             <div className="flex min-w-0 flex-1 flex-col">
-              <h1 className="text-3xl font-bold tracking-tight">
+              <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">
                 {series.display_title ?? series.title}
               </h1>
               {series.native_title !== null && (
                 <p className="mt-1 text-sm text-neutral-400">{series.native_title}</p>
               )}
 
-              <div className="mt-4 flex flex-wrap gap-x-7 gap-y-3">
+              <div className="mt-5 flex flex-wrap gap-x-10 gap-y-3">
                 {score !== null && (
                   <Stat
                     value={
@@ -140,7 +140,7 @@ export function SeriesDetailPage(): JSX.Element {
               </div>
 
               {synopsis !== null && (
-                <p className="mt-4 line-clamp-3 max-w-2xl text-sm leading-relaxed text-neutral-300">
+                <p className="mt-5 line-clamp-3 max-w-[560px] text-[15px] leading-[1.8] text-white/70">
                   {synopsis}
                 </p>
               )}
@@ -161,7 +161,7 @@ export function SeriesDetailPage(): JSX.Element {
               <button
                 disabled
                 title="Playback comes with the streaming layer"
-                className="mt-auto inline-flex cursor-not-allowed items-center gap-2 self-start rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 px-5 py-2 text-sm font-medium text-white shadow-lg shadow-violet-900/30"
+                className="mt-auto inline-flex cursor-not-allowed items-center gap-2 self-start rounded-2xl bg-gradient-to-br from-[#7A4DFF] via-[#A855F7] to-[#EC4899] px-6 py-3 text-sm font-semibold text-white shadow-[0_8px_40px_rgba(168,85,247,0.4)]"
               >
                 <Play className="h-4 w-4 fill-current" /> {t("series.play")}
               </button>
@@ -196,7 +196,7 @@ export function SeriesDetailPage(): JSX.Element {
                   .map((episode) => (
                     <li
                       key={episode.id}
-                      className="flex items-center gap-3 px-4 py-2.5 text-sm transition hover:bg-white/5"
+                      className="flex items-center gap-4 px-5 py-3.5 text-sm transition hover:bg-[#7A4DFF]/[0.06]"
                     >
                       <button
                         disabled

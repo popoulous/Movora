@@ -16,9 +16,9 @@ const KIND_ICON: Record<LibraryKind, LucideIcon> = {
 };
 
 const navClass = ({ isActive }: { isActive: boolean }): string =>
-  `flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition ${
+  `flex items-center gap-3 rounded-[14px] px-4 py-3 text-sm transition ${
     isActive
-      ? "bg-gradient-to-r from-violet-600/30 to-fuchsia-600/20 font-medium text-white ring-1 ring-violet-400/20"
+      ? "bg-gradient-to-r from-[#7A4DFF]/25 to-[#EC4899]/15 font-medium text-white shadow-[0_0_20px_rgba(122,77,255,0.2)] ring-1 ring-[#7A4DFF]/40"
       : "text-neutral-400 hover:bg-white/5 hover:text-neutral-200"
   }`;
 
@@ -46,9 +46,13 @@ export function Layout(): JSX.Element {
   return (
     <LibrariesContext.Provider value={{ libraries, reload: loadLibraries }}>
       <div className="flex min-h-screen">
-        <aside className="flex w-64 shrink-0 flex-col border-r border-white/5 bg-[#050509]/80 p-3 backdrop-blur-xl">
-          <Link to="/" className="mb-8 flex items-center gap-2 px-2 pt-2">
-            <img src="/movora_logo.png" alt="" className="h-7 w-7" />
+        <aside className="flex w-[280px] shrink-0 flex-col border-r border-white/5 bg-[#080a12]/[0.72] px-5 py-8 backdrop-blur-2xl">
+          <Link to="/" className="mb-8 flex items-center gap-2.5 px-1">
+            <img
+              src="/movora_logo.png"
+              alt=""
+              className="h-9 w-9 drop-shadow-[0_0_30px_rgba(122,77,255,0.35)]"
+            />
             <span className="text-lg font-bold tracking-tight">Movora</span>
           </Link>
 
