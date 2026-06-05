@@ -41,6 +41,7 @@ export function SeriesDetailPage(): JSX.Element {
   const genres = series.genres?.split(", ").filter(Boolean) ?? [];
   const episodeCount = series.seasons.reduce((total, season) => total + season.episodes.length, 0);
   const score = series.score !== null ? (series.score / 10).toFixed(1) : null;
+  const synopsis = series.description !== null ? stripHtml(series.description) : null;
 
   const tabClass = (value: Tab): string =>
     `px-3 py-2 text-sm font-medium transition ${
@@ -67,25 +68,32 @@ export function SeriesDetailPage(): JSX.Element {
           />
         )}
         <div className="absolute inset-0 bg-gradient-to-tr from-[#0a0812] via-[#0a0812]/85 to-[#0a0812]/40" />
-        <div className="relative flex flex-col gap-6 p-6 sm:flex-row">
-          <div className="group relative h-60 w-40 shrink-0 self-start">
-            {series.cover_image_url !== null ? (
-              <img
-                src={series.cover_image_url}
-                alt={series.title}
-                className="h-full w-full rounded-xl object-cover shadow-xl ring-1 ring-white/10"
-              />
-            ) : (
-              <div className="h-full w-full rounded-xl bg-gradient-to-br from-violet-900/40 to-fuchsia-900/30 ring-1 ring-white/10" />
-            )}
-            <span className="absolute inset-0 flex items-center justify-center">
-              <span className="flex h-12 w-12 items-center justify-center rounded-full bg-violet-600/85 text-white shadow-lg transition group-hover:scale-105">
-                <Play className="h-5 w-5 fill-current" />
-              </span>
-            </span>
+
+        <div className="relative flex flex-col gap-6 p-6 lg:flex-row">
+          {/* Poster (large) with the play button anchored to the bottom */}
+          <div className="relative w-48 shrink-0 self-start sm:w-56">
+            <div className="aspect-[2/3] overflow-hidden rounded-xl shadow-2xl ring-1 ring-white/10">
+              {series.cover_image_url !== null ? (
+                <img
+                  src={series.cover_image_url}
+                  alt={series.title}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <div className="h-full w-full bg-gradient-to-br from-violet-900/40 to-fuchsia-900/30" />
+              )}
+            </div>
+            <button
+              disabled
+              title="Playback comes with the streaming layer"
+              className="absolute bottom-3 left-3 flex h-12 w-12 items-center justify-center rounded-full bg-violet-600 text-white shadow-lg ring-4 ring-[#0a0812]/50"
+            >
+              <Play className="h-5 w-5 fill-current" />
+            </button>
           </div>
 
-          <div className="min-w-0">
+          {/* Main info */}
+          <div className="min-w-0 flex-1">
             <h1 className="text-3xl font-bold tracking-tight">{series.title}</h1>
 
             <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-neutral-300">
@@ -118,32 +126,23 @@ export function SeriesDetailPage(): JSX.Element {
               </div>
             )}
 
+            {synopsis !== null && (
+              <p className="mt-4 line-clamp-4 max-w-2xl text-sm leading-relaxed text-neutral-300">
+                {synopsis}
+              </p>
+            )}
+
             <button
               disabled
               title="Playback comes with the streaming layer"
-              className="mt-5 inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 px-4 py-2 text-sm font-medium text-white opacity-50"
+              className="mt-5 inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 px-5 py-2 text-sm font-medium text-white opacity-60"
             >
               <Play className="h-4 w-4 fill-current" /> {t("series.play")}
             </button>
           </div>
-        </div>
-      </div>
 
-      <div className="flex gap-1 border-b border-white/10">
-        <button className={tabClass("overview")} onClick={() => setTab("overview")}>
-          {t("series.tabOverview")}
-        </button>
-        <button className={tabClass("episodes")} onClick={() => setTab("episodes")}>
-          {t("series.tabEpisodes")}
-        </button>
-      </div>
-
-      {tab === "overview" ? (
-        <div className="grid gap-6 lg:grid-cols-[1fr_18rem]">
-          <p className="text-sm leading-relaxed text-neutral-300">
-            {series.description !== null ? stripHtml(series.description) : t("series.noSynopsis")}
-          </p>
-          <aside className="h-fit space-y-2 rounded-xl bg-white/5 p-4 text-sm ring-1 ring-white/10">
+          {/* Details panel */}
+          <aside className="w-full shrink-0 space-y-2 self-start rounded-xl bg-black/30 p-4 text-sm ring-1 ring-white/10 backdrop-blur lg:w-60">
             <h2 className="mb-1 text-xs font-semibold tracking-wide text-neutral-500 uppercase">
               {t("series.details")}
             </h2>
@@ -157,6 +156,21 @@ export function SeriesDetailPage(): JSX.Element {
             )}
           </aside>
         </div>
+      </div>
+
+      <div className="flex gap-1 border-b border-white/10">
+        <button className={tabClass("overview")} onClick={() => setTab("overview")}>
+          {t("series.tabOverview")}
+        </button>
+        <button className={tabClass("episodes")} onClick={() => setTab("episodes")}>
+          {t("series.tabEpisodes")}
+        </button>
+      </div>
+
+      {tab === "overview" ? (
+        <p className="max-w-3xl text-sm leading-relaxed text-neutral-300">
+          {synopsis ?? t("series.noSynopsis")}
+        </p>
       ) : (
         <div className="space-y-6">
           {series.seasons.map((season) => (
