@@ -50,6 +50,7 @@ class StyleStats:
     total_lines: int  # total dialogue lines in the document (for the share)
     coverage: float  # fraction of the runtime this style's lines span [0..1]
     positioned_fraction: float
+    overlap_fraction: float  # fraction of lines overlapping another line of the same style
     karaoke_fraction: float
     prose_fraction: float  # fraction of lines that read like dialogue sentences
     allcaps_fraction: float  # fraction of UPPERCASE-only lines (map labels / signs)

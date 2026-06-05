@@ -90,6 +90,8 @@ def classify_style(stats: StyleStats) -> StyleVerdict:
     # Sign corroboration.
     if _SIGN_NAME_RE.search(stats.name):
         add(-3, "sign-like style name")
+    if stats.overlap_fraction >= 0.4:
+        add(-4, f"{stats.overlap_fraction:.0%} self-overlap -> simultaneous signs")
     # UPPERCASE counts as a sign signal only with corroboration, so a fully
     # shouted (all-caps) dialogue style is not mistaken for a caption.
     sign_named = bool(_SIGN_NAME_RE.search(stats.name))

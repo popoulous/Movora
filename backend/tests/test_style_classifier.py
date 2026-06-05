@@ -10,6 +10,7 @@ def _stats(**overrides: object) -> StyleStats:
         total_lines=100,
         coverage=0.5,
         positioned_fraction=0.0,
+        overlap_fraction=0.0,
         karaoke_fraction=0.0,
         prose_fraction=0.8,
         allcaps_fraction=0.0,
@@ -60,6 +61,14 @@ def test_positioned_prose_sign_is_dropped() -> None:
     # A prose-like but positioned+styled SIGN (not a Default*/Main* dialogue style).
     stats = _stats(
         name="shop", prose_fraction=1.0, positioned_fraction=1.0, styling_fraction=1.0,
+    )
+    assert classify_style(stats).decision is Decision.DROP
+
+
+def test_overlapping_positioned_sign_is_dropped() -> None:
+    # Many same-style lines on screen at once = signs, not sequential dialogue.
+    stats = _stats(
+        name="credits", prose_fraction=1.0, positioned_fraction=1.0, overlap_fraction=0.7,
     )
     assert classify_style(stats).decision is Decision.DROP
 

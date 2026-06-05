@@ -39,6 +39,28 @@ def _is_allcaps(text: str) -> bool:
     return len(letters) >= 3 and not any(c.islower() for c in letters)
 
 
+def _overlap_fraction(intervals: list[tuple[float, float]]) -> float:
+    """Fraction of intervals that overlap at least one other interval.
+
+    Signs often show several labels of the same style at once (high overlap);
+    dialogue is sequential (one speaker at a time, ~zero overlap).
+    """
+    n = len(intervals)
+    if n < 2:
+        return 0.0
+    ordered = sorted(intervals)
+    overlapping = [False] * n
+    max_end = ordered[0][1]
+    for i in range(1, n):
+        if ordered[i][0] < max_end:  # starts before some earlier interval ends
+            overlapping[i] = True
+        max_end = max(max_end, ordered[i][1])
+    for i in range(n - 1):
+        if ordered[i + 1][0] < ordered[i][1]:  # the next-starting interval overlaps this
+            overlapping[i] = True
+    return sum(overlapping) / n
+
+
 def _union_length(intervals: list[tuple[float, float]]) -> float:
     if not intervals:
         return 0.0
@@ -70,11 +92,8 @@ def compute_style_stats(doc: AssDocument) -> dict[str, StyleStats]:
         texts = [_visible_text(e.text) for e in events]
         nonempty = [t for t in texts if t]
         denom = len(nonempty) or 1
-        coverage = (
-            _union_length([(e.start, e.end) for e in events]) / runtime
-            if runtime > 0
-            else 0.0
-        )
+        intervals = [(e.start, e.end) for e in events]
+        coverage = _union_length(intervals) / runtime if runtime > 0 else 0.0
         stats[name] = StyleStats(
             name=name,
             alignment=doc.styles[name].alignment if name in doc.styles else 2,
@@ -82,6 +101,7 @@ def compute_style_stats(doc: AssDocument) -> dict[str, StyleStats]:
             total_lines=total_lines,
             coverage=min(coverage, 1.0),
             positioned_fraction=sum(e.has_position for e in events) / count,
+            overlap_fraction=_overlap_fraction(intervals),
             karaoke_fraction=sum(e.has_karaoke for e in events) / count,
             prose_fraction=sum(_is_prose(t) for t in nonempty) / denom,
             allcaps_fraction=sum(_is_allcaps(t) for t in nonempty) / denom,
