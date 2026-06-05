@@ -28,7 +28,7 @@ def test_scan_populates_hierarchy_and_is_idempotent(tmp_path: Path) -> None:
         session.add(library)
         session.commit()
 
-        assert scan_library(session, library) == 2
+        assert scan_library(session, library, title_prober=lambda path: None) == 2
 
         series = list(session.scalars(select(Series)))
         assert len(series) == 1
@@ -38,4 +38,21 @@ def test_scan_populates_hierarchy_and_is_idempotent(tmp_path: Path) -> None:
         assert len(list(session.scalars(select(MediaFile)))) == 2
 
         # Re-scanning adds nothing.
-        assert scan_library(session, library) == 0
+        assert scan_library(session, library, title_prober=lambda path: None) == 0
+
+
+def test_scan_sets_episode_titles_from_prober(tmp_path: Path) -> None:
+    (tmp_path / "[Group] Show - 01.mkv").write_bytes(b"")
+    engine = create_db_engine(":memory:")
+    init_db(engine)
+    session_factory = create_session_factory(engine)
+
+    with session_factory() as session:
+        library = Library(path=str(tmp_path), name="A", kind=LibraryKind.ANIME)
+        session.add(library)
+        session.commit()
+
+        scan_library(session, library, title_prober=lambda path: "Cruelty")
+        episode = session.scalar(select(Episode))
+        assert episode is not None
+        assert episode.title == "Cruelty"
