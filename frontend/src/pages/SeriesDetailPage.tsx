@@ -102,7 +102,7 @@ export function SeriesDetailPage(): JSX.Element {
             <button
               disabled
               title="Playback comes with the streaming layer"
-              className="absolute bottom-3 left-3 flex h-12 w-12 items-center justify-center rounded-full bg-violet-600 text-white shadow-lg ring-4 ring-[#0a0812]/50"
+              className="absolute bottom-3 left-3 flex h-12 w-12 items-center justify-center rounded-full bg-violet-500 text-white shadow-lg shadow-violet-900/40 transition hover:bg-violet-400"
             >
               <Play className="h-5 w-5 fill-current" />
             </button>
@@ -157,7 +157,7 @@ export function SeriesDetailPage(): JSX.Element {
             <button
               disabled
               title="Playback comes with the streaming layer"
-              className="mt-auto inline-flex items-center gap-2 self-start rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 px-5 py-2 text-sm font-medium text-white opacity-60"
+              className="mt-auto inline-flex cursor-not-allowed items-center gap-2 self-start rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 px-5 py-2 text-sm font-medium text-white shadow-lg shadow-violet-900/30"
             >
               <Play className="h-4 w-4 fill-current" /> {t("series.play")}
             </button>
