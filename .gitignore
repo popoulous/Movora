@@ -224,3 +224,8 @@ __marimo__/
 
 # Stray local files that must never reach the public repo
 *.torrent
+
+# Local SQLite databases
+*.db
+*.db-shm
+*.db-wal
