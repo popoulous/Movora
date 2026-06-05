@@ -42,3 +42,10 @@ def test_create_scan_and_browse(tmp_path: Path) -> None:
 def test_scan_missing_library_returns_404(tmp_path: Path) -> None:
     client, _ = _make_client(tmp_path)
     assert client.post("/api/libraries/999/scan").status_code == 404
+
+
+def test_duplicate_library_path_returns_409(tmp_path: Path) -> None:
+    client, media = _make_client(tmp_path)
+    body = {"path": str(media), "name": "Anime", "kind": "anime"}
+    assert client.post("/api/libraries", json=body).status_code == 201
+    assert client.post("/api/libraries", json=body).status_code == 409

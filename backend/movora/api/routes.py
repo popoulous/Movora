@@ -24,6 +24,8 @@ router = APIRouter(prefix="/api")
 
 @router.post("/libraries", response_model=LibraryRead, status_code=201)
 def create_library(payload: LibraryCreate, session: SessionDep) -> Library:
+    if session.scalar(select(Library).where(Library.path == payload.path)) is not None:
+        raise HTTPException(status_code=409, detail="a library with this path already exists")
     library = Library(path=payload.path, name=payload.name, kind=payload.kind)
     session.add(library)
     session.commit()
