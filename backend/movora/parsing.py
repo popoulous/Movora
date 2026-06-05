@@ -10,12 +10,12 @@ from __future__ import annotations
 
 from typing import Any
 
-import anitopy
 from guessit import guessit
 
 from movora.db.models import LibraryKind
 from movora.domain import ParsedFields
 from movora.interfaces import ParserStrategy
+from movora.vendor import anitopy
 
 
 def _first_int(value: Any) -> int | None:
