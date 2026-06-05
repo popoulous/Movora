@@ -1,0 +1,34 @@
+"""Small shared value types used by the stable interfaces (see IMPLEMENTATION_PLAN §4)."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class CapabilityProfile:
+    """What a client can play — the central branch point (plan §4.2 / §6)."""
+
+    schema_version: int = 1
+    supports_ass: bool = False  # can render soft ASS (mpv / Infuse / our JASSUB player)
+    supports_srt: bool = True
+    video_codecs: tuple[str, ...] = ()
+    audio_codecs: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class ParsedFields:
+    """Raw fields a ParserStrategy extracts from a file name (NOT the mapping)."""
+
+    title: str | None = None
+    episode: int | None = None
+    season: int | None = None
+    release_group: str | None = None
+
+
+@dataclass(frozen=True)
+class SubtitleRendering:
+    """A subtitle ready to serve to a client: a format and its content."""
+
+    format: str  # "ass" | "srt"
+    content: str

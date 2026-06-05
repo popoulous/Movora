@@ -14,6 +14,7 @@ from movora.subtitles.labels import (
     default_label_store,
     release_group,
 )
+from movora.subtitles.resolver import SoftAssOrSrtResolver
 from movora.subtitles.srt import ass_to_srt, render_srt
 
 __all__ = [
@@ -22,6 +23,7 @@ __all__ = [
     "DialogueCue",
     "JsonLabelStore",
     "LayeredLabelStore",
+    "SoftAssOrSrtResolver",
     "SubtitleLabelStore",
     "ass_to_srt",
     "clean_ass_file",
