@@ -13,6 +13,11 @@ class LibraryCreate(BaseModel):
     kind: LibraryKind
 
 
+class LibraryUpdate(BaseModel):
+    name: str | None = None
+    kind: LibraryKind | None = None
+
+
 class LibraryRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

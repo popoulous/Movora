@@ -13,6 +13,7 @@ from movora.api.schemas import (
     FsListing,
     LibraryCreate,
     LibraryRead,
+    LibraryUpdate,
     ScanResult,
     SeriesDetail,
     SeriesRead,
@@ -39,6 +40,29 @@ def create_library(payload: LibraryCreate, session: SessionDep) -> Library:
 @router.get("/libraries", response_model=list[LibraryRead])
 def list_libraries(session: SessionDep) -> list[Library]:
     return list(session.scalars(select(Library)))
+
+
+@router.patch("/libraries/{library_id}", response_model=LibraryRead)
+def update_library(library_id: int, payload: LibraryUpdate, session: SessionDep) -> Library:
+    library = session.get(Library, library_id)
+    if library is None:
+        raise HTTPException(status_code=404, detail="library not found")
+    if payload.name is not None:
+        library.name = payload.name
+    if payload.kind is not None:
+        library.kind = payload.kind
+    session.commit()
+    session.refresh(library)
+    return library
+
+
+@router.delete("/libraries/{library_id}", status_code=204)
+def delete_library(library_id: int, session: SessionDep) -> None:
+    library = session.get(Library, library_id)
+    if library is None:
+        raise HTTPException(status_code=404, detail="library not found")
+    session.delete(library)
+    session.commit()
 
 
 @router.post("/libraries/{library_id}/scan", response_model=ScanResult)

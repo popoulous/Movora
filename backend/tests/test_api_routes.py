@@ -49,3 +49,21 @@ def test_duplicate_library_path_returns_409(tmp_path: Path) -> None:
     body = {"path": str(media), "name": "Anime", "kind": "anime"}
     assert client.post("/api/libraries", json=body).status_code == 201
     assert client.post("/api/libraries", json=body).status_code == 409
+
+
+def test_update_and_delete_library(tmp_path: Path) -> None:
+    client, media = _make_client(tmp_path)
+    library = client.post(
+        "/api/libraries", json={"path": str(media), "name": "Anime", "kind": "anime"}
+    ).json()
+    library_id = library["id"]
+
+    updated = client.patch(f"/api/libraries/{library_id}", json={"name": "Movies", "kind": "movie"})
+    assert updated.status_code == 200
+    assert updated.json()["name"] == "Movies"
+    assert updated.json()["kind"] == "movie"
+
+    assert client.delete(f"/api/libraries/{library_id}").status_code == 204
+    assert client.get("/api/libraries").json() == []
+    assert client.patch(f"/api/libraries/{library_id}", json={"name": "x"}).status_code == 404
+    assert client.delete(f"/api/libraries/{library_id}").status_code == 404
