@@ -58,6 +58,16 @@ export interface FsListing {
   directories: FsEntry[];
 }
 
+export interface Job {
+  id: number;
+  kind: string;
+  library_id: number | null;
+  status: string;
+  message: string | null;
+  created_at: string;
+  finished_at: string | null;
+}
+
 async function asJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
     throw new Error(`${response.status} ${response.statusText}`);
@@ -99,4 +109,5 @@ export const api = {
     const query = path !== undefined ? `?path=${encodeURIComponent(path)}` : "";
     return fetch(`/api/fs${query}`).then(asJson<FsListing>);
   },
+  listJobs: (): Promise<Job[]> => fetch("/api/jobs").then(asJson<Job[]>),
 };

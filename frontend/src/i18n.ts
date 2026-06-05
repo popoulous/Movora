@@ -54,6 +54,12 @@ const en = {
     play: "Play",
     loading: "Loading…",
   },
+  activity: {
+    title: "Recent activity",
+    empty: "No recent activity",
+    scan: "Scan",
+    enrich: "Metadata",
+  },
 };
 
 const hu: typeof en = {
@@ -109,6 +115,12 @@ const hu: typeof en = {
     untitled: "(névtelen)",
     play: "Lejátszás",
     loading: "Betöltés…",
+  },
+  activity: {
+    title: "Friss tevékenység",
+    empty: "Nincs friss tevékenység",
+    scan: "Szkennelés",
+    enrich: "Metaadat",
   },
 };
 

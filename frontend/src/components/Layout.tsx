@@ -1,10 +1,11 @@
-import { Bell, Film, Home, type LucideIcon, Plus, Settings, Sparkles, Tv } from "lucide-react";
+import { Film, Home, type LucideIcon, Plus, Settings, Sparkles, Tv } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 
 import { api, type Library, type LibraryKind } from "../api";
 import { LibrariesContext } from "../LibrariesContext";
+import { ActivityBell } from "./ActivityBell";
 import { FolderPicker } from "./FolderPicker";
 
 const KIND_ICON: Record<LibraryKind, LucideIcon> = {
@@ -100,12 +101,7 @@ export function Layout(): JSX.Element {
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="flex items-center border-b border-white/5 px-6 py-3">
             <div className="ml-auto flex items-center gap-2">
-              <button
-                title={t("topbar.activity")}
-                className="rounded-lg bg-white/5 p-2 text-neutral-300 ring-1 ring-white/10 transition hover:bg-white/10"
-              >
-                <Bell className="h-4 w-4" />
-              </button>
+              <ActivityBell />
               <button
                 title={t("topbar.language")}
                 onClick={toggleLang}
