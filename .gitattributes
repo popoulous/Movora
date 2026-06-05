@@ -1,0 +1,11 @@
+# Normalise line endings: LF in the repository, regardless of the OS.
+* text=auto eol=lf
+
+# Treat common binaries as binary (never apply EOL conversion).
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.mkv binary
