@@ -10,6 +10,8 @@ export interface Library {
 export interface SeriesSummary {
   id: number;
   title: string;
+  year: number | null;
+  cover_image_url: string | null;
 }
 
 export interface Episode {
@@ -27,11 +29,17 @@ export interface Season {
 export interface SeriesDetail {
   id: number;
   title: string;
+  year: number | null;
+  cover_image_url: string | null;
   seasons: Season[];
 }
 
 export interface ScanResult {
   added: number;
+}
+
+export interface EnrichResult {
+  enriched: number;
 }
 
 async function asJson<T>(response: Response): Promise<T> {
@@ -51,6 +59,8 @@ export const api = {
     }).then(asJson<Library>),
   scanLibrary: (id: number): Promise<ScanResult> =>
     fetch(`/api/libraries/${id}/scan`, { method: "POST" }).then(asJson<ScanResult>),
+  enrichLibrary: (id: number): Promise<EnrichResult> =>
+    fetch(`/api/libraries/${id}/enrich`, { method: "POST" }).then(asJson<EnrichResult>),
   listSeries: (libraryId: number): Promise<SeriesSummary[]> =>
     fetch(`/api/libraries/${libraryId}/series`).then(asJson<SeriesSummary[]>),
   getSeries: (id: number): Promise<SeriesDetail> =>
