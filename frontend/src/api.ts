@@ -42,6 +42,17 @@ export interface EnrichResult {
   enriched: number;
 }
 
+export interface FsEntry {
+  name: string;
+  path: string;
+}
+
+export interface FsListing {
+  path: string | null;
+  parent: string | null;
+  directories: FsEntry[];
+}
+
 async function asJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
     throw new Error(`${response.status} ${response.statusText}`);
@@ -65,4 +76,8 @@ export const api = {
     fetch(`/api/libraries/${libraryId}/series`).then(asJson<SeriesSummary[]>),
   getSeries: (id: number): Promise<SeriesDetail> =>
     fetch(`/api/series/${id}`).then(asJson<SeriesDetail>),
+  browseFs: (path?: string): Promise<FsListing> => {
+    const query = path !== undefined ? `?path=${encodeURIComponent(path)}` : "";
+    return fetch(`/api/fs${query}`).then(asJson<FsListing>);
+  },
 };
