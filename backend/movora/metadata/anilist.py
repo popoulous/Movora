@@ -20,7 +20,7 @@ query ($search: String) {
   Page(perPage: 1) {
     media(search: $search, type: ANIME) {
       id
-      title { romaji english }
+      title { romaji english native }
       episodes
       seasonYear
       coverImage { large }
@@ -60,6 +60,7 @@ def _to_metadata(media: dict[str, Any], fallback_title: str) -> SeriesMetadata:
         provider="anilist",
         external_id=str(media.get("id")),
         title=names.get("english") or names.get("romaji") or fallback_title,
+        native_title=names.get("native"),
         cover_image_url=cover.get("large"),
         episode_count=media.get("episodes"),
         year=media.get("seasonYear"),

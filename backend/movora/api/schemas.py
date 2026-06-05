@@ -50,6 +50,7 @@ class SeriesRead(BaseModel):
 
     id: int
     title: str
+    display_title: str | None = None
     year: int | None = None
     score: int | None = None
     cover_image_url: str | None = None
@@ -60,6 +61,8 @@ class SeriesDetail(BaseModel):
 
     id: int
     title: str
+    display_title: str | None = None
+    native_title: str | None = None
     year: int | None = None
     score: int | None = None
     cover_image_url: str | None = None

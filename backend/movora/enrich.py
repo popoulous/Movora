@@ -35,6 +35,8 @@ def enrich_library(
         series.description = metadata.description
         series.score = metadata.score
         series.genres = metadata.genres
+        series.display_title = metadata.title
+        series.native_title = metadata.native_title
         updated += 1
     session.commit()
     return updated

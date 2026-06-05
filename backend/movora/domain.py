@@ -48,3 +48,4 @@ class SeriesMetadata:
     description: str | None = None
     score: int | None = None  # 0-100
     genres: str | None = None  # comma-joined
+    native_title: str | None = None  # e.g. Japanese
