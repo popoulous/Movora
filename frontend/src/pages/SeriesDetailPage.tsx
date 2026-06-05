@@ -68,7 +68,7 @@ export function SeriesDetailPage(): JSX.Element {
   return (
     <div className="space-y-6">
       {/* Full-bleed banner backdrop spanning the whole content area (no card box). */}
-      <div className="relative -mx-6 -mt-6 overflow-hidden">
+      <div className="relative -mx-6 -mt-16 overflow-hidden">
         {series.banner_image_url !== null && (
           <img
             src={series.banner_image_url}

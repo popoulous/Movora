@@ -92,14 +92,14 @@ export function Layout(): JSX.Element {
           </nav>
         </aside>
 
-        <div className="flex min-w-0 flex-1 flex-col">
-          <header className="flex items-center border-b border-white/5 px-6 py-3">
-            <div className="ml-auto flex items-center gap-2">
+        <div className="relative flex min-w-0 flex-1 flex-col">
+          <header className="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-center px-6 py-3">
+            <div className="pointer-events-auto ml-auto flex items-center gap-2">
               <ActivityBell />
               <LanguageMenu />
             </div>
           </header>
-          <main className="min-w-0 flex-1 overflow-auto p-6">
+          <main className="min-w-0 flex-1 overflow-auto px-6 pt-16 pb-6">
             <Outlet />
           </main>
         </div>
