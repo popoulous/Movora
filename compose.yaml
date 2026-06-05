@@ -1,0 +1,17 @@
+services:
+  movora:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - movora-data:/data
+      - ${MOVORA_MEDIA:-./media}:/media:ro
+    environment:
+      MOVORA_DATABASE_PATH: /data/movora.db
+    restart: unless-stopped
+    # For QSV hardware transcode (v2), pass the render device through:
+    # devices:
+    #   - /dev/dri:/dev/dri
+
+volumes:
+  movora-data:

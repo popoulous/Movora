@@ -14,6 +14,7 @@ class Settings(BaseSettings):
 
     app_name: str = "Movora"
     database_path: Path = Path("movora.db")
+    frontend_dist: Path | None = None  # if set, the backend serves the built SPA
 
 
 def get_settings() -> Settings:

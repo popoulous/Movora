@@ -1,0 +1,15 @@
+[Unit]
+Description=Movora media server
+After=network.target
+
+[Service]
+Type=simple
+User=movora
+WorkingDirectory=/opt/movora/backend
+Environment=MOVORA_DATABASE_PATH=/var/lib/movora/movora.db
+Environment=MOVORA_FRONTEND_DIST=/opt/movora/frontend/dist
+ExecStart=/opt/movora/backend/.venv/bin/uvicorn movora.api.app:app --host 0.0.0.0 --port 8000
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
