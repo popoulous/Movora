@@ -9,6 +9,7 @@ dependencies = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.29",
     "pydantic-settings>=2.2",
+    "SQLAlchemy>=2.0",
 ]
 
 [project.optional-dependencies]
@@ -37,3 +38,4 @@ files = ["movora", "tests"]
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-q"
+filterwarnings = ["ignore:Using `httpx`"]

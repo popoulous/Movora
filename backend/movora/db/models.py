@@ -1,0 +1,110 @@
+"""ORM models for the media hierarchy (Library -> Series -> Season -> Episode -> files)."""
+
+from __future__ import annotations
+
+import enum
+
+from sqlalchemy import ForeignKey
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from movora.db.base import Base
+
+
+class LibraryKind(str, enum.Enum):
+    ANIME = "anime"
+    MOVIE = "movie"
+    SERIES = "series"
+
+
+class SubtitleFormat(str, enum.Enum):
+    ASS = "ass"
+    SRT = "srt"
+
+
+class SubtitleSourceKind(str, enum.Enum):
+    EMBEDDED = "embedded"
+    EXTERNAL = "external"
+    FETCHED = "fetched"
+
+
+class Library(Base):
+    __tablename__ = "library"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    path: Mapped[str] = mapped_column(unique=True)
+    name: Mapped[str]
+    kind: Mapped[LibraryKind]
+
+    series: Mapped[list[Series]] = relationship(
+        back_populates="library", cascade="all, delete-orphan"
+    )
+
+
+class Series(Base):
+    __tablename__ = "series"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    library_id: Mapped[int] = mapped_column(ForeignKey("library.id"))
+    title: Mapped[str]
+
+    library: Mapped[Library] = relationship(back_populates="series")
+    seasons: Mapped[list[Season]] = relationship(
+        back_populates="series", cascade="all, delete-orphan"
+    )
+
+
+class Season(Base):
+    __tablename__ = "season"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    series_id: Mapped[int] = mapped_column(ForeignKey("series.id"))
+    number: Mapped[int]
+
+    series: Mapped[Series] = relationship(back_populates="seasons")
+    episodes: Mapped[list[Episode]] = relationship(
+        back_populates="season", cascade="all, delete-orphan"
+    )
+
+
+class Episode(Base):
+    __tablename__ = "episode"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    season_id: Mapped[int] = mapped_column(ForeignKey("season.id"))
+    number: Mapped[int]
+    absolute_number: Mapped[int | None] = mapped_column(default=None)
+    title: Mapped[str | None] = mapped_column(default=None)
+
+    season: Mapped[Season] = relationship(back_populates="episodes")
+    media_files: Mapped[list[MediaFile]] = relationship(
+        back_populates="episode", cascade="all, delete-orphan"
+    )
+
+
+class MediaFile(Base):
+    __tablename__ = "media_file"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    episode_id: Mapped[int] = mapped_column(ForeignKey("episode.id"))
+    path: Mapped[str] = mapped_column(unique=True)
+    container: Mapped[str | None] = mapped_column(default=None)
+    video_codec: Mapped[str | None] = mapped_column(default=None)
+    audio_codec: Mapped[str | None] = mapped_column(default=None)
+    is_normalized: Mapped[bool] = mapped_column(default=False)
+
+    episode: Mapped[Episode] = relationship(back_populates="media_files")
+    subtitles: Mapped[list[SubtitleTrack]] = relationship(
+        back_populates="media_file", cascade="all, delete-orphan"
+    )
+
+
+class SubtitleTrack(Base):
+    __tablename__ = "subtitle_track"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    media_file_id: Mapped[int] = mapped_column(ForeignKey("media_file.id"))
+    source: Mapped[SubtitleSourceKind]
+    format: Mapped[SubtitleFormat]
+    language: Mapped[str | None] = mapped_column(default=None)
+
+    media_file: Mapped[MediaFile] = relationship(back_populates="subtitles")
