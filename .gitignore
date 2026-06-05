@@ -216,3 +216,11 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Local working / planning docs — kept out of the public portfolio repo
+/CLAUDE.md
+/IMPLEMENTATION_PLAN.md
+/PROJECT_CONTEXT.md
+
+# Stray local files that must never reach the public repo
+*.torrent
