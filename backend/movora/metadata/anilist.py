@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from typing import Any
 
@@ -45,6 +46,30 @@ def _httpx_transport(query: str, variables: dict[str, object]) -> dict[str, Any]
     return data
 
 
+def _collapse_leading_particle(title: str) -> str:
+    # Fansubs often split a leading particle that AniList writes as one word
+    # ("To Aru" -> "Toaru", "Re Zero" -> "ReZero"); joining it lets the search match.
+    return re.sub(r"\b([A-Za-z]{2,3})\s+([A-Za-z])", r"\1\2", title, count=1)
+
+
+def _to_metadata(media: dict[str, Any], fallback_title: str) -> SeriesMetadata:
+    names = media.get("title") or {}
+    cover = media.get("coverImage") or {}
+    genres = media.get("genres") or []
+    return SeriesMetadata(
+        provider="anilist",
+        external_id=str(media.get("id")),
+        title=names.get("english") or names.get("romaji") or fallback_title,
+        cover_image_url=cover.get("large"),
+        episode_count=media.get("episodes"),
+        year=media.get("seasonYear"),
+        banner_image_url=media.get("bannerImage"),
+        description=media.get("description"),
+        score=media.get("averageScore"),
+        genres=", ".join(genres) if genres else None,
+    )
+
+
 class AniListProvider:
     def __init__(self, transport: Transport | None = None) -> None:
         self._transport = transport or _httpx_transport
@@ -52,24 +77,19 @@ class AniListProvider:
     def fetch(self, parsed: ParsedFields) -> SeriesMetadata | None:
         if not parsed.title:
             return None
-        payload = self._transport(_SEARCH_QUERY, {"search": parsed.title})
+        seen: set[str] = set()
+        for candidate in (parsed.title, _collapse_leading_particle(parsed.title)):
+            if candidate in seen:
+                continue
+            seen.add(candidate)
+            media = self._search(candidate)
+            if media is not None:
+                return _to_metadata(media, parsed.title)
+        return None
+
+    def _search(self, title: str) -> dict[str, Any] | None:
+        payload = self._transport(_SEARCH_QUERY, {"search": title})
         # Page.media returns [] for no match; the singular Media query 404s instead.
         results = (payload.get("data") or {}).get("Page", {}).get("media") or []
-        if not results:
-            return None
-        media = results[0]
-        names = media.get("title") or {}
-        cover = media.get("coverImage") or {}
-        genres = media.get("genres") or []
-        return SeriesMetadata(
-            provider="anilist",
-            external_id=str(media.get("id")),
-            title=names.get("english") or names.get("romaji") or parsed.title,
-            cover_image_url=cover.get("large"),
-            episode_count=media.get("episodes"),
-            year=media.get("seasonYear"),
-            banner_image_url=media.get("bannerImage"),
-            description=media.get("description"),
-            score=media.get("averageScore"),
-            genres=", ".join(genres) if genres else None,
-        )
+        media: dict[str, Any] | None = results[0] if results else None
+        return media

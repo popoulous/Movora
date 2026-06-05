@@ -51,6 +51,21 @@ def test_anilist_returns_none_for_no_match() -> None:
     assert provider.fetch(ParsedFields(title="zzzzzzzz")) is None
 
 
+def test_anilist_collapses_split_particle_when_raw_misses() -> None:
+    """'To Aru ...' misses, but the collapsed 'ToAru ...' matches (like AniList)."""
+
+    def transport(query: str, variables: dict[str, Any]) -> dict[str, Any]:
+        if variables["search"] == "ToAru Kagaku no Railgun":
+            return _RAILGUN
+        return {"data": {"Page": {"media": []}}}
+
+    meta = AniListProvider(transport=transport).fetch(
+        ParsedFields(title="To Aru Kagaku no Railgun")
+    )
+    assert meta is not None
+    assert meta.title == "A Certain Scientific Railgun"
+
+
 def test_anilist_skips_network_when_no_title() -> None:
     called = False
 
