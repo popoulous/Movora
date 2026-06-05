@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from movora.domain import CapabilityProfile, ParsedFields, SubtitleRendering
+from movora.domain import CapabilityProfile, ParsedFields, SeriesMetadata, SubtitleRendering
 from movora.subtitles.labels import SubtitleLabelStore
 
 __all__ = [
@@ -34,9 +34,9 @@ class ParserStrategy(Protocol):
 
 
 class MetadataProvider(Protocol):
-    """Parsed fields -> canonical metadata, relations and episode mapping."""
+    """Parsed fields -> canonical series metadata (title, cover, year)."""
 
-    def fetch(self, parsed: ParsedFields) -> dict[str, object] | None: ...
+    def fetch(self, parsed: ParsedFields) -> SeriesMetadata | None: ...
 
 
 class NormalizationPlanner(Protocol):

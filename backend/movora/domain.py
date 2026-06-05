@@ -32,3 +32,15 @@ class SubtitleRendering:
 
     format: str  # "ass" | "srt"
     content: str
+
+
+@dataclass(frozen=True)
+class SeriesMetadata:
+    """Canonical series metadata resolved from a provider (AniList / TMDB)."""
+
+    provider: str  # "anilist" | "tmdb"
+    external_id: str
+    title: str
+    cover_image_url: str | None = None
+    episode_count: int | None = None
+    year: int | None = None
