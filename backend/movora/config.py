@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     app_name: str = "Movora"
     database_path: Path = Path("movora.db")
     frontend_dist: Path | None = None  # if set, the backend serves the built SPA
+    secret_key: str = "dev-insecure-change-me"  # set MOVORA_SECRET_KEY in production
+    session_ttl_seconds: int = 60 * 60 * 24 * 14  # 14 days
 
 
 def get_settings() -> Settings:
