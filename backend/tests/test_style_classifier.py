@@ -56,6 +56,19 @@ def test_positioned_overlap_dialogue_is_kept() -> None:
     assert classify_style(stats).decision is Decision.KEEP
 
 
+def test_positioned_prose_sign_is_dropped() -> None:
+    # A prose-like but positioned+styled SIGN (not a Default*/Main* dialogue style).
+    stats = _stats(
+        name="shop", prose_fraction=1.0, positioned_fraction=1.0, styling_fraction=1.0,
+    )
+    assert classify_style(stats).decision is Decision.DROP
+
+
+def test_op_song_without_separator_is_dropped() -> None:
+    stats = _stats(name="OpHu", prose_fraction=1.0, styling_fraction=1.0)
+    assert classify_style(stats).decision is Decision.DROP
+
+
 def test_song_by_karaoke_is_dropped() -> None:
     stats = _stats(name="opromaji", karaoke_fraction=0.8, prose_fraction=0.7)
     assert classify_style(stats).decision is Decision.DROP

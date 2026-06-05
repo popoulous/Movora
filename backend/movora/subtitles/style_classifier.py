@@ -25,13 +25,17 @@ import re
 from movora.subtitles.ass_model import Decision, StyleStats, StyleVerdict
 
 _SONG_NAME_RE = re.compile(
-    r"^(op|ed)([_\-\s/]|magyar|romaji|hun|rom|\d|$)|opening|ending|karaoke|insert|song|zene",
+    r"^(op|ed)([\w\-\s/]|$)|\b(op|ed)[-_/]|opening|ending|karaoke|insert|song|zene",
     re.IGNORECASE,
 )
 _SIGN_NAME_RE = re.compile(
     r"sign|title|credits?|caption|eyecatch|^note|^next|logo|preview|staff|^ep[\s_]|episode",
     re.IGNORECASE,
 )
+# The main dialogue style and its variants are named Default*/Main* by convention;
+# this is the only place a *name* is trusted to keep (for positioned overlap/top
+# dialogue), since prose-like signs are positioned and styled the same way.
+_DIALOGUE_FAMILY_RE = re.compile(r"^(default|main)", re.IGNORECASE)
 
 KEEP_THRESHOLD = 1.0  # score >= -> KEEP (lower than |DROP| on purpose: keep-bias)
 DROP_THRESHOLD = -3.0  # score <= -> DROP
@@ -56,14 +60,18 @@ def classify_style(stats: StyleStats) -> StyleVerdict:
     # Typesetting: almost every line positioned AND heavily overridden (font /
     # rotation / clip). Dialogue is essentially never both — not even top-placed
     # dialogue (which is positioned but plain).
+    dialogue_family = (
+        bool(_DIALOGUE_FAMILY_RE.search(stats.name)) and stats.prose_fraction >= 0.5
+    )
     if (
-        stats.prose_fraction < 0.75
-        and stats.positioned_fraction >= 0.8
+        stats.positioned_fraction >= 0.8
         and stats.styling_fraction >= 0.3
+        and not dialogue_family
     ):
-        # Positioned, heavily styled AND not clearly prose. Overlap/top dialogue
-        # is also positioned and styled, but reads as prose, so it is spared.
-        add(-10, "positioned + heavy overrides + non-prose -> typesetting")
+        # Positioned + heavily styled = typesetting. Overlap/top DIALOGUE is also
+        # positioned and styled, but is named Default*/Main* and reads as prose,
+        # so it is spared; prose-like SIGNS (shop, generic, Signs) are not.
+        add(-10, "positioned + heavy overrides -> typesetting")
     elif stats.positioned_fraction >= 0.5:
         add(-2, f"mostly positioned ({stats.positioned_fraction:.0%})")
     elif stats.styling_fraction >= 0.5:
