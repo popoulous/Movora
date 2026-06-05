@@ -99,7 +99,7 @@ export function Layout(): JSX.Element {
               <LanguageMenu />
             </div>
           </header>
-          <main className="min-w-0 flex-1 overflow-auto px-6 pt-16 pb-6">
+          <main className="min-w-0 flex-1 overflow-auto px-6 pt-20 pb-6">
             <Outlet />
           </main>
         </div>
