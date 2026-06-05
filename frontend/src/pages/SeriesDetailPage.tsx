@@ -20,11 +20,11 @@ export function SeriesDetailPage(): JSX.Element {
   const seriesId = Number(id);
   const navigate = useNavigate();
   const [series, setSeries] = useState<SeriesDetail | null>(null);
-  const [tab, setTab] = useState<Tab>("overview");
+  const [tab, setTab] = useState<Tab>("episodes");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setTab("overview");
+    setTab("episodes");
     api
       .getSeries(seriesId)
       .then(setSeries)
@@ -113,6 +113,12 @@ export function SeriesDetailPage(): JSX.Element {
               </span>
             </div>
 
+            {synopsis !== null && (
+              <p className="mt-4 line-clamp-4 max-w-2xl text-sm leading-relaxed text-neutral-300">
+                {synopsis}
+              </p>
+            )}
+
             {genres.length > 0 && (
               <div className="mt-3 flex flex-wrap gap-1.5">
                 {genres.map((genre) => (
@@ -124,12 +130,6 @@ export function SeriesDetailPage(): JSX.Element {
                   </span>
                 ))}
               </div>
-            )}
-
-            {synopsis !== null && (
-              <p className="mt-4 line-clamp-4 max-w-2xl text-sm leading-relaxed text-neutral-300">
-                {synopsis}
-              </p>
             )}
 
             <button
@@ -159,11 +159,11 @@ export function SeriesDetailPage(): JSX.Element {
       </div>
 
       <div className="flex gap-1 border-b border-white/10">
-        <button className={tabClass("overview")} onClick={() => setTab("overview")}>
-          {t("series.tabOverview")}
-        </button>
         <button className={tabClass("episodes")} onClick={() => setTab("episodes")}>
           {t("series.tabEpisodes")}
+        </button>
+        <button className={tabClass("overview")} onClick={() => setTab("overview")}>
+          {t("series.tabOverview")}
         </button>
       </div>
 
