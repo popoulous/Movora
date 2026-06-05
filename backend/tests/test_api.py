@@ -22,3 +22,7 @@ def test_serves_frontend_when_configured(tmp_path: Path) -> None:
     root = client.get("/")
     assert root.status_code == 200
     assert "Movora SPA" in root.text
+    # client-side routes deep-link to index.html (SPA history fallback)
+    deep = client.get("/library/1")
+    assert deep.status_code == 200
+    assert "Movora SPA" in deep.text

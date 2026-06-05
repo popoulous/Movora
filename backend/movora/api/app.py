@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from movora import __version__
@@ -30,12 +31,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"status": "ok", "app": settings.app_name, "version": __version__}
 
     # In production the backend serves the built SPA; in dev this is unset and the
-    # frontend runs on Vite (which proxies the API). Mounted last so /health and
-    # the /api routes still match first.
+    # frontend runs on Vite (which proxies the API). Registered last so /health and
+    # the /api routes match first; the catch-all does SPA history fallback so deep
+    # links like /library/1 return index.html instead of 404.
     if settings.frontend_dist is not None and settings.frontend_dist.is_dir():
-        app.mount(
-            "/", StaticFiles(directory=settings.frontend_dist, html=True), name="frontend"
-        )
+        dist = settings.frontend_dist
+        if (dist / "assets").is_dir():
+            app.mount("/assets", StaticFiles(directory=dist / "assets"), name="assets")
+        index_file = dist / "index.html"
+
+        @app.get("/{full_path:path}")
+        def spa(full_path: str) -> FileResponse:
+            if full_path.startswith("api"):
+                raise HTTPException(status_code=404)
+            candidate = dist / full_path
+            if full_path and candidate.is_file():
+                return FileResponse(candidate)
+            return FileResponse(index_file)
 
     return app
 
