@@ -1,5 +1,5 @@
 import { Play } from "lucide-react";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
 
@@ -14,7 +14,7 @@ function stripHtml(text: string): string {
     .trim();
 }
 
-function Stat({ value, label }: { value: string; label: string }): JSX.Element {
+function Stat({ value, label }: { value: ReactNode; label: string }): JSX.Element {
   return (
     <div>
       <div className="text-base font-semibold text-neutral-100">{value}</div>
@@ -86,16 +86,18 @@ export function SeriesDetailPage(): JSX.Element {
 
         <div className="relative flex flex-col gap-6 p-6 lg:flex-row">
           <div className="relative w-48 shrink-0 self-start sm:w-56">
-            <div className="aspect-[2/3] overflow-hidden rounded-xl shadow-2xl ring-1 ring-white/10">
-              {series.cover_image_url !== null ? (
-                <img
-                  src={series.cover_image_url}
-                  alt={series.display_title ?? series.title}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <div className="h-full w-full bg-gradient-to-br from-violet-900/40 to-fuchsia-900/30" />
-              )}
+            <div className="rounded-xl bg-gradient-to-br from-violet-500/60 to-fuchsia-500/60 p-px shadow-2xl">
+              <div className="aspect-[2/3] overflow-hidden rounded-[11px]">
+                {series.cover_image_url !== null ? (
+                  <img
+                    src={series.cover_image_url}
+                    alt={series.display_title ?? series.title}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="h-full w-full bg-gradient-to-br from-violet-900/40 to-fuchsia-900/30" />
+                )}
+              </div>
             </div>
             <button
               disabled
@@ -106,7 +108,7 @@ export function SeriesDetailPage(): JSX.Element {
             </button>
           </div>
 
-          <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 flex-1 flex-col">
             <h1 className="text-3xl font-bold tracking-tight">
               {series.display_title ?? series.title}
             </h1>
@@ -114,14 +116,17 @@ export function SeriesDetailPage(): JSX.Element {
               <p className="mt-1 text-sm text-neutral-400">{series.native_title}</p>
             )}
 
-            {synopsis !== null && (
-              <p className="mt-4 line-clamp-3 max-w-2xl text-sm leading-relaxed text-neutral-300">
-                {synopsis}
-              </p>
-            )}
-
-            <div className="mt-5 flex flex-wrap gap-x-7 gap-y-3">
-              {score !== null && <Stat value={`★ ${score}`} label={t("series.rating")} />}
+            <div className="mt-4 flex flex-wrap gap-x-7 gap-y-3">
+              {score !== null && (
+                <Stat
+                  value={
+                    <span>
+                      <span className="text-amber-400">★</span> {score}
+                    </span>
+                  }
+                  label={t("series.rating")}
+                />
+              )}
               {aired !== null && <Stat value={aired} label={t("series.aired")} />}
               {series.format !== null && <Stat value={series.format} label={t("series.format")} />}
               <Stat value={String(episodeCount)} label={t("series.episodesLabel")} />
@@ -130,14 +135,22 @@ export function SeriesDetailPage(): JSX.Element {
               )}
             </div>
 
+            {synopsis !== null && (
+              <p className="mt-4 line-clamp-3 max-w-2xl text-sm leading-relaxed text-neutral-300">
+                {synopsis}
+              </p>
+            )}
+
             {genres.length > 0 && (
-              <div className="mt-5 flex flex-wrap gap-1.5">
+              <div className="mt-4 flex flex-wrap gap-1.5">
                 {genres.map((genre) => (
                   <span
                     key={genre}
-                    className="rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-neutral-200 ring-1 ring-white/10"
+                    className="rounded-full bg-gradient-to-r from-violet-500/50 to-fuchsia-500/50 p-px"
                   >
-                    {genre}
+                    <span className="block rounded-full bg-gradient-to-r from-violet-500/10 to-fuchsia-500/10 px-3 py-1 text-xs font-medium text-neutral-100 backdrop-blur">
+                      {genre}
+                    </span>
                   </span>
                 ))}
               </div>
@@ -146,7 +159,7 @@ export function SeriesDetailPage(): JSX.Element {
             <button
               disabled
               title="Playback comes with the streaming layer"
-              className="mt-5 inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 px-5 py-2 text-sm font-medium text-white opacity-60"
+              className="mt-auto inline-flex items-center gap-2 self-start rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 px-5 py-2 text-sm font-medium text-white opacity-60"
             >
               <Play className="h-4 w-4 fill-current" /> {t("series.play")}
             </button>
