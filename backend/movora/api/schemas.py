@@ -43,6 +43,8 @@ class SeriesRead(BaseModel):
 
     id: int
     title: str
+    year: int | None = None
+    cover_image_url: str | None = None
 
 
 class SeriesDetail(BaseModel):
@@ -50,8 +52,14 @@ class SeriesDetail(BaseModel):
 
     id: int
     title: str
+    year: int | None = None
+    cover_image_url: str | None = None
     seasons: list[SeasonRead]
 
 
 class ScanResult(BaseModel):
     added: int
+
+
+class EnrichResult(BaseModel):
+    enriched: int

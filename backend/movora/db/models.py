@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import enum
+from datetime import datetime
 
-from sqlalchemy import ForeignKey
+from sqlalchemy import ForeignKey, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from movora.db.base import Base
@@ -46,6 +47,10 @@ class Series(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     library_id: Mapped[int] = mapped_column(ForeignKey("library.id"))
     title: Mapped[str]
+    external_id: Mapped[str | None] = mapped_column(default=None)  # e.g. AniList id
+    metadata_provider: Mapped[str | None] = mapped_column(default=None)
+    cover_image_url: Mapped[str | None] = mapped_column(default=None)
+    year: Mapped[int | None] = mapped_column(default=None)
 
     library: Mapped[Library] = relationship(back_populates="series")
     seasons: Mapped[list[Season]] = relationship(
@@ -108,3 +113,76 @@ class SubtitleTrack(Base):
     language: Mapped[str | None] = mapped_column(default=None)
 
     media_file: Mapped[MediaFile] = relationship(back_populates="subtitles")
+
+
+class EpisodeMapping(Base):
+    """Manual absolute->season/episode override per series (recap skips, S/T arcs)."""
+
+    __tablename__ = "episode_mapping"
+    __table_args__ = (UniqueConstraint("series_id", "absolute_number"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    series_id: Mapped[int] = mapped_column(ForeignKey("series.id"))
+    absolute_number: Mapped[int]
+    season_number: Mapped[int]
+    episode_number: Mapped[int]
+
+
+class UserRole(str, enum.Enum):
+    ADMIN = "admin"
+    USER = "user"
+
+
+class User(Base):
+    __tablename__ = "user"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    username: Mapped[str] = mapped_column(unique=True)
+    password_hash: Mapped[str]
+    role: Mapped[UserRole] = mapped_column(default=UserRole.USER)
+
+    watch_states: Mapped[list[WatchState]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+
+
+class WatchState(Base):
+    __tablename__ = "watch_state"
+    __table_args__ = (UniqueConstraint("user_id", "episode_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("user.id"))
+    episode_id: Mapped[int] = mapped_column(ForeignKey("episode.id"))
+    position_seconds: Mapped[float] = mapped_column(default=0.0)
+    watched: Mapped[bool] = mapped_column(default=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        server_default=func.now(), onupdate=func.now()
+    )
+
+    user: Mapped[User] = relationship(back_populates="watch_states")
+
+
+class JobStatus(str, enum.Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    DONE = "done"
+    FAILED = "failed"
+
+
+class JobKind(str, enum.Enum):
+    REMUX = "remux"
+    REENCODE = "reencode"
+    HARDSUB = "hardsub"
+
+
+class ConversionJob(Base):
+    __tablename__ = "conversion_job"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    media_file_id: Mapped[int | None] = mapped_column(
+        ForeignKey("media_file.id"), default=None
+    )
+    kind: Mapped[JobKind]
+    status: Mapped[JobStatus] = mapped_column(default=JobStatus.PENDING)
+    source_hash: Mapped[str | None] = mapped_column(default=None)  # idempotency key
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())

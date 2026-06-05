@@ -9,6 +9,7 @@ from movora import __version__
 from movora.api.routes import router
 from movora.config import Settings, get_settings
 from movora.db.base import create_db_engine, create_session_factory, init_db
+from movora.metadata import AniListProvider
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -20,6 +21,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     engine = create_db_engine(settings.database_path)
     init_db(engine)
     app.state.session_factory = create_session_factory(engine)
+    app.state.metadata_provider = AniListProvider()
 
     app.include_router(router)
 

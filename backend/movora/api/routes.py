@@ -6,8 +6,9 @@ from fastapi import APIRouter, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from movora.api.deps import SessionDep
+from movora.api.deps import MetadataProviderDep, SessionDep
 from movora.api.schemas import (
+    EnrichResult,
     LibraryCreate,
     LibraryRead,
     ScanResult,
@@ -15,6 +16,7 @@ from movora.api.schemas import (
     SeriesRead,
 )
 from movora.db.models import Library, Season, Series
+from movora.enrich import enrich_library
 from movora.scanner import scan_library
 
 router = APIRouter(prefix="/api")
@@ -40,6 +42,14 @@ def scan(library_id: int, session: SessionDep) -> ScanResult:
     if library is None:
         raise HTTPException(status_code=404, detail="library not found")
     return ScanResult(added=scan_library(session, library))
+
+
+@router.post("/libraries/{library_id}/enrich", response_model=EnrichResult)
+def enrich(library_id: int, session: SessionDep, provider: MetadataProviderDep) -> EnrichResult:
+    library = session.get(Library, library_id)
+    if library is None:
+        raise HTTPException(status_code=404, detail="library not found")
+    return EnrichResult(enriched=enrich_library(session, library, provider))
 
 
 @router.get("/libraries/{library_id}/series", response_model=list[SeriesRead])
