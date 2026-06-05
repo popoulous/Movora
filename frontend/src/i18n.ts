@@ -61,6 +61,10 @@ const en = {
     episodesLabel: "Episodes",
     genresLabel: "Genres",
     noSynopsis: "No synopsis available.",
+    rating: "Rating",
+    aired: "Aired",
+    format: "Format",
+    perEp: "Per ep",
   },
   activity: {
     title: "Recent activity",
@@ -131,6 +135,10 @@ const hu: typeof en = {
     episodesLabel: "Epizódok",
     genresLabel: "Műfajok",
     noSynopsis: "Nincs elérhető leírás.",
+    rating: "Értékelés",
+    aired: "Sugárzás",
+    format: "Formátum",
+    perEp: "Epizódonként",
   },
   activity: {
     title: "Friss tevékenység",

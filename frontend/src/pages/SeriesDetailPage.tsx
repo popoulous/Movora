@@ -1,17 +1,26 @@
-import { Play, Star } from "lucide-react";
+import { Play } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { api, type SeriesDetail } from "../api";
 
-type Tab = "overview" | "episodes";
+type Tab = "episodes" | "overview";
 
 function stripHtml(text: string): string {
   return text
     .replace(/<[^>]*>/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function Stat({ value, label }: { value: string; label: string }): JSX.Element {
+  return (
+    <div>
+      <div className="text-base font-semibold text-neutral-100">{value}</div>
+      <div className="text-xs text-neutral-500">{label}</div>
+    </div>
+  );
 }
 
 export function SeriesDetailPage(): JSX.Element {
@@ -42,12 +51,18 @@ export function SeriesDetailPage(): JSX.Element {
   const episodeCount = series.seasons.reduce((total, season) => total + season.episodes.length, 0);
   const score = series.score !== null ? (series.score / 10).toFixed(1) : null;
   const synopsis = series.description !== null ? stripHtml(series.description) : null;
+  const aired =
+    series.year === null
+      ? null
+      : series.end_year !== null && series.end_year !== series.year
+        ? `${series.year}–${series.end_year}`
+        : String(series.year);
 
   const tabClass = (value: Tab): string =>
-    `rounded-lg px-4 py-2 text-sm font-medium transition ${
+    `-mb-px border-b-2 px-1 py-2 text-sm font-medium transition ${
       tab === value
-        ? "bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow"
-        : "text-neutral-400 hover:bg-white/5 hover:text-neutral-200"
+        ? "border-violet-500 text-white"
+        : "border-transparent text-neutral-400 hover:text-neutral-200"
     }`;
 
   return (
@@ -70,13 +85,12 @@ export function SeriesDetailPage(): JSX.Element {
         <div className="absolute inset-0 bg-gradient-to-tr from-[#0a0812] via-[#0a0812]/85 to-[#0a0812]/40" />
 
         <div className="relative flex flex-col gap-6 p-6 lg:flex-row">
-          {/* Poster (large) with the play button anchored to the bottom */}
           <div className="relative w-48 shrink-0 self-start sm:w-56">
             <div className="aspect-[2/3] overflow-hidden rounded-xl shadow-2xl ring-1 ring-white/10">
               {series.cover_image_url !== null ? (
                 <img
                   src={series.cover_image_url}
-                  alt={series.title}
+                  alt={series.display_title ?? series.title}
                   className="h-full w-full object-cover"
                 />
               ) : (
@@ -92,7 +106,6 @@ export function SeriesDetailPage(): JSX.Element {
             </button>
           </div>
 
-          {/* Main info */}
           <div className="min-w-0 flex-1">
             <h1 className="text-3xl font-bold tracking-tight">
               {series.display_title ?? series.title}
@@ -101,31 +114,24 @@ export function SeriesDetailPage(): JSX.Element {
               <p className="mt-1 text-sm text-neutral-400">{series.native_title}</p>
             )}
 
-            <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-neutral-300">
-              {score !== null && (
-                <span className="inline-flex items-center gap-1 rounded-md bg-amber-400/15 px-2 py-1 font-medium text-amber-300">
-                  <Star className="h-3.5 w-3.5 fill-current" />
-                  {score}
-                </span>
-              )}
-              {series.year !== null && (
-                <span className="rounded-md bg-white/5 px-2 py-1 ring-1 ring-white/10">
-                  {series.year}
-                </span>
-              )}
-              <span className="rounded-md bg-white/5 px-2 py-1 ring-1 ring-white/10">
-                {t("series.episodes", { count: episodeCount })}
-              </span>
-            </div>
-
             {synopsis !== null && (
-              <p className="mt-4 line-clamp-4 max-w-2xl text-sm leading-relaxed text-neutral-300">
+              <p className="mt-4 line-clamp-3 max-w-2xl text-sm leading-relaxed text-neutral-300">
                 {synopsis}
               </p>
             )}
 
+            <div className="mt-5 flex flex-wrap gap-x-7 gap-y-3">
+              {score !== null && <Stat value={`★ ${score}`} label={t("series.rating")} />}
+              {aired !== null && <Stat value={aired} label={t("series.aired")} />}
+              {series.format !== null && <Stat value={series.format} label={t("series.format")} />}
+              <Stat value={String(episodeCount)} label={t("series.episodesLabel")} />
+              {series.episode_duration !== null && (
+                <Stat value={`${series.episode_duration}m`} label={t("series.perEp")} />
+              )}
+            </div>
+
             {genres.length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-1.5">
+              <div className="mt-5 flex flex-wrap gap-1.5">
                 {genres.map((genre) => (
                   <span
                     key={genre}
@@ -145,25 +151,10 @@ export function SeriesDetailPage(): JSX.Element {
               <Play className="h-4 w-4 fill-current" /> {t("series.play")}
             </button>
           </div>
-
-          {/* Details panel */}
-          <aside className="w-full shrink-0 space-y-2 self-start rounded-xl bg-black/30 p-4 text-sm ring-1 ring-white/10 backdrop-blur lg:w-60">
-            <h2 className="mb-1 text-xs font-semibold tracking-wide text-neutral-500 uppercase">
-              {t("series.details")}
-            </h2>
-            {score !== null && <InfoRow label={t("series.scoreLabel")} value={`★ ${score}`} />}
-            {series.year !== null && (
-              <InfoRow label={t("series.yearLabel")} value={String(series.year)} />
-            )}
-            <InfoRow label={t("series.episodesLabel")} value={String(episodeCount)} />
-            {genres.length > 0 && (
-              <InfoRow label={t("series.genresLabel")} value={genres.join(", ")} />
-            )}
-          </aside>
         </div>
       </div>
 
-      <div className="flex gap-2">
+      <div className="flex gap-6 border-b border-white/10">
         <button className={tabClass("episodes")} onClick={() => setTab("episodes")}>
           {t("series.tabEpisodes")}
         </button>
@@ -180,7 +171,7 @@ export function SeriesDetailPage(): JSX.Element {
         <div className="space-y-6">
           {series.seasons.map((season) => (
             <section key={season.id}>
-              <h2 className="mb-3 text-lg font-semibold">
+              <h2 className="mb-3 inline-flex items-center rounded-lg bg-white/5 px-3 py-1.5 text-sm font-medium ring-1 ring-white/10">
                 {t("series.season", { number: season.number })}
               </h2>
               <ul className="divide-y divide-white/5 overflow-hidden rounded-xl bg-white/5 ring-1 ring-white/10">
@@ -189,9 +180,16 @@ export function SeriesDetailPage(): JSX.Element {
                   .map((episode) => (
                     <li
                       key={episode.id}
-                      className="flex items-center gap-4 px-4 py-2.5 text-sm transition hover:bg-white/5"
+                      className="flex items-center gap-3 px-4 py-2.5 text-sm transition hover:bg-white/5"
                     >
-                      <span className="w-8 text-right tabular-nums text-neutral-500">
+                      <button
+                        disabled
+                        title="Playback comes with the streaming layer"
+                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/5 text-neutral-300 ring-1 ring-white/10"
+                      >
+                        <Play className="h-3 w-3 fill-current" />
+                      </button>
+                      <span className="w-6 text-right tabular-nums text-neutral-500">
                         {episode.number}
                       </span>
                       <span className="text-neutral-200">
@@ -204,15 +202,6 @@ export function SeriesDetailPage(): JSX.Element {
           ))}
         </div>
       )}
-    </div>
-  );
-}
-
-function InfoRow({ label, value }: { label: string; value: string }): JSX.Element {
-  return (
-    <div className="flex items-baseline justify-between gap-3">
-      <span className="text-neutral-500">{label}</span>
-      <span className="text-right text-neutral-200">{value}</span>
     </div>
   );
 }

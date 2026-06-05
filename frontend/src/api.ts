@@ -34,6 +34,9 @@ export interface SeriesDetail {
   display_title: string | null;
   native_title: string | null;
   year: number | null;
+  end_year: number | null;
+  format: string | null;
+  episode_duration: number | null;
   score: number | null;
   cover_image_url: string | null;
   banner_image_url: string | null;
