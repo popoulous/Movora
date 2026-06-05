@@ -44,3 +44,7 @@ class SeriesMetadata:
     cover_image_url: str | None = None
     episode_count: int | None = None
     year: int | None = None
+    banner_image_url: str | None = None
+    description: str | None = None
+    score: int | None = None  # 0-100
+    genres: str | None = None  # comma-joined

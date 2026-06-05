@@ -23,6 +23,10 @@ query ($search: String) {
       episodes
       seasonYear
       coverImage { large }
+      bannerImage
+      averageScore
+      genres
+      description(asHtml: false)
       format
     }
   }
@@ -56,6 +60,7 @@ class AniListProvider:
         media = results[0]
         names = media.get("title") or {}
         cover = media.get("coverImage") or {}
+        genres = media.get("genres") or []
         return SeriesMetadata(
             provider="anilist",
             external_id=str(media.get("id")),
@@ -63,4 +68,8 @@ class AniListProvider:
             cover_image_url=cover.get("large"),
             episode_count=media.get("episodes"),
             year=media.get("seasonYear"),
+            banner_image_url=media.get("bannerImage"),
+            description=media.get("description"),
+            score=media.get("averageScore"),
+            genres=", ".join(genres) if genres else None,
         )

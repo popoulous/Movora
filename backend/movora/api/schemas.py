@@ -49,6 +49,7 @@ class SeriesRead(BaseModel):
     id: int
     title: str
     year: int | None = None
+    score: int | None = None
     cover_image_url: str | None = None
 
 
@@ -58,7 +59,11 @@ class SeriesDetail(BaseModel):
     id: int
     title: str
     year: int | None = None
+    score: int | None = None
     cover_image_url: str | None = None
+    banner_image_url: str | None = None
+    description: str | None = None
+    genres: str | None = None
     seasons: list[SeasonRead]
 
 

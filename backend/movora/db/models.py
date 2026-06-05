@@ -51,6 +51,10 @@ class Series(Base):
     metadata_provider: Mapped[str | None] = mapped_column(default=None)
     cover_image_url: Mapped[str | None] = mapped_column(default=None)
     year: Mapped[int | None] = mapped_column(default=None)
+    banner_image_url: Mapped[str | None] = mapped_column(default=None)
+    description: Mapped[str | None] = mapped_column(default=None)
+    score: Mapped[int | None] = mapped_column(default=None)  # AniList averageScore (0-100)
+    genres: Mapped[str | None] = mapped_column(default=None)  # comma-joined
 
     library: Mapped[Library] = relationship(back_populates="series")
     seasons: Mapped[list[Season]] = relationship(

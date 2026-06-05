@@ -17,6 +17,10 @@ _RAILGUN: dict[str, Any] = {
                     "episodes": 24,
                     "seasonYear": 2009,
                     "coverImage": {"large": "https://img.example/cover.jpg"},
+                    "bannerImage": "https://img.example/banner.jpg",
+                    "averageScore": 83,
+                    "genres": ["Action", "Sci-Fi"],
+                    "description": "A certain scientific tale.",
                     "format": "TV",
                 }
             ]
@@ -36,6 +40,10 @@ def test_anilist_maps_a_match() -> None:
     assert meta.episode_count == 24
     assert meta.year == 2009
     assert meta.cover_image_url == "https://img.example/cover.jpg"
+    assert meta.banner_image_url == "https://img.example/banner.jpg"
+    assert meta.score == 83
+    assert meta.genres == "Action, Sci-Fi"
+    assert meta.description == "A certain scientific tale."
 
 
 def test_anilist_returns_none_for_no_match() -> None:

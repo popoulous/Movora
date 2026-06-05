@@ -28,6 +28,10 @@ def enrich_library(session: Session, library: Library, provider: MetadataProvide
         series.metadata_provider = metadata.provider
         series.cover_image_url = metadata.cover_image_url
         series.year = metadata.year
+        series.banner_image_url = metadata.banner_image_url
+        series.description = metadata.description
+        series.score = metadata.score
+        series.genres = metadata.genres
         updated += 1
     session.commit()
     return updated
