@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
 
+import { useActivity } from "../ActivityContext";
 import { api, type SeriesSummary } from "../api";
 import { LibrarySettings } from "../components/LibrarySettings";
 import { useLibraries } from "../LibrariesContext";
@@ -18,6 +19,7 @@ export function LibraryPage(): JSX.Element {
   const libraryId = Number(id);
   const navigate = useNavigate();
   const { libraries, reload } = useLibraries();
+  const { running } = useActivity();
   const library = libraries.find((item) => item.id === libraryId) ?? null;
 
   const [series, setSeries] = useState<SeriesSummary[]>([]);
@@ -37,7 +39,14 @@ export function LibraryPage(): JSX.Element {
   useEffect(() => {
     setError(null);
     api.listSeries(libraryId).then(setSeries).catch(fail);
-  }, [libraryId]);
+    // While background work runs (e.g. auto-scan after adding the library), keep
+    // refreshing so newly-indexed series appear without a manual reload.
+    if (!running) return;
+    const timer = setInterval(() => {
+      api.listSeries(libraryId).then(setSeries).catch(() => undefined);
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [libraryId, running]);
 
   const scan = (): void => {
     setBusy(t("library.scanning"));

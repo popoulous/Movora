@@ -26,13 +26,14 @@ def test_create_scan_and_browse(tmp_path: Path) -> None:
     assert created.status_code == 201
     library_id = created.json()["id"]
 
-    scanned = client.post(f"/api/libraries/{library_id}/scan")
-    assert scanned.status_code == 200
-    assert scanned.json()["added"] == 2
-
+    # Adding a library auto-scans it (the TestClient runs the background task), so the
+    # series are already there without an explicit scan.
     series = client.get(f"/api/libraries/{library_id}/series").json()
     assert len(series) == 1
     assert series[0]["title"] == "To Aru Kagaku no Railgun"
+
+    # An explicit re-scan now finds nothing new.
+    assert client.post(f"/api/libraries/{library_id}/scan").json()["added"] == 0
 
     detail = client.get(f"/api/series/{series[0]['id']}").json()
     episodes = detail["seasons"][0]["episodes"]

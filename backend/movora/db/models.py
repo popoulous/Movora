@@ -111,6 +111,9 @@ class MediaFile(Base):
     subtitles: Mapped[list[SubtitleTrack]] = relationship(
         back_populates="media_file", cascade="all, delete-orphan"
     )
+    tasks: Mapped[list[Task]] = relationship(
+        back_populates="media_file", cascade="all, delete-orphan"
+    )
 
 
 class SubtitleTrack(Base):
@@ -230,7 +233,7 @@ class Task(Base):
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     finished_at: Mapped[datetime | None] = mapped_column(default=None)
 
-    media_file: Mapped[MediaFile] = relationship()
+    media_file: Mapped[MediaFile] = relationship(back_populates="tasks")
 
 
 class Job(Base):

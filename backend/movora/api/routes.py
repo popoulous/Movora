@@ -8,8 +8,8 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from fastapi.responses import FileResponse, Response
-from sqlalchemy import select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy import delete, select
+from sqlalchemy.orm import Session, selectinload, sessionmaker
 
 from movora import settings_store
 from movora.api.deps import MetadataProviderDep, SessionDep
@@ -34,6 +34,7 @@ from movora.db.models import Episode, Job, JobStatus, Library, MediaFile, Season
 from movora.domain import CapabilityProfile
 from movora.enrich import enrich_library
 from movora.filesystem import list_directories
+from movora.interfaces import MetadataProvider
 from movora.normalize import enqueue_tasks, run_worker
 from movora.scanner import scan_library
 from movora.streaming import DirectPlayStrategy
@@ -43,14 +44,50 @@ router = APIRouter(prefix="/api")
 
 
 @router.post("/libraries", response_model=LibraryRead, status_code=201)
-def create_library(payload: LibraryCreate, session: SessionDep) -> Library:
+def create_library(
+    payload: LibraryCreate, session: SessionDep, request: Request, background: BackgroundTasks
+) -> Library:
     if session.scalar(select(Library).where(Library.path == payload.path)) is not None:
         raise HTTPException(status_code=409, detail="a library with this path already exists")
     library = Library(path=payload.path, name=payload.name, kind=payload.kind)
     session.add(library)
     session.commit()
     session.refresh(library)
+    # Automation-first: scan + fetch metadata + queue normalization right after adding.
+    background.add_task(
+        _auto_ingest,
+        request.app.state.session_factory,
+        request.app.state.metadata_provider,
+        library.id,
+        _normalized_dir(request),
+        settings_store.get_bool(session, settings_store.AUTO_NORMALIZE),
+    )
     return library
+
+
+def _auto_ingest(
+    session_factory: sessionmaker[Session],
+    provider: MetadataProvider,
+    library_id: int,
+    output_dir: Path,
+    normalize: bool,
+) -> None:
+    new_ids: list[int] = []
+    with session_factory() as session:
+        library = session.get(Library, library_id)
+        if library is None:
+            return
+        new_ids = scan_library(session, library)
+        _log_job(session, "scan", library_id, f"{len(new_ids)} added")
+        try:
+            updated = enrich_library(session, library, provider)
+            _log_job(session, "enrich", library_id, f"{updated} updated")
+        except Exception:  # metadata is best-effort (network / rate limits)
+            pass
+        if normalize and new_ids:
+            enqueue_tasks(session, new_ids)
+    if normalize and new_ids:
+        run_worker(session_factory, output_dir)
 
 
 @router.get("/libraries", response_model=list[LibraryRead])
@@ -77,6 +114,8 @@ def delete_library(library_id: int, session: SessionDep) -> None:
     library = session.get(Library, library_id)
     if library is None:
         raise HTTPException(status_code=404, detail="library not found")
+    # Activity jobs reference the library; remove them before the cascade delete.
+    session.execute(delete(Job).where(Job.library_id == library_id))
     session.delete(library)
     session.commit()
 
