@@ -20,12 +20,32 @@ export interface Episode {
   id: number;
   number: number;
   title: string | null;
+  watched: boolean;
 }
 
 export interface Season {
   id: number;
   number: number;
   episodes: Episode[];
+}
+
+export interface Recommendation {
+  title: string;
+  cover_image_url: string | null;
+  score: number | null;
+  target_series_id: number | null;
+}
+
+export type WatchStatus = "not_started" | "watching" | "completed";
+
+export interface SeriesWatch {
+  status: WatchStatus;
+  episodes_watched: number;
+  total: number;
+  percent: number;
+  continue_episode_id: number | null;
+  started_at: string | null;
+  finished_at: string | null;
 }
 
 export interface SeriesDetail {
@@ -43,6 +63,8 @@ export interface SeriesDetail {
   description: string | null;
   genres: string | null;
   seasons: Season[];
+  recommendations: Recommendation[];
+  watch: SeriesWatch | null;
 }
 
 export interface SubtitleTrack {
@@ -60,6 +82,7 @@ export interface PlaybackInfo {
   direct_play: boolean;
   subtitle_tracks: SubtitleTrack[];
   fonts: string[];
+  resume_position: number;
 }
 
 export interface FsEntry {
@@ -142,6 +165,15 @@ export const api = {
     fetch(`/api/series/${id}`).then(asJson<SeriesDetail>),
   getPlayback: (episodeId: number): Promise<PlaybackInfo> =>
     fetch(`/api/episodes/${episodeId}/playback`).then(asJson<PlaybackInfo>),
+  recordWatch: (
+    episodeId: number,
+    body: { position_seconds?: number; watched?: boolean },
+  ): Promise<void> =>
+    fetch(`/api/episodes/${episodeId}/watch-state`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(throwIfNotOk),
   normalizeEpisode: (episodeId: number): Promise<void> =>
     fetch(`/api/episodes/${episodeId}/normalize`, { method: "POST" }).then(throwIfNotOk),
   listTasks: (): Promise<Task[]> => fetch("/api/tasks").then(asJson<Task[]>),
