@@ -51,6 +51,7 @@ class VideoParser:
             episode=_first_int(data.get("episode")),
             season=_first_int(data.get("season")),
             release_group=data.get("release_group"),
+            year=_first_int(data.get("year")),
         )
 
 
