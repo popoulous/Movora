@@ -41,6 +41,33 @@ def test_scan_populates_hierarchy_and_is_idempotent(tmp_path: Path) -> None:
         assert scan_library(session, library, title_prober=lambda path: None) == []
 
 
+def test_scan_groups_by_folder_and_skips_extras(tmp_path: Path) -> None:
+    show = tmp_path / "Hunter X Hunter 2011 (BD_1920x1080)"
+    show.mkdir()
+    (show / "[TenB] Hunter x Hunter - 001 (HEVC).mkv").write_bytes(b"")
+    (show / "[TenB] Hunter x Hunter - 002 (HEVC).mkv").write_bytes(b"")
+    extras = show / "Extrák"
+    extras.mkdir()
+    (extras / "Special Disc Menu.mkv").write_bytes(b"")
+    other = tmp_path / "Solo Leveling S01-S02 BDBOX"
+    other.mkdir()
+    (other / "Solo Leveling - S01E01.mkv").write_bytes(b"")
+
+    engine = create_db_engine(":memory:")
+    init_db(engine)
+    factory = create_session_factory(engine)
+    with factory() as session:
+        library = Library(path=str(tmp_path), name="A", kind=LibraryKind.ANIME)
+        session.add(library)
+        session.commit()
+
+        scan_library(session, library, title_prober=lambda path: None)
+        titles = {series.title for series in session.scalars(select(Series))}
+        # One series per top-level folder, cleaned; the extras file is not indexed.
+        assert titles == {"Hunter X Hunter 2011", "Solo Leveling"}
+        assert len(list(session.scalars(select(MediaFile)))) == 3
+
+
 def test_scan_sets_episode_titles_from_prober(tmp_path: Path) -> None:
     (tmp_path / "[Group] Show - 01.mkv").write_bytes(b"")
     engine = create_db_engine(":memory:")
