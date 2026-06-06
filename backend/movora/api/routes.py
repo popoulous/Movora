@@ -385,6 +385,9 @@ def _recommendations(session: Session, series: Series) -> list[RecommendationRea
 @router.get("/episodes/{episode_id}/playback", response_model=PlaybackInfo)
 def episode_playback(episode_id: int, session: SessionDep, request: Request) -> PlaybackInfo:
     media_file = _episode_media_file(session, episode_id)
+    episode = media_file.episode
+    season = episode.season
+    series = season.series
     _, media_type, direct_play = _playback_source(media_file)
     return PlaybackInfo(
         media_file_id=media_file.id,
@@ -395,6 +398,15 @@ def episode_playback(episode_id: int, session: SessionDep, request: Request) -> 
         subtitle_tracks=_subtitle_tracks(episode_id, _subtitle_base(media_file, request)),
         fonts=_font_urls(episode_id, media_file, request),
         resume_position=resume_position(session, current_user(session), episode_id),
+        series_id=series.id,
+        series_title=series.display_title or series.title,
+        season_number=season.number,
+        episode_number=episode.number,
+        episode_end_number=episode.end_number,
+        episode_title=episode.title,
+        banner_image_url=series.banner_image_url,
+        cover_image_url=series.cover_image_url,
+        score=series.score,
     )
 
 

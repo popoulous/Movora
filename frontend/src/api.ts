@@ -127,6 +127,15 @@ export interface PlaybackInfo {
   subtitle_tracks: SubtitleTrack[];
   fonts: string[];
   resume_position: number;
+  series_id: number;
+  series_title: string;
+  season_number: number;
+  episode_number: number;
+  episode_end_number: number | null;
+  episode_title: string | null;
+  banner_image_url: string | null;
+  cover_image_url: string | null;
+  score: number | null;
 }
 
 export interface FsEntry {

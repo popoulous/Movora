@@ -164,6 +164,12 @@ const en = {
       "This file isn't web-playable yet (e.g. HEVC/10-bit). Optimize it for Direct Play — the original is kept.",
     normalizeNow: "Optimize for playback",
     normalizing: "Optimizing… watch the activity bell",
+    episodes: "Episodes",
+    nextEpisode: "Next episode",
+    startingIn: "Starting in {{seconds}}s",
+    playNow: "Play now",
+    cancel: "Cancel",
+    next: "Next",
   },
 };
 
@@ -331,6 +337,12 @@ const hu: typeof en = {
       "Ez a fájl böngészőben még nem játszható (pl. HEVC/10-bit). Optimalizáld Direct Play-re — az eredeti megmarad.",
     normalizeNow: "Optimalizálás lejátszáshoz",
     normalizing: "Optimalizálás… nézd az aktivitás-harangot",
+    episodes: "Epizódok",
+    nextEpisode: "Következő rész",
+    startingIn: "{{seconds}} mp múlva indul",
+    playNow: "Lejátszás most",
+    cancel: "Mégse",
+    next: "Következő",
   },
 };
 

@@ -160,6 +160,16 @@ class PlaybackInfo(BaseModel):
     subtitle_tracks: list[SubtitleTrackRead] = []
     fonts: list[str] = []  # URLs of embedded fonts for JASSUB
     resume_position: float = 0.0  # saved playback position to seek back to (seconds)
+    # Series context so the player shows what you're watching (info bar, episode list).
+    series_id: int
+    series_title: str
+    season_number: int
+    episode_number: int
+    episode_end_number: int | None = None
+    episode_title: str | None = None
+    banner_image_url: str | None = None
+    cover_image_url: str | None = None
+    score: int | None = None  # 0-100
 
 
 class SettingsRead(BaseModel):
