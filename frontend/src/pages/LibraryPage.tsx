@@ -62,7 +62,7 @@ export function LibraryPage(): JSX.Element {
   const enrich = (): void => {
     setBusy(t("library.fetching"));
     api
-      .enrichLibrary(libraryId, true)
+      .enrichLibrary(libraryId)
       .then(() => {
         setBusy(null);
         load();

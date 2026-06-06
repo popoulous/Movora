@@ -82,6 +82,22 @@ function Leaf({ label, task }: { label: string; task: Task }): JSX.Element {
   );
 }
 
+function LibraryLeaves({ tasks }: { tasks: Task[] }): JSX.Element {
+  // Library-level tasks (SCAN / METADATA): one leaf per library, newest first.
+  const libraries = groupBy(tasks, (task) => task.library_id ?? 0);
+  return (
+    <>
+      {libraries.map((libTasks) => (
+        <Leaf
+          key={libTasks[0].library_id ?? 0}
+          task={libTasks[0]}
+          label={libTasks[0].library_name ?? "—"}
+        />
+      ))}
+    </>
+  );
+}
+
 function SeriesGroup({ tasks }: { tasks: Task[] }): JSX.Element {
   const { t } = useTranslation();
   const status = aggregate(tasks);
@@ -142,23 +158,24 @@ export function TasksPage(): JSX.Element {
     <div className="max-w-3xl space-y-4">
       <h1 className="text-2xl font-bold tracking-tight">{t("tasks.title")}</h1>
       <div className="rounded-2xl bg-white/[0.02] p-2 ring-1 ring-white/10">
-        {types.map((typeTasks) => {
-          const series = groupBy(typeTasks, (task) => task.series_id ?? 0).sort((a, b) =>
-            (a[0].series_title ?? "").localeCompare(b[0].series_title ?? ""),
-          );
-          return (
-            <Group
-              key={typeTasks[0].type}
-              label={t(`tasks.type_${typeTasks[0].type}`)}
-              status={aggregate(typeTasks)}
-              defaultOpen
-            >
-              {series.map((seriesTasks) => (
-                <SeriesGroup key={seriesTasks[0].series_id ?? 0} tasks={seriesTasks} />
-              ))}
-            </Group>
-          );
-        })}
+        {types.map((typeTasks) => (
+          <Group
+            key={typeTasks[0].type}
+            label={t(`tasks.type_${typeTasks[0].type}`)}
+            status={aggregate(typeTasks)}
+            defaultOpen
+          >
+            {typeTasks[0].type === "normalize" ? (
+              groupBy(typeTasks, (task) => task.series_id ?? 0)
+                .sort((a, b) => (a[0].series_title ?? "").localeCompare(b[0].series_title ?? ""))
+                .map((seriesTasks) => (
+                  <SeriesGroup key={seriesTasks[0].series_id ?? 0} tasks={seriesTasks} />
+                ))
+            ) : (
+              <LibraryLeaves tasks={typeTasks} />
+            )}
+          </Group>
+        ))}
       </div>
     </div>
   );

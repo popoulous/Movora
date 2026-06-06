@@ -13,7 +13,7 @@ import { useTranslation } from "react-i18next";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 
 import { ActivityContext } from "../ActivityContext";
-import { api, type Job, type Library, type LibraryKind, type Task } from "../api";
+import { api, type Library, type LibraryKind, type Task } from "../api";
 import { LibrariesContext } from "../LibrariesContext";
 import { ActivityBell } from "./ActivityBell";
 import { FolderPicker } from "./FolderPicker";
@@ -48,7 +48,6 @@ export function Layout(): JSX.Element {
   useEffect(loadLibraries, []);
 
   // Activity polling, shared via context so any page can show/refresh progress.
-  const [jobs, setJobs] = useState<Job[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [optimistic, setOptimistic] = useState(false);
   const boostUntil = useRef(0);
@@ -58,14 +57,12 @@ export function Layout(): JSX.Element {
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
     const tick = (): void => {
-      Promise.all([api.listJobs(), api.listTasks()])
-        .then(([nextJobs, nextTasks]) => {
+      api
+        .listTasks()
+        .then((next) => {
           if (!active) return;
-          setJobs(nextJobs);
-          setTasks(nextTasks);
-          const busy =
-            nextJobs.some((job) => job.status === "running") ||
-            nextTasks.some((task) => task.status === "running" || task.status === "pending");
+          setTasks(next);
+          const busy = next.some((task) => task.status === "running" || task.status === "pending");
           if (busy) setOptimistic(false);
           const fast = busy || Date.now() < boostUntil.current;
           timer = setTimeout(tick, fast ? 1500 : 8000);
@@ -93,9 +90,7 @@ export function Layout(): JSX.Element {
   }, []);
 
   const running =
-    optimistic ||
-    jobs.some((job) => job.status === "running") ||
-    tasks.some((task) => task.status === "running" || task.status === "pending");
+    optimistic || tasks.some((task) => task.status === "running" || task.status === "pending");
 
   const onAdded = (library: Library): void => {
     setPicking(false);
@@ -105,7 +100,7 @@ export function Layout(): JSX.Element {
 
   return (
     <LibrariesContext.Provider value={{ libraries, reload: loadLibraries }}>
-      <ActivityContext.Provider value={{ jobs, tasks, running, refreshSoon }}>
+      <ActivityContext.Provider value={{ tasks, running, refreshSoon }}>
         <div className="flex min-h-screen">
         <aside className="flex w-[280px] shrink-0 flex-col border-r border-white/5 bg-[#080a12]/[0.72] px-5 py-8 backdrop-blur-2xl">
           <Link to="/" className="mb-8 flex items-center gap-2.5 px-1">

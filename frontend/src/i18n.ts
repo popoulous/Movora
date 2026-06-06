@@ -12,7 +12,9 @@ const en = {
   },
   tasks: {
     title: "Tasks",
-    empty: "No tasks yet. Optimization tasks show up here.",
+    empty: "No tasks yet. Background work shows up here.",
+    type_scan: "Scan",
+    type_metadata: "Metadata",
     type_normalize: "Optimization",
     season: "Season {{number}}",
     episode: "Episode {{number}}",
@@ -94,6 +96,7 @@ const en = {
     enrich: "Metadata",
     normalize: "Optimize",
     working: "Working…",
+    viewAll: "View all",
   },
   player: {
     back: "Back",
@@ -118,7 +121,9 @@ const hu: typeof en = {
   },
   tasks: {
     title: "Folyamatok",
-    empty: "Még nincs folyamat. Az optimalizálási feladatok itt jelennek meg.",
+    empty: "Még nincs folyamat. A háttérmunkák itt jelennek meg.",
+    type_scan: "Szkennelés",
+    type_metadata: "Metaadat",
     type_normalize: "Optimalizálás",
     season: "{{number}}. évad",
     episode: "{{number}}. rész",
@@ -201,6 +206,7 @@ const hu: typeof en = {
     enrich: "Metaadat",
     normalize: "Optimalizálás",
     working: "Folyamatban…",
+    viewAll: "Összes megtekintése",
   },
   player: {
     back: "Vissza",

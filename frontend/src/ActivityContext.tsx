@@ -1,9 +1,8 @@
 import { createContext, useContext } from "react";
 
-import type { Job, Task } from "./api";
+import type { Task } from "./api";
 
 export interface ActivityValue {
-  jobs: Job[];
   tasks: Task[];
   running: boolean;
   // Show activity immediately and poll faster for a while (call after starting work).
@@ -11,7 +10,6 @@ export interface ActivityValue {
 }
 
 export const ActivityContext = createContext<ActivityValue>({
-  jobs: [],
   tasks: [],
   running: false,
   refreshSoon: () => undefined,

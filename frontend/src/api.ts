@@ -61,14 +61,6 @@ export interface PlaybackInfo {
   subtitle_tracks: SubtitleTrack[];
 }
 
-export interface ScanResult {
-  added: number;
-}
-
-export interface EnrichResult {
-  enriched: number;
-}
-
 export interface FsEntry {
   name: string;
   path: string;
@@ -80,16 +72,6 @@ export interface FsListing {
   directories: FsEntry[];
 }
 
-export interface Job {
-  id: number;
-  kind: string;
-  library_id: number | null;
-  status: string;
-  message: string | null;
-  created_at: string;
-  finished_at: string | null;
-}
-
 export interface ServerSettings {
   auto_normalize: boolean;
   auto_normalize_existing: boolean;
@@ -99,11 +81,13 @@ export type TaskStatus = "pending" | "running" | "done" | "failed";
 
 export interface Task {
   id: number;
-  type: string;
+  type: string; // "scan" | "metadata" | "normalize"
   status: TaskStatus;
   progress: number;
   eta_seconds: number | null;
   message: string | null;
+  library_id: number | null;
+  library_name: string | null;
   library_kind: string | null;
   series_id: number | null;
   series_title: string | null;
@@ -120,6 +104,12 @@ async function asJson<T>(response: Response): Promise<T> {
   return (await response.json()) as T;
 }
 
+function throwIfNotOk(response: Response): void {
+  if (!response.ok) {
+    throw new Error(`${response.status} ${response.statusText}`);
+  }
+}
+
 export const api = {
   listLibraries: (): Promise<Library[]> => fetch("/api/libraries").then(asJson<Library[]>),
   createLibrary: (body: { path: string; name: string; kind: LibraryKind }): Promise<Library> =>
@@ -128,12 +118,10 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }).then(asJson<Library>),
-  scanLibrary: (id: number): Promise<ScanResult> =>
-    fetch(`/api/libraries/${id}/scan`, { method: "POST" }).then(asJson<ScanResult>),
-  enrichLibrary: (id: number, force = false): Promise<EnrichResult> =>
-    fetch(`/api/libraries/${id}/enrich${force ? "?force=true" : ""}`, { method: "POST" }).then(
-      asJson<EnrichResult>,
-    ),
+  scanLibrary: (id: number): Promise<void> =>
+    fetch(`/api/libraries/${id}/scan`, { method: "POST" }).then(throwIfNotOk),
+  enrichLibrary: (id: number): Promise<void> =>
+    fetch(`/api/libraries/${id}/enrich`, { method: "POST" }).then(throwIfNotOk),
   updateLibrary: (id: number, body: { name?: string; kind?: LibraryKind }): Promise<Library> =>
     fetch(`/api/libraries/${id}`, {
       method: "PATCH",
@@ -153,18 +141,10 @@ export const api = {
   getPlayback: (episodeId: number): Promise<PlaybackInfo> =>
     fetch(`/api/episodes/${episodeId}/playback`).then(asJson<PlaybackInfo>),
   normalizeEpisode: (episodeId: number): Promise<void> =>
-    fetch(`/api/episodes/${episodeId}/normalize`, { method: "POST" }).then((response) => {
-      if (!response.ok) {
-        throw new Error(`${response.status} ${response.statusText}`);
-      }
-    }),
+    fetch(`/api/episodes/${episodeId}/normalize`, { method: "POST" }).then(throwIfNotOk),
   listTasks: (): Promise<Task[]> => fetch("/api/tasks").then(asJson<Task[]>),
   normalizeAll: (): Promise<void> =>
-    fetch("/api/normalize/all", { method: "POST" }).then((response) => {
-      if (!response.ok) {
-        throw new Error(`${response.status} ${response.statusText}`);
-      }
-    }),
+    fetch("/api/normalize/all", { method: "POST" }).then(throwIfNotOk),
   getSettings: (): Promise<ServerSettings> =>
     fetch("/api/settings").then(asJson<ServerSettings>),
   updateSettings: (body: Partial<ServerSettings>): Promise<ServerSettings> =>
@@ -177,5 +157,4 @@ export const api = {
     const query = path !== undefined ? `?path=${encodeURIComponent(path)}` : "";
     return fetch(`/api/fs${query}`).then(asJson<FsListing>);
   },
-  listJobs: (): Promise<Job[]> => fetch("/api/jobs").then(asJson<Job[]>),
 };
