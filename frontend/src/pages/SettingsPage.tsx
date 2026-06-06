@@ -88,6 +88,12 @@ export function SettingsPage(): JSX.Element {
             on={settings.auto_normalize_existing}
             onToggle={() => toggle("auto_normalize_existing")}
           />
+          <Toggle
+            label={t("settings.deleteOriginal")}
+            description={t("settings.deleteOriginalDesc")}
+            on={settings.delete_original}
+            onToggle={() => toggle("delete_original")}
+          />
           <button
             onClick={normalizeAll}
             disabled={sweeping}

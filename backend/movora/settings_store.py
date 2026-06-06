@@ -16,7 +16,14 @@ AUTO_NORMALIZE = "auto_normalize"
 # normalization never kicks off a surprise multi-hour job over the whole library;
 # new files are still optimized on scan, and "Normalize all" triggers a sweep).
 AUTO_NORMALIZE_EXISTING = "auto_normalize_existing"
-_DEFAULTS: dict[str, bool] = {AUTO_NORMALIZE: True, AUTO_NORMALIZE_EXISTING: False}
+# After a verified normalize, move the original to the OS trash to reclaim space
+# (off by default; embedded subtitles and fonts are preserved first).
+DELETE_ORIGINAL = "delete_original"
+_DEFAULTS: dict[str, bool] = {
+    AUTO_NORMALIZE: True,
+    AUTO_NORMALIZE_EXISTING: False,
+    DELETE_ORIGINAL: False,
+}
 
 
 def get_bool(session: Session, key: str) -> bool:

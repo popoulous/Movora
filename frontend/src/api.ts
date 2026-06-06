@@ -76,6 +76,7 @@ export interface FsListing {
 export interface ServerSettings {
   auto_normalize: boolean;
   auto_normalize_existing: boolean;
+  delete_original: boolean;
 }
 
 export type TaskStatus = "pending" | "running" | "done" | "failed";

@@ -20,6 +20,7 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 
+from send2trash import send2trash
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -32,6 +33,7 @@ from movora.interfaces import MetadataProvider, NormalizationPlanner
 from movora.normalization import WEB_TARGET, RemuxFirstPlanner, needs_normalization
 from movora.scanner import scan_library
 from movora.streaming import DirectPlayStrategy
+from movora.subtitles import preserve_embedded_assets
 
 # (percent, eta_seconds) -> None
 ProgressCallback = Callable[[int, int | None], None]
@@ -255,7 +257,23 @@ def _run_normalize_task(session: Session, task: Task, output_dir: Path) -> None:
         session, media_file, RemuxFirstPlanner(detect_h264_encoder()),
         output_dir=output_dir, on_progress=on_progress,
     )
+    if settings_store.get_bool(session, settings_store.DELETE_ORIGINAL):
+        _delete_original(session, media_file, output_dir.parent / "assets" / str(media_file.id))
     _finish(session, task)
+
+
+def _delete_original(session: Session, media_file: MediaFile, assets_dir: Path) -> None:
+    """Preserve subtitles/fonts, then send the original to the OS trash."""
+    source = Path(media_file.path)
+    if not source.is_file() or media_file.normalized_path is None:
+        return  # only delete once a verified mp4 exists
+    try:
+        preserve_embedded_assets(source, assets_dir)
+        send2trash(str(source))
+        media_file.original_deleted = True
+        session.commit()
+    except Exception:  # deletion is best-effort; never undo a successful normalize
+        session.rollback()
 
 
 def _run_scan_task(session: Session, task: Task) -> None:

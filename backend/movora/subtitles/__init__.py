@@ -23,6 +23,7 @@ from movora.subtitles.tracks import (
     discover_tracks,
     extract_fonts,
     load_subtitle,
+    preserve_embedded_assets,
 )
 
 __all__ = [
@@ -43,6 +44,7 @@ __all__ = [
     "discover_tracks",
     "extract_fonts",
     "load_subtitle",
+    "preserve_embedded_assets",
     "release_group",
     "render_srt",
     "srt_to_vtt",

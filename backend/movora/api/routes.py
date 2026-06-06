@@ -127,7 +127,7 @@ def series_detail(series_id: int, session: SessionDep) -> Series:
 
 
 @router.get("/episodes/{episode_id}/playback", response_model=PlaybackInfo)
-def episode_playback(episode_id: int, session: SessionDep) -> PlaybackInfo:
+def episode_playback(episode_id: int, session: SessionDep, request: Request) -> PlaybackInfo:
     media_file = _episode_media_file(session, episode_id)
     _, media_type, direct_play = _playback_source(media_file)
     return PlaybackInfo(
@@ -135,12 +135,9 @@ def episode_playback(episode_id: int, session: SessionDep) -> PlaybackInfo:
         stream_url=f"/api/episodes/{episode_id}/stream",
         media_type=media_type,
         direct_play=direct_play,
-        # Subtitles and fonts always come from the original file (embedded there).
-        subtitle_tracks=_subtitle_tracks(episode_id, Path(media_file.path)),
-        fonts=[
-            f"/api/episodes/{episode_id}/fonts/{quote(font.filename)}"
-            for font in discover_fonts(Path(media_file.path))
-        ],
+        # Subtitles/fonts come from the original, or the preserved assets if it was deleted.
+        subtitle_tracks=_subtitle_tracks(episode_id, _subtitle_base(media_file, request)),
+        fonts=_font_urls(episode_id, media_file, request),
     )
 
 
@@ -199,10 +196,12 @@ def _playback_source(media_file: MediaFile) -> tuple[Path, str, bool]:
 
 
 @router.get("/episodes/{episode_id}/subtitles")
-def episode_subtitle(episode_id: int, track: str, session: SessionDep) -> Response:
+def episode_subtitle(
+    episode_id: int, track: str, session: SessionDep, request: Request
+) -> Response:
     media_file = _episode_media_file(session, episode_id)
     try:
-        content, fmt = load_subtitle(Path(media_file.path), track)
+        content, fmt = load_subtitle(_subtitle_base(media_file, request), track)
     except (FileNotFoundError, ValueError) as exc:
         raise HTTPException(status_code=404, detail="subtitle track not found") from exc
     except RuntimeError as exc:  # ffmpeg missing -> embedded tracks unextractable
@@ -219,19 +218,39 @@ def episode_font(
     episode_id: int, name: str, session: SessionDep, request: Request
 ) -> FileResponse:
     media_file = _episode_media_file(session, episode_id)
-    fonts_dir = (_fonts_dir(request) / str(media_file.id)).resolve()
-    path = (fonts_dir / name).resolve()
-    if path.parent != fonts_dir or path.suffix.lower() not in {".ttf", ".otf", ".ttc"}:
+    assets = _assets_dir(request, media_file.id).resolve()
+    path = (assets / name).resolve()
+    if path.parent != assets or path.suffix.lower() not in {".ttf", ".otf", ".ttc"}:
         raise HTTPException(status_code=404, detail="font not found")
-    if not path.is_file():  # extract on demand from the original file; cached afterwards
-        extract_fonts(Path(media_file.path), fonts_dir)
+    if not path.is_file() and not media_file.original_deleted:
+        extract_fonts(Path(media_file.path), assets)  # on demand; cached afterwards
     if not path.is_file():
         raise HTTPException(status_code=404, detail="font not found")
     return FileResponse(path)
 
 
-def _fonts_dir(request: Request) -> Path:
-    return Path(request.app.state.settings.database_path.parent) / "fonts"
+def _assets_dir(request: Request, media_file_id: int) -> Path:
+    return Path(request.app.state.settings.database_path.parent) / "assets" / str(media_file_id)
+
+
+def _subtitle_base(media_file: MediaFile, request: Request) -> Path:
+    # Subtitles live in the original, or in the preserved assets dir once it's deleted.
+    if media_file.original_deleted:
+        return _assets_dir(request, media_file.id) / Path(media_file.path).name
+    return Path(media_file.path)
+
+
+def _font_urls(episode_id: int, media_file: MediaFile, request: Request) -> list[str]:
+    if media_file.original_deleted:
+        assets = _assets_dir(request, media_file.id)
+        names = (
+            sorted(p.name for p in assets.glob("*") if p.suffix.lower() in {".ttf", ".otf", ".ttc"})
+            if assets.is_dir()
+            else []
+        )
+    else:
+        names = [font.filename for font in discover_fonts(Path(media_file.path))]
+    return [f"/api/episodes/{episode_id}/fonts/{quote(name)}" for name in names]
 
 
 def _subtitle_tracks(episode_id: int, media_path: Path) -> list[SubtitleTrackRead]:
@@ -346,6 +365,8 @@ def update_settings(
         if payload.auto_normalize_existing:
             enqueue_normalize(session, list(session.scalars(select(MediaFile.id))))
             _run_worker(request, background)
+    if payload.delete_original is not None:
+        settings_store.set_bool(session, settings_store.DELETE_ORIGINAL, payload.delete_original)
     return _read_settings(session)
 
 
@@ -355,4 +376,5 @@ def _read_settings(session: Session) -> SettingsRead:
         auto_normalize_existing=settings_store.get_bool(
             session, settings_store.AUTO_NORMALIZE_EXISTING
         ),
+        delete_original=settings_store.get_bool(session, settings_store.DELETE_ORIGINAL),
     )

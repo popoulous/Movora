@@ -13,6 +13,7 @@ dependencies = [
     "alembic>=1.13",
     "guessit>=3.8",
     "httpx>=0.27",
+    "send2trash>=1.8",
 ]
 
 [project.optional-dependencies]
@@ -40,7 +41,7 @@ files = ["movora", "tests"]
 exclude = ["movora/vendor/"]
 
 [[tool.mypy.overrides]]
-module = ["guessit", "guessit.*"]
+module = ["guessit", "guessit.*", "send2trash"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

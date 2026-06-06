@@ -38,6 +38,9 @@ const en = {
     autoNormalizeExisting: "Include the existing library",
     autoNormalizeExistingDesc:
       "Also optimize files already in your libraries — a large one-time background job.",
+    deleteOriginal: "Delete the original after optimizing",
+    deleteOriginalDesc:
+      "Once a file is verified and optimized, move the original to the OS trash to save space. Embedded subtitles and fonts are preserved first.",
     normalizeAll: "Normalize everything now",
     normalizeAllStarted: "Started — watch the activity bell",
   },
@@ -148,6 +151,9 @@ const hu: typeof en = {
     autoNormalizeExisting: "A meglévő könyvtár is",
     autoNormalizeExistingDesc:
       "A könyvtáraidban már meglévő fájlokat is optimalizálja — egyszeri, nagy háttérmunka.",
+    deleteOriginal: "Eredeti törlése optimalizálás után",
+    deleteOriginalDesc:
+      "A verifikált, optimalizált fájl után az eredetit a rendszer Lomtárába mozgatja a helyspórolásért. A beágyazott feliratok és fontok előbb megőrződnek.",
     normalizeAll: "Mindet normalizáld most",
     normalizeAllStarted: "Elindítva — nézd az aktivitás-harangot",
   },

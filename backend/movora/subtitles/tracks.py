@@ -183,6 +183,38 @@ def extract_embedded(
     return result.stdout
 
 
+def preserve_embedded_assets(
+    media_path: Path,
+    dest_dir: Path,
+    *,
+    ffmpeg_path: str | None = None,
+    ffprobe_path: str | None = None,
+) -> None:
+    """Extract embedded subtitles + fonts and copy sidecars into dest_dir.
+
+    Run before deleting an original so the soft subtitles (and the fonts they need)
+    survive. Subtitle files are named with the original stem so a later
+    ``discover_sidecar`` on dest_dir finds them.
+    """
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    stem = media_path.stem
+    for track in discover_embedded(media_path, ffprobe_path=ffprobe_path):
+        index_str = track.id.partition(":")[2].partition(":")[0]  # "embedded:<index>:<fmt>"
+        try:
+            content = extract_embedded(
+                media_path, int(index_str), track.fmt, ffmpeg_path=ffmpeg_path
+            )
+        except (RuntimeError, ValueError):
+            continue
+        lang = f".{track.language}" if track.language else ""
+        (dest_dir / f"{stem}.{index_str}{lang}.{track.fmt}").write_text(content, encoding="utf-8")
+    for track in discover_sidecar(media_path):
+        source = media_path.parent / track.id.partition(":")[2]
+        if source.is_file():
+            shutil.copy2(source, dest_dir / source.name)
+    extract_fonts(media_path, dest_dir, ffmpeg_path=ffmpeg_path)
+
+
 def load_subtitle(media_path: Path, track_id: str) -> tuple[str, str]:
     """Resolve a track id to ``(content, source_format)``."""
     origin, _, ref = track_id.partition(":")

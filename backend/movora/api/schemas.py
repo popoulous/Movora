@@ -93,11 +93,13 @@ class PlaybackInfo(BaseModel):
 class SettingsRead(BaseModel):
     auto_normalize: bool
     auto_normalize_existing: bool
+    delete_original: bool
 
 
 class SettingsUpdate(BaseModel):
     auto_normalize: bool | None = None
     auto_normalize_existing: bool | None = None
+    delete_original: bool | None = None
 
 
 class TaskRead(BaseModel):
