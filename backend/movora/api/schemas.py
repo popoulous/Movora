@@ -87,6 +87,7 @@ class PlaybackInfo(BaseModel):
     media_type: str
     direct_play: bool  # False -> needs ingest-normalization before it plays in a browser
     subtitle_tracks: list[SubtitleTrackRead] = []
+    fonts: list[str] = []  # URLs of embedded fonts for JASSUB
 
 
 class SettingsRead(BaseModel):

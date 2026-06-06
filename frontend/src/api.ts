@@ -59,6 +59,7 @@ export interface PlaybackInfo {
   media_type: string;
   direct_play: boolean;
   subtitle_tracks: SubtitleTrack[];
+  fonts: string[];
 }
 
 export interface FsEntry {

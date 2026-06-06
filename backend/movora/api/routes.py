@@ -31,7 +31,14 @@ from movora.domain import CapabilityProfile
 from movora.filesystem import list_directories
 from movora.normalize import enqueue_metadata, enqueue_normalize, enqueue_scan, run_worker
 from movora.streaming import DirectPlayStrategy
-from movora.subtitles import SoftAssOrSrtResolver, discover_tracks, load_subtitle, srt_to_vtt
+from movora.subtitles import (
+    SoftAssOrSrtResolver,
+    discover_fonts,
+    discover_tracks,
+    extract_fonts,
+    load_subtitle,
+    srt_to_vtt,
+)
 
 router = APIRouter(prefix="/api")
 
@@ -128,8 +135,12 @@ def episode_playback(episode_id: int, session: SessionDep) -> PlaybackInfo:
         stream_url=f"/api/episodes/{episode_id}/stream",
         media_type=media_type,
         direct_play=direct_play,
-        # Subtitles always come from the original file (embedded tracks live there).
+        # Subtitles and fonts always come from the original file (embedded there).
         subtitle_tracks=_subtitle_tracks(episode_id, Path(media_file.path)),
+        fonts=[
+            f"/api/episodes/{episode_id}/fonts/{quote(font.filename)}"
+            for font in discover_fonts(Path(media_file.path))
+        ],
     )
 
 
@@ -201,6 +212,26 @@ def episode_subtitle(episode_id: int, track: str, session: SessionDep) -> Respon
         rendering = SoftAssOrSrtResolver().resolve(content, CapabilityProfile(supports_ass=True))
         return Response(rendering.content, media_type="text/plain; charset=utf-8")
     return Response(srt_to_vtt(content), media_type="text/vtt; charset=utf-8")
+
+
+@router.get("/episodes/{episode_id}/fonts/{name}")
+def episode_font(
+    episode_id: int, name: str, session: SessionDep, request: Request
+) -> FileResponse:
+    media_file = _episode_media_file(session, episode_id)
+    fonts_dir = (_fonts_dir(request) / str(media_file.id)).resolve()
+    path = (fonts_dir / name).resolve()
+    if path.parent != fonts_dir or path.suffix.lower() not in {".ttf", ".otf", ".ttc"}:
+        raise HTTPException(status_code=404, detail="font not found")
+    if not path.is_file():  # extract on demand from the original file; cached afterwards
+        extract_fonts(Path(media_file.path), fonts_dir)
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="font not found")
+    return FileResponse(path)
+
+
+def _fonts_dir(request: Request) -> Path:
+    return Path(request.app.state.settings.database_path.parent) / "fonts"
 
 
 def _subtitle_tracks(episode_id: int, media_path: Path) -> list[SubtitleTrackRead]:

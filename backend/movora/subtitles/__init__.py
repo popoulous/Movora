@@ -17,8 +17,11 @@ from movora.subtitles.labels import (
 from movora.subtitles.resolver import SoftAssOrSrtResolver
 from movora.subtitles.srt import ass_to_srt, render_srt, srt_to_vtt
 from movora.subtitles.tracks import (
+    FontAttachment,
     SubtitleTrackInfo,
+    discover_fonts,
     discover_tracks,
+    extract_fonts,
     load_subtitle,
 )
 
@@ -26,6 +29,7 @@ __all__ = [
     "CleanResult",
     "Decision",
     "DialogueCue",
+    "FontAttachment",
     "JsonLabelStore",
     "LayeredLabelStore",
     "SoftAssOrSrtResolver",
@@ -35,7 +39,9 @@ __all__ = [
     "clean_ass_file",
     "clean_ass_text",
     "default_label_store",
+    "discover_fonts",
     "discover_tracks",
+    "extract_fonts",
     "load_subtitle",
     "release_group",
     "render_srt",

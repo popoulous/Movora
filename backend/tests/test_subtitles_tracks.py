@@ -89,3 +89,12 @@ def test_subtitle_unknown_track_returns_404(tmp_path: Path) -> None:
     client, episode_id = _client_with_sidecars(tmp_path)
     missing = client.get(f"/api/episodes/{episode_id}/subtitles?track=external:nope.srt")
     assert missing.status_code == 404
+
+
+def test_playback_fonts_and_font_endpoint(tmp_path: Path) -> None:
+    client, episode_id = _client_with_sidecars(tmp_path)
+    # The fake mp4 has no font attachments, so the list is empty.
+    assert client.get(f"/api/episodes/{episode_id}/playback").json()["fonts"] == []
+    # Missing or non-font names are rejected.
+    assert client.get(f"/api/episodes/{episode_id}/fonts/nope.ttf").status_code == 404
+    assert client.get(f"/api/episodes/{episode_id}/fonts/evil.exe").status_code == 404

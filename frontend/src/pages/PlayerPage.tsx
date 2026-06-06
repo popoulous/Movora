@@ -80,10 +80,9 @@ export function PlayerPage(): JSX.Element {
         if (cancelled || current === null) {
           return;
         }
-        // NOTE: fonts embedded in the source .mkv aren't served yet, and jassub 2.5.5
-        // ships no bundled fallback font, so libass falls back to local fonts. Proper
-        // font handling (bundled fallback + mkv attachment extraction) is a follow-up.
-        instance = new JASSUB({ video: current, subContent });
+        // Feed JASSUB the container's embedded fonts so the .ass styles render
+        // correctly (otherwise libass falls back to whatever the system has).
+        instance = new JASSUB({ video: current, subContent, fonts: playback.fonts });
       });
     return () => {
       cancelled = true;

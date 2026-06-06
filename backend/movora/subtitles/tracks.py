@@ -22,6 +22,15 @@ from pathlib import Path
 from movora.subtitles.encoding import normalize_bytes
 
 SUBTITLE_EXTENSIONS = {".ass", ".srt"}
+FONT_EXTENSIONS = {".ttf", ".otf", ".ttc"}
+
+
+@dataclass(frozen=True)
+class FontAttachment:
+    """A font embedded in the container (the styles an .ass file references)."""
+
+    index: int  # ffmpeg stream index, for -dump_attachment
+    filename: str  # sanitized to a bare name
 
 
 @dataclass(frozen=True)
@@ -100,6 +109,63 @@ def discover_embedded(
             )
         )
     return tracks
+
+
+def discover_fonts(media_path: Path, *, ffprobe_path: str | None = None) -> list[FontAttachment]:
+    """List font attachments in the container (so JASSUB can render the right styles)."""
+    exe = ffprobe_path or shutil.which("ffprobe")
+    if exe is None or not media_path.is_file():
+        return []
+    try:
+        result = subprocess.run(
+            [exe, "-v", "quiet", "-print_format", "json", "-show_streams",
+             "-select_streams", "t", str(media_path)],
+            capture_output=True, text=True, encoding="utf-8", timeout=30,
+        )
+        streams = json.loads(result.stdout).get("streams", [])
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
+        return []
+    fonts: list[FontAttachment] = []
+    for stream in streams:
+        index = stream.get("index")
+        tags = stream.get("tags") or {}
+        filename = tags.get("filename")
+        if not isinstance(index, int) or not isinstance(filename, str):
+            continue
+        mimetype = tags.get("mimetype")
+        is_font = Path(filename).suffix.lower() in FONT_EXTENSIONS or (
+            isinstance(mimetype, str)
+            and any(k in mimetype.lower() for k in ("font", "truetype", "opentype"))
+        )
+        if is_font:
+            fonts.append(FontAttachment(index=index, filename=Path(filename).name))
+    return fonts
+
+
+def extract_fonts(
+    media_path: Path, dest_dir: Path, *, ffmpeg_path: str | None = None
+) -> list[Path]:
+    """Extract embedded font attachments to dest_dir (idempotent), returning their paths."""
+    exe = ffmpeg_path or shutil.which("ffmpeg")
+    if exe is None:
+        return []
+    fonts = discover_fonts(media_path)
+    if not fonts:
+        return []
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    extracted: list[Path] = []
+    for font in fonts:
+        out = dest_dir / font.filename
+        if not out.is_file():
+            # ffmpeg writes the attachment then exits non-zero ("no output file"); the
+            # file is what matters, so we check it rather than the return code.
+            subprocess.run(
+                [exe, "-y", f"-dump_attachment:{font.index}", str(out), "-i", str(media_path)],
+                capture_output=True, timeout=60,
+            )
+        if out.is_file():
+            extracted.append(out)
+    return extracted
 
 
 def extract_embedded(
