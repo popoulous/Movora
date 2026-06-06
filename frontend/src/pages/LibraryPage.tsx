@@ -1,17 +1,18 @@
-import { Star } from "lucide-react";
-import { useEffect, useState } from "react";
+import { LayoutGrid, List, Play, Search, Settings, Sparkles, Star } from "lucide-react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { useActivity } from "../ActivityContext";
-import { api, type SeriesSummary } from "../api";
+import { api, type SeriesSummary, type WatchStatus } from "../api";
 import { LibrarySettings } from "../components/LibrarySettings";
 import { useLibraries } from "../LibrariesContext";
 
-const secondary =
-  "rounded-lg bg-white/5 px-3 py-1.5 text-sm font-medium text-neutral-200 ring-1 ring-white/10 transition hover:bg-white/10";
-const accent =
-  "rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 px-3 py-1.5 text-sm font-medium text-white shadow-lg shadow-violet-900/30 transition hover:from-violet-500 hover:to-fuchsia-500";
+type Filter = "all" | WatchStatus;
+type View = "grid" | "list";
+
+const seriesTitle = (s: SeriesSummary): string => s.display_title ?? s.title;
 
 export function LibraryPage(): JSX.Element {
   const { t } = useTranslation();
@@ -23,6 +24,9 @@ export function LibraryPage(): JSX.Element {
   const library = libraries.find((item) => item.id === libraryId) ?? null;
 
   const [series, setSeries] = useState<SeriesSummary[]>([]);
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<Filter>("all");
+  const [view, setView] = useState<View>("grid");
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -31,16 +35,16 @@ export function LibraryPage(): JSX.Element {
     setBusy(null);
     setError(String(reason));
   };
-
   const load = (): void => {
     api.listSeries(libraryId).then(setSeries).catch(fail);
   };
 
   useEffect(() => {
     setError(null);
+    setSearch("");
+    setFilter("all");
     api.listSeries(libraryId).then(setSeries).catch(fail);
-    // While background work runs (e.g. auto-scan after adding the library), keep
-    // refreshing so newly-indexed series appear without a manual reload.
+    // Keep refreshing while background work runs (auto-scan/metadata after adding).
     if (!running) return;
     const timer = setInterval(() => {
       api.listSeries(libraryId).then(setSeries).catch(() => undefined);
@@ -48,10 +52,9 @@ export function LibraryPage(): JSX.Element {
     return () => clearInterval(timer);
   }, [libraryId, running]);
 
-  const scan = (): void => {
-    setBusy(t("library.scanning"));
-    api
-      .scanLibrary(libraryId)
+  const run = (action: () => Promise<void>, label: string): void => {
+    setBusy(label);
+    action()
       .then(() => {
         setBusy(null);
         load();
@@ -59,20 +62,43 @@ export function LibraryPage(): JSX.Element {
       .catch(fail);
   };
 
-  const enrich = (): void => {
-    setBusy(t("library.fetching"));
-    api
-      .enrichLibrary(libraryId)
-      .then(() => {
-        setBusy(null);
-        load();
-      })
-      .catch(fail);
+  const featured = useMemo(() => {
+    if (series.length === 0) return null;
+    return (
+      series.find((s) => s.watch_status === "watching") ??
+      [...series].sort((a, b) => (b.score ?? 0) - (a.score ?? 0))[0]
+    );
+  }, [series]);
+
+  const query = search.trim().toLowerCase();
+  const browsing = query === "" && filter === "all";
+  const filtered = series.filter((s) => {
+    const matchesSearch = query === "" || seriesTitle(s).toLowerCase().includes(query);
+    const matchesFilter = filter === "all" || s.watch_status === filter;
+    return matchesSearch && matchesFilter;
+  });
+  const watching = series.filter((s) => s.watch_status === "watching");
+  const recentlyAdded = [...series].sort((a, b) => b.id - a.id).slice(0, 12);
+
+  const open = (s: SeriesSummary): void => {
+    navigate(`/series/${s.id}`);
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-3">
+    <div className="relative">
+      {/* Ambient glows behind the whole page. */}
+      <div
+        className="pointer-events-none fixed inset-0 -z-10"
+        style={{
+          background:
+            "radial-gradient(circle at 25% 15%, rgba(122,77,255,.15), transparent 40%)," +
+            "radial-gradient(circle at 75% 80%, rgba(236,72,153,.08), transparent 45%)",
+        }}
+      />
+
+      {/* Header */}
+      <div className="flex flex-wrap items-center gap-3">
+        <Sparkles className="h-5 w-5 text-violet-300" />
         <h1 className="text-2xl font-bold tracking-tight">
           {library?.name ?? t("library.defaultName")}
         </h1>
@@ -80,66 +106,87 @@ export function LibraryPage(): JSX.Element {
           {t("library.seriesCount", { count: series.length })}
         </span>
         <div className="ml-auto flex gap-2">
-          <button className={secondary} onClick={scan}>
+          <ToolbarButton onClick={() => run(() => api.scanLibrary(libraryId), t("library.scanning"))}>
             {t("library.scan")}
-          </button>
-          <button className={accent} onClick={enrich}>
+          </ToolbarButton>
+          <button
+            onClick={() => run(() => api.enrichLibrary(libraryId), t("library.fetching"))}
+            className="rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 px-3 py-1.5 text-sm font-medium text-white shadow-lg shadow-violet-900/30 transition hover:brightness-110"
+          >
             {t("library.fetchMetadata")}
           </button>
           {library !== null && (
-            <button
-              className={secondary}
-              title={t("library.settings")}
-              onClick={() => setEditing(true)}
-            >
-              ⚙
-            </button>
+            <ToolbarButton onClick={() => setEditing(true)} title={t("library.settings")}>
+              <Settings className="h-4 w-4" />
+            </ToolbarButton>
           )}
         </div>
       </div>
 
       {error !== null && (
-        <div className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-300 ring-1 ring-red-500/30">
+        <div className="mt-4 rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-300 ring-1 ring-red-500/30">
           {error}
         </div>
       )}
-      {busy !== null && <p className="text-sm text-violet-300">{busy}</p>}
+      {busy !== null && <p className="mt-3 text-sm text-violet-300">{busy}</p>}
 
+      {/* Hero */}
+      {featured !== null && <Hero featured={featured} onPlay={() => open(featured)} t={t} />}
+
+      {/* Toolbar: search + filters + view toggle */}
+      {series.length > 0 && (
+        <div className="mt-6 flex flex-wrap items-center gap-3">
+          <div className="relative">
+            <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-neutral-500" />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder={t("library.search")}
+              className="w-[320px] max-w-full rounded-xl bg-white/[0.04] py-2.5 pr-3 pl-9 text-sm text-neutral-100 ring-1 ring-white/10 backdrop-blur transition placeholder:text-neutral-500 focus:bg-white/[0.07] focus:ring-violet-400/40 focus:outline-none"
+            />
+          </div>
+          <div className="flex gap-1.5">
+            {(["all", "watching", "completed"] as const).map((value) => (
+              <Chip key={value} active={filter === value} onClick={() => setFilter(value)}>
+                {t(`library.filter${value[0].toUpperCase()}${value.slice(1)}`)}
+              </Chip>
+            ))}
+          </div>
+          <div className="ml-auto flex gap-1 rounded-lg bg-white/[0.04] p-1 ring-1 ring-white/10">
+            <ViewToggle active={view === "grid"} onClick={() => setView("grid")} title={t("library.gridView")}>
+              <LayoutGrid className="h-4 w-4" />
+            </ViewToggle>
+            <ViewToggle active={view === "list"} onClick={() => setView("list")} title={t("library.listView")}>
+              <List className="h-4 w-4" />
+            </ViewToggle>
+          </div>
+        </div>
+      )}
+
+      {/* Content */}
       {series.length === 0 ? (
-        <p className="text-sm text-neutral-500">{t("library.noSeries")}</p>
+        <p className="mt-6 text-sm text-neutral-500">{t("library.noSeries")}</p>
+      ) : browsing ? (
+        <div className="mt-6 space-y-8">
+          {watching.length > 0 && (
+            <Section title={t("library.continueWatching")}>
+              <Grid items={watching} view="grid" onOpen={open} t={t} />
+            </Section>
+          )}
+          {series.length > 12 && (
+            <Section title={t("library.recentlyAdded")}>
+              <Grid items={recentlyAdded} view="grid" onOpen={open} t={t} />
+            </Section>
+          )}
+          <Section title={t("library.allAnime")}>
+            <Grid items={series} view={view} onOpen={open} t={t} />
+          </Section>
+        </div>
+      ) : filtered.length === 0 ? (
+        <p className="mt-6 text-sm text-neutral-500">{t("library.noMatch")}</p>
       ) : (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-          {series.map((summary) => (
-            <button
-              key={summary.id}
-              onClick={() => navigate(`/series/${summary.id}`)}
-              className="group text-left"
-            >
-              <div className="relative aspect-[2/3] overflow-hidden rounded-xl bg-white/5 ring-1 ring-white/10 transition group-hover:ring-violet-400/40">
-                {summary.cover_image_url !== null ? (
-                  <img
-                    src={summary.cover_image_url}
-                    alt={(summary.display_title ?? summary.title)}
-                    className="h-full w-full object-cover transition group-hover:scale-105"
-                  />
-                ) : (
-                  <div className="flex h-full items-center justify-center bg-gradient-to-br from-violet-900/40 to-fuchsia-900/30 p-3 text-center text-sm text-neutral-300">
-                    {(summary.display_title ?? summary.title)}
-                  </div>
-                )}
-                {summary.score !== null && (
-                  <span className="absolute top-1.5 right-1.5 inline-flex items-center gap-0.5 rounded-md bg-black/60 px-1.5 py-0.5 text-xs font-medium text-amber-300 backdrop-blur">
-                    <Star className="h-3 w-3 fill-current" />
-                    {(summary.score / 10).toFixed(1)}
-                  </span>
-                )}
-              </div>
-              <div className="mt-2 truncate text-sm font-medium">{(summary.display_title ?? summary.title)}</div>
-              {summary.year !== null && (
-                <div className="text-xs text-neutral-500">{summary.year}</div>
-              )}
-            </button>
-          ))}
+        <div className="mt-6">
+          <Grid items={filtered} view={view} onOpen={open} t={t} />
         </div>
       )}
 
@@ -159,5 +206,307 @@ export function LibraryPage(): JSX.Element {
         />
       )}
     </div>
+  );
+}
+
+function ToolbarButton({
+  children,
+  onClick,
+  title,
+}: {
+  children: ReactNode;
+  onClick: () => void;
+  title?: string;
+}): JSX.Element {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      className="flex items-center rounded-lg bg-white/5 px-3 py-1.5 text-sm font-medium text-neutral-200 ring-1 ring-white/10 transition hover:bg-white/10"
+    >
+      {children}
+    </button>
+  );
+}
+
+function Chip({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}): JSX.Element {
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
+        active
+          ? "bg-gradient-to-r from-[#7A4DFF] to-[#EC4899] text-white shadow-[0_0_20px_rgba(122,77,255,0.25)]"
+          : "bg-white/[0.04] text-neutral-300 ring-1 ring-white/10 hover:bg-white/[0.08]"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function ViewToggle({
+  active,
+  onClick,
+  title,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  title: string;
+  children: ReactNode;
+}): JSX.Element {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      className={`rounded-md p-1.5 transition ${
+        active ? "bg-white/10 text-white" : "text-neutral-400 hover:text-neutral-200"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function Section({ title, children }: { title: string; children: ReactNode }): JSX.Element {
+  return (
+    <section>
+      <h2 className="mb-3 text-sm font-semibold tracking-wide text-neutral-300 uppercase">
+        {title}
+      </h2>
+      {children}
+    </section>
+  );
+}
+
+function Hero({
+  featured,
+  onPlay,
+  t,
+}: {
+  featured: SeriesSummary;
+  onPlay: () => void;
+  t: TFunction;
+}): JSX.Element {
+  const title = seriesTitle(featured);
+  const score = featured.score !== null ? (featured.score / 10).toFixed(1) : null;
+  return (
+    <div className="relative mt-5 overflow-hidden rounded-3xl ring-1 ring-white/10">
+      <div className="absolute inset-0">
+        {featured.banner_image_url !== null ? (
+          <img
+            src={featured.banner_image_url}
+            alt=""
+            className="h-full w-full scale-105 object-cover opacity-40 blur-[2px]"
+          />
+        ) : featured.cover_image_url !== null ? (
+          <img
+            src={featured.cover_image_url}
+            alt=""
+            className="h-full w-full scale-110 object-cover opacity-30 blur-xl"
+          />
+        ) : (
+          <div className="h-full w-full bg-gradient-to-br from-violet-900/50 to-fuchsia-900/30" />
+        )}
+        <div className="absolute inset-0 bg-gradient-to-r from-[#05060B] via-[#05060B]/80 to-[#05060B]/30" />
+      </div>
+
+      <div className="relative flex items-end gap-5 p-6 sm:p-8">
+        {featured.cover_image_url !== null && (
+          <div className="hidden h-44 w-28 shrink-0 overflow-hidden rounded-xl shadow-2xl ring-1 ring-white/15 sm:block">
+            <img src={featured.cover_image_url} alt="" className="h-full w-full object-cover" />
+          </div>
+        )}
+        <div className="min-w-0">
+          {featured.watch_status === "watching" && (
+            <div className="mb-1.5 text-xs font-semibold tracking-wide text-violet-300 uppercase">
+              {t("library.continueWatching")}
+            </div>
+          )}
+          <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">{title}</h2>
+          <div className="mt-2 flex items-center gap-3 text-sm text-neutral-300">
+            {score !== null && (
+              <span className="inline-flex items-center gap-1">
+                <Star className="h-4 w-4 fill-amber-400 text-amber-400" /> {score}
+              </span>
+            )}
+            {featured.year !== null && <span>{featured.year}</span>}
+            <span>{t("library.episodesShort", { count: featured.episode_count })}</span>
+          </div>
+          {featured.watch_percent > 0 && (
+            <div className="mt-3 h-1.5 w-56 max-w-full overflow-hidden rounded-full bg-white/10">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-[#7A4DFF] to-[#EC4899]"
+                style={{ width: `${featured.watch_percent}%` }}
+              />
+            </div>
+          )}
+          <button
+            onClick={onPlay}
+            className="mt-5 inline-flex items-center gap-2 rounded-2xl bg-gradient-to-br from-[#7A4DFF] via-[#A855F7] to-[#EC4899] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_40px_rgba(168,85,247,0.4)] transition hover:brightness-110"
+          >
+            <Play className="h-4 w-4 fill-current" />
+            {featured.watch_status === "watching"
+              ? t("series.continueWatching")
+              : t("series.play")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Grid({
+  items,
+  view,
+  onOpen,
+  t,
+}: {
+  items: SeriesSummary[];
+  view: View;
+  onOpen: (s: SeriesSummary) => void;
+  t: TFunction;
+}): JSX.Element {
+  if (view === "list") {
+    return (
+      <div className="space-y-2">
+        {items.map((s) => (
+          <SeriesRow key={s.id} summary={s} onClick={() => onOpen(s)} t={t} />
+        ))}
+      </div>
+    );
+  }
+  return (
+    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+      {items.map((s) => (
+        <SeriesCard key={s.id} summary={s} onClick={() => onOpen(s)} t={t} />
+      ))}
+    </div>
+  );
+}
+
+function ScoreBadge({ score }: { score: number }): JSX.Element {
+  return (
+    <span className="inline-flex items-center gap-0.5 rounded-md bg-black/60 px-1.5 py-0.5 text-xs font-medium text-amber-300 backdrop-blur">
+      <Star className="h-3 w-3 fill-current" />
+      {(score / 10).toFixed(1)}
+    </span>
+  );
+}
+
+function Poster({ summary }: { summary: SeriesSummary }): JSX.Element {
+  const title = seriesTitle(summary);
+  if (summary.cover_image_url !== null) {
+    return (
+      <img
+        src={summary.cover_image_url}
+        alt={title}
+        className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+      />
+    );
+  }
+  return (
+    <div className="flex h-full items-center justify-center bg-gradient-to-br from-violet-900/40 to-fuchsia-900/30 p-3 text-center text-sm text-neutral-300">
+      {title}
+    </div>
+  );
+}
+
+function ProgressBar({ percent }: { percent: number }): JSX.Element {
+  return (
+    <div className="absolute inset-x-0 bottom-0 h-1 bg-black/40">
+      <div
+        className="h-full bg-gradient-to-r from-[#7A4DFF] to-[#EC4899]"
+        style={{ width: `${percent}%` }}
+      />
+    </div>
+  );
+}
+
+function SeriesCard({
+  summary,
+  onClick,
+  t,
+}: {
+  summary: SeriesSummary;
+  onClick: () => void;
+  t: TFunction;
+}): JSX.Element {
+  const title = seriesTitle(summary);
+  return (
+    <button onClick={onClick} className="group text-left">
+      <div className="relative aspect-[2/3] overflow-hidden rounded-xl bg-white/5 ring-1 ring-white/10 transition group-hover:ring-violet-400/40">
+        <Poster summary={summary} />
+        {summary.score !== null && (
+          <span className="absolute top-1.5 right-1.5">
+            <ScoreBadge score={summary.score} />
+          </span>
+        )}
+        {/* Hover overlay */}
+        <div className="absolute inset-0 flex flex-col justify-end bg-gradient-to-t from-black/90 via-black/30 to-transparent p-3 opacity-0 transition group-hover:opacity-100">
+          <div className="line-clamp-2 text-sm font-semibold text-white">{title}</div>
+          <div className="mt-1 text-xs text-neutral-300">
+            {t("library.episodesShort", { count: summary.episode_count })}
+          </div>
+          {summary.watch_percent > 0 && (
+            <div className="text-xs font-medium text-violet-300">
+              {t("library.watchedPercent", { percent: summary.watch_percent })}
+            </div>
+          )}
+        </div>
+        {summary.watch_percent > 0 && <ProgressBar percent={summary.watch_percent} />}
+      </div>
+      <div className="mt-2 truncate text-sm font-medium">{title}</div>
+      {summary.year !== null && <div className="text-xs text-neutral-500">{summary.year}</div>}
+    </button>
+  );
+}
+
+function SeriesRow({
+  summary,
+  onClick,
+  t,
+}: {
+  summary: SeriesSummary;
+  onClick: () => void;
+  t: TFunction;
+}): JSX.Element {
+  const title = seriesTitle(summary);
+  return (
+    <button
+      onClick={onClick}
+      className="group flex w-full items-center gap-4 rounded-xl bg-white/[0.02] p-2.5 text-left ring-1 ring-white/[0.06] transition hover:bg-white/[0.05]"
+    >
+      <div className="relative h-[84px] w-14 shrink-0 overflow-hidden rounded-lg bg-white/5">
+        <Poster summary={summary} />
+        {summary.watch_percent > 0 && <ProgressBar percent={summary.watch_percent} />}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="truncate font-medium text-neutral-100">{title}</div>
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-neutral-400">
+          {summary.year !== null && <span>{summary.year}</span>}
+          <span>{t("library.episodesShort", { count: summary.episode_count })}</span>
+          {summary.score !== null && (
+            <span className="inline-flex items-center gap-0.5 text-amber-300">
+              <Star className="h-3 w-3 fill-current" />
+              {(summary.score / 10).toFixed(1)}
+            </span>
+          )}
+          {summary.watch_percent > 0 && (
+            <span className="text-violet-300">
+              {t("library.watchedPercent", { percent: summary.watch_percent })}
+            </span>
+          )}
+        </div>
+      </div>
+    </button>
   );
 }
