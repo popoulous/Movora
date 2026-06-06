@@ -90,7 +90,9 @@ class WatchSummary:
 def series_watch_summary(session: Session, user: User, series: Series) -> WatchSummary:
     episodes = [
         episode
-        for season in sorted(series.seasons, key=lambda s: s.number)
+        # Season 0 (specials) sorts after the numbered seasons so "continue" follows the
+        # main run, not an OVA.
+        for season in sorted(series.seasons, key=lambda s: (s.number == 0, s.number))
         for episode in sorted(season.episodes, key=lambda e: e.number)
     ]
     total = len(episodes)

@@ -95,10 +95,10 @@ def test_scan_reads_season_from_subfolder(tmp_path: Path) -> None:
         assert len(list(session.scalars(select(MediaFile)))) == 2
 
 
-def test_scan_numbers_named_seasons_with_specials_last(tmp_path: Path) -> None:
-    # Railgun-style: seasons named by title suffix (no S01), OVAs after the main ones.
+def test_scan_numbers_named_seasons_and_puts_specials_in_season_zero(tmp_path: Path) -> None:
+    # Railgun-style: seasons named by title suffix (no S01); OVAs/movies go to Season 0.
     show = tmp_path / "To Aru Kagaku no Railgun BDBOX"
-    for sub in ("Railgun", "Railgun OVA", "Railgun S", "Railgun T"):
+    for sub in ("Railgun", "Railgun OVA", "Railgun S", "Railgun T", "Railgun Movie"):
         (show / sub).mkdir(parents=True)
         (show / sub / f"[grp] {sub} - 01.mkv").write_bytes(b"")
 
@@ -111,7 +111,7 @@ def test_scan_numbers_named_seasons_with_specials_last(tmp_path: Path) -> None:
         session.commit()
 
         scan_library(session, library, title_prober=lambda path: None)
-        assert {season.number for season in session.scalars(select(Season))} == {1, 2, 3, 4}
+        assert {season.number for season in session.scalars(select(Season))} == {0, 1, 2, 3}
         season_of = {
             Path(media_file.path).parent.name: media_file.episode.season.number
             for media_file in session.scalars(select(MediaFile))
@@ -119,7 +119,15 @@ def test_scan_numbers_named_seasons_with_specials_last(tmp_path: Path) -> None:
         assert season_of["Railgun"] == 1
         assert season_of["Railgun S"] == 2
         assert season_of["Railgun T"] == 3
-        assert season_of["Railgun OVA"] == 4  # specials sort last
+        assert season_of["Railgun OVA"] == 0  # specials -> Season 0
+        assert season_of["Railgun Movie"] == 0  # movies -> Season 0 too
+        # The two Season 0 files get distinct episode numbers (no collision).
+        specials = [
+            media_file.episode.number
+            for media_file in session.scalars(select(MediaFile))
+            if media_file.episode.season.number == 0
+        ]
+        assert sorted(specials) == [1, 2]
 
 
 def test_rescan_reconciles_seasons_and_keeps_media_file_id(tmp_path: Path) -> None:

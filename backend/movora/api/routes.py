@@ -200,7 +200,7 @@ def _series_detail(session: Session, series: Series) -> SeriesDetail:
                 for episode in sorted(season.episodes, key=lambda e: e.number)
             ],
         )
-        for season in sorted(series.seasons, key=lambda s: s.number)
+        for season in sorted(series.seasons, key=lambda s: (s.number == 0, s.number))
     ]
     return SeriesDetail(
         id=series.id,

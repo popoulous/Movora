@@ -26,6 +26,15 @@ function formatDate(iso: string | null, locale: string): string | null {
   });
 }
 
+// Season 0 = specials/OVAs: sort it after the numbered seasons and label it accordingly.
+function seasonOrder(number: number): number {
+  return number === 0 ? Number.MAX_SAFE_INTEGER : number;
+}
+
+function seasonLabel(number: number, t: TFunction): string {
+  return number === 0 ? t("series.season0") : t("series.season", { number });
+}
+
 function Stat({ value, label }: { value: ReactNode; label: string }): JSX.Element {
   return (
     <div className="min-w-[80px]">
@@ -52,7 +61,10 @@ export function SeriesDetailPage(): JSX.Element {
       .getSeries(seriesId)
       .then((detail) => {
         setSeries(detail);
-        setSeasonId(detail.seasons[0]?.id ?? null);
+        const ordered = [...detail.seasons].sort(
+          (a, b) => seasonOrder(a.number) - seasonOrder(b.number),
+        );
+        setSeasonId(ordered[0]?.id ?? null);
       })
       .catch((reason: unknown) => setError(String(reason)));
   }, [seriesId]);
@@ -322,7 +334,7 @@ function EpisodesSection({
   navigate: (to: string) => void;
   t: TFunction;
 }): JSX.Element {
-  const seasons = [...series.seasons].sort((a, b) => a.number - b.number);
+  const seasons = [...series.seasons].sort((a, b) => seasonOrder(a.number) - seasonOrder(b.number));
   const active = seasons.find((season) => season.id === seasonId) ?? seasons[0];
   const episodes = active ? [...active.episodes].sort((a, b) => a.number - b.number) : [];
 
@@ -340,7 +352,7 @@ function EpisodesSection({
                   : "text-neutral-400 ring-1 ring-transparent hover:bg-white/[0.03] hover:text-neutral-200"
               }`}
             >
-              {t("series.season", { number: season.number })}
+              {seasonLabel(season.number, t)}
               <div className="text-xs font-normal text-neutral-500">
                 {t("series.episodes", { count: season.episodes.length })}
               </div>

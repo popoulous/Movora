@@ -54,16 +54,21 @@ def scan_library(
     ]
     total = len(candidates)
     season_index = _season_map(candidates, root)
+    special_next: dict[str, int] = {}  # per-show running number for Season 0 episodes
     new_files: list[MediaFile] = []
     for index, path in enumerate(candidates, start=1):
         if on_progress is not None:
             on_progress(index, total)
         fields = parser.parse(path.name)
-        series = _get_or_create_series(session, library, _series_title(path, root, fields))
-        season = _get_or_create_season(
-            session, series, _season_number(path, root, fields, season_index)
-        )
-        number = fields.episode or 1
+        title = _series_title(path, root, fields)
+        series = _get_or_create_series(session, library, title)
+        season_num = _season_number(path, root, fields, season_index)
+        season = _get_or_create_season(session, series, season_num)
+        if season_num == 0:  # specials: number sequentially so OVAs/movies don't collide
+            special_next[title] = special_next.get(title, 0) + 1
+            number = special_next[title]
+        else:
+            number = fields.episode or 1
         existing = session.scalar(select(MediaFile).where(MediaFile.path == str(path)))
         if existing is not None:
             # Re-scan reconciles: move the file if its season/episode mapping changed,
@@ -131,24 +136,31 @@ def _season_map(candidates: list[Path], root: Path) -> dict[tuple[str, str], int
         parts = path.relative_to(root).parts
         if len(parts) >= 3:  # show / season-folder / … / file
             shows.setdefault(parts[0], set()).add(parts[1])
-    return {
-        (show, folder): number
-        for show, folders in shows.items()
-        for number, folder in enumerate(sorted(folders, key=_folder_sort_key), start=1)
-    }
+    result: dict[tuple[str, str], int] = {}
+    for show, folders in shows.items():
+        mains = sorted((f for f in folders if not _is_special(f)), key=_folder_sort_key)
+        for number, folder in enumerate(mains, start=1):
+            result[(show, folder)] = number
+        for folder in folders:
+            if _is_special(folder):
+                result[(show, folder)] = 0  # Season 0 = specials / OVAs
+    return result
 
 
-_SPECIAL_FOLDER = re.compile(r"\b(ova|oad|special|specials|sp|nced|ncop)\b", re.IGNORECASE)
+_SPECIAL_FOLDER = re.compile(
+    r"\b(ova|oav|oad|special|specials|sp|nced|ncop|movie|film|mozifilm|recap)\b",
+    re.IGNORECASE,
+)
 
 
-def _folder_sort_key(folder: str) -> tuple[bool, int, str]:
-    """Order season folders: explicit "01." prefix first, OVAs/specials last."""
+def _is_special(folder: str) -> bool:
+    return bool(_SPECIAL_FOLDER.search(folder))
+
+
+def _folder_sort_key(folder: str) -> tuple[int, str]:
+    """Order main season folders by an explicit "01." prefix, then name."""
     prefix = re.match(r"^(\d+)", folder)
-    return (
-        bool(_SPECIAL_FOLDER.search(folder)),  # specials/OVAs after the main seasons
-        int(prefix.group(1)) if prefix else 10_000,  # honour an explicit "01." ordering
-        folder.lower(),
-    )
+    return (int(prefix.group(1)) if prefix else 10_000, folder.lower())
 
 
 def _season_number(
