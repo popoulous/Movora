@@ -229,3 +229,13 @@ __marimo__/
 *.db
 *.db-shm
 *.db-wal
+
+# Movora generated media data (never commit — large)
+/normalized/
+/assets/
+/fonts/
+
+# Local dev launcher scripts (Windows)
+/dev-backend.bat
+/dev-frontend.bat
+/reset-db.bat
