@@ -1,9 +1,9 @@
 import { Bell, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Link } from "react-router-dom";
 
 import { useActivity } from "../ActivityContext";
-import type { Job } from "../api";
 
 function timeAgo(iso: string): string {
   const seconds = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
@@ -23,7 +23,7 @@ function statusDot(status: string): string {
 
 export function ActivityBell(): JSX.Element {
   const { t } = useTranslation();
-  const { jobs, running } = useActivity();
+  const { jobs, tasks, running } = useActivity();
   const [open, setOpen] = useState(false);
 
   const kindLabel = (kind: string): string =>
@@ -33,22 +33,30 @@ export function ActivityBell(): JSX.Element {
         ? t("activity.normalize")
         : t("activity.scan");
 
-  const current: Job | undefined = jobs.find((job) => job.status === "running");
+  const runningTask = tasks.find((task) => task.status === "running");
+  const queued = tasks.filter((task) => task.status === "pending").length;
+  const runningJob = jobs.find((job) => job.status === "running");
+
+  const indicator = runningTask
+    ? `${t("activity.normalize")} — ${runningTask.series_title ?? ""} ${runningTask.progress}%` +
+      (queued > 0 ? ` (+${queued})` : "")
+    : runningJob
+      ? `${kindLabel(runningJob.kind)} — ${runningJob.message}`
+      : t("activity.working");
+
   const toggle = (): void => setOpen((value) => !value);
 
   return (
     <div className="relative flex items-center gap-2">
-      {/* Always-visible progress indicator: no need to open the panel to see it. */}
+      {/* Always-visible progress indicator -> the full Tasks tree, no panel needed. */}
       {running && (
-        <button
-          onClick={toggle}
+        <Link
+          to="/tasks"
           className="flex items-center gap-2 rounded-lg bg-white/5 px-2.5 py-1.5 text-xs text-neutral-200 ring-1 ring-white/10 transition hover:bg-white/10"
         >
           <Loader2 className="h-3.5 w-3.5 animate-spin text-violet-300" />
-          <span className="max-w-[220px] truncate">
-            {current ? `${kindLabel(current.kind)} — ${current.message}` : t("activity.working")}
-          </span>
-        </button>
+          <span className="max-w-[220px] truncate">{indicator}</span>
+        </Link>
       )}
 
       <button

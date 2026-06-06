@@ -5,9 +5,21 @@ const en = {
   nav: {
     home: "Home",
     libraries: "Libraries",
+    tasks: "Tasks",
     settings: "Settings",
     addLibrary: "Add library",
     noLibraries: "No libraries yet — add one with +",
+  },
+  tasks: {
+    title: "Tasks",
+    empty: "No tasks yet. Optimization tasks show up here.",
+    type_normalize: "Optimization",
+    season: "Season {{number}}",
+    episode: "Episode {{number}}",
+    queued: "queued",
+    inProgress: "in progress",
+    done: "done",
+    failed: "failed",
   },
   topbar: { activity: "Activity", language: "Language" },
   home: {
@@ -99,9 +111,21 @@ const hu: typeof en = {
   nav: {
     home: "Főoldal",
     libraries: "Könyvtárak",
+    tasks: "Folyamatok",
     settings: "Beállítások",
     addLibrary: "Könyvtár hozzáadása",
     noLibraries: "Még nincs könyvtár — adj hozzá a + gombbal",
+  },
+  tasks: {
+    title: "Folyamatok",
+    empty: "Még nincs folyamat. Az optimalizálási feladatok itt jelennek meg.",
+    type_normalize: "Optimalizálás",
+    season: "{{number}}. évad",
+    episode: "{{number}}. rész",
+    queued: "besorolva",
+    inProgress: "folyamatban",
+    done: "kész",
+    failed: "hibás",
   },
   topbar: { activity: "Folyamatok", language: "Nyelv" },
   home: {

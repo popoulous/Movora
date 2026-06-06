@@ -1,10 +1,19 @@
-import { Film, Home, type LucideIcon, Plus, Settings, Sparkles, Tv } from "lucide-react";
+import {
+  Film,
+  Home,
+  ListChecks,
+  type LucideIcon,
+  Plus,
+  Settings,
+  Sparkles,
+  Tv,
+} from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 
 import { ActivityContext } from "../ActivityContext";
-import { api, type Job, type Library, type LibraryKind } from "../api";
+import { api, type Job, type Library, type LibraryKind, type Task } from "../api";
 import { LibrariesContext } from "../LibrariesContext";
 import { ActivityBell } from "./ActivityBell";
 import { FolderPicker } from "./FolderPicker";
@@ -40,6 +49,7 @@ export function Layout(): JSX.Element {
 
   // Activity polling, shared via context so any page can show/refresh progress.
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [optimistic, setOptimistic] = useState(false);
   const boostUntil = useRef(0);
   const pollNow = useRef<() => void>(() => undefined);
@@ -48,14 +58,16 @@ export function Layout(): JSX.Element {
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
     const tick = (): void => {
-      api
-        .listJobs()
-        .then((next) => {
+      Promise.all([api.listJobs(), api.listTasks()])
+        .then(([nextJobs, nextTasks]) => {
           if (!active) return;
-          setJobs(next);
-          if (next.some((job) => job.status === "running")) setOptimistic(false);
-          const boosting = Date.now() < boostUntil.current;
-          const fast = boosting || next.some((job) => job.status === "running");
+          setJobs(nextJobs);
+          setTasks(nextTasks);
+          const busy =
+            nextJobs.some((job) => job.status === "running") ||
+            nextTasks.some((task) => task.status === "running" || task.status === "pending");
+          if (busy) setOptimistic(false);
+          const fast = busy || Date.now() < boostUntil.current;
           timer = setTimeout(tick, fast ? 1500 : 8000);
         })
         .catch(() => {
@@ -80,7 +92,10 @@ export function Layout(): JSX.Element {
     window.setTimeout(() => setOptimistic(false), 12000);
   }, []);
 
-  const running = optimistic || jobs.some((job) => job.status === "running");
+  const running =
+    optimistic ||
+    jobs.some((job) => job.status === "running") ||
+    tasks.some((task) => task.status === "running" || task.status === "pending");
 
   const onAdded = (library: Library): void => {
     setPicking(false);
@@ -90,7 +105,7 @@ export function Layout(): JSX.Element {
 
   return (
     <LibrariesContext.Provider value={{ libraries, reload: loadLibraries }}>
-      <ActivityContext.Provider value={{ jobs, running, refreshSoon }}>
+      <ActivityContext.Provider value={{ jobs, tasks, running, refreshSoon }}>
         <div className="flex min-h-screen">
         <aside className="flex w-[280px] shrink-0 flex-col border-r border-white/5 bg-[#080a12]/[0.72] px-5 py-8 backdrop-blur-2xl">
           <Link to="/" className="mb-8 flex items-center gap-2.5 px-1">
@@ -135,6 +150,10 @@ export function Layout(): JSX.Element {
           </nav>
 
           <nav className="mt-auto space-y-1 pt-8">
+            <NavLink to="/tasks" className={navClass}>
+              <ListChecks className="h-4 w-4 shrink-0" />
+              {t("nav.tasks")}
+            </NavLink>
             <NavLink to="/settings" className={navClass}>
               <Settings className="h-4 w-4 shrink-0" />
               {t("nav.settings")}

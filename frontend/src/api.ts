@@ -95,6 +95,24 @@ export interface ServerSettings {
   auto_normalize_existing: boolean;
 }
 
+export type TaskStatus = "pending" | "running" | "done" | "failed";
+
+export interface Task {
+  id: number;
+  type: string;
+  status: TaskStatus;
+  progress: number;
+  eta_seconds: number | null;
+  message: string | null;
+  library_kind: string | null;
+  series_id: number | null;
+  series_title: string | null;
+  season_number: number | null;
+  episode_id: number | null;
+  episode_number: number | null;
+  episode_title: string | null;
+}
+
 async function asJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
     throw new Error(`${response.status} ${response.statusText}`);
@@ -134,8 +152,13 @@ export const api = {
     fetch(`/api/series/${id}`).then(asJson<SeriesDetail>),
   getPlayback: (episodeId: number): Promise<PlaybackInfo> =>
     fetch(`/api/episodes/${episodeId}/playback`).then(asJson<PlaybackInfo>),
-  normalizeEpisode: (episodeId: number): Promise<Job> =>
-    fetch(`/api/episodes/${episodeId}/normalize`, { method: "POST" }).then(asJson<Job>),
+  normalizeEpisode: (episodeId: number): Promise<void> =>
+    fetch(`/api/episodes/${episodeId}/normalize`, { method: "POST" }).then((response) => {
+      if (!response.ok) {
+        throw new Error(`${response.status} ${response.statusText}`);
+      }
+    }),
+  listTasks: (): Promise<Task[]> => fetch("/api/tasks").then(asJson<Task[]>),
   normalizeAll: (): Promise<void> =>
     fetch("/api/normalize/all", { method: "POST" }).then((response) => {
       if (!response.ok) {
