@@ -190,6 +190,29 @@ def enqueue_normalize(session: Session, media_file_ids: list[int]) -> int:
     return queued
 
 
+def dedupe_tasks(session: Session) -> int:
+    """Keep at most one NORMALIZE task per media file, dropping redundant duplicates.
+
+    Cleans up duplicates left by earlier churn; the best status wins
+    (done > running > pending > failed).
+    """
+    priority = {JobStatus.DONE: 0, JobStatus.RUNNING: 1, JobStatus.PENDING: 2, JobStatus.FAILED: 3}
+    by_file: dict[int, list[Task]] = {}
+    for task in session.scalars(select(Task).where(Task.type == TaskType.NORMALIZE)):
+        if task.media_file_id is not None:
+            by_file.setdefault(task.media_file_id, []).append(task)
+    removed = 0
+    for group in by_file.values():
+        if len(group) < 2:
+            continue
+        group.sort(key=lambda task: (priority.get(task.status, 9), task.id))
+        for extra in group[1:]:  # keep the best; delete the rest
+            session.delete(extra)
+            removed += 1
+    session.commit()
+    return removed
+
+
 def requeue_interrupted(session: Session) -> int:
     """On startup, requeue interrupted (RUNNING) tasks and retry under-cap failures."""
     rows = list(

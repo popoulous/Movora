@@ -13,7 +13,7 @@ from movora.db.models import (
     Task,
     TaskType,
 )
-from movora.normalize import enqueue_normalize, requeue_interrupted
+from movora.normalize import dedupe_tasks, enqueue_normalize, requeue_interrupted
 
 
 def _media_file(session: Session) -> int:
@@ -102,6 +102,21 @@ def test_requeue_retries_failed_under_cap() -> None:
         task = session.scalar(select(Task))
         assert task is not None
         assert task.status == JobStatus.PENDING
+
+
+def test_dedupe_keeps_one_best_per_file() -> None:
+    with _session() as session:
+        media_file_id = _media_file(session)
+        session.add_all(
+            Task(type=TaskType.NORMALIZE, media_file_id=media_file_id, status=status)
+            for status in (JobStatus.PENDING, JobStatus.FAILED, JobStatus.DONE)
+        )
+        session.commit()
+
+        assert dedupe_tasks(session) == 2  # two duplicates removed
+        tasks = list(session.scalars(select(Task)))
+        assert len(tasks) == 1
+        assert tasks[0].status == JobStatus.DONE  # best status survives
 
 
 def test_requeue_leaves_failed_at_cap() -> None:

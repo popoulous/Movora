@@ -15,7 +15,7 @@ from movora.api.routes import router
 from movora.config import Settings, get_settings
 from movora.db.base import create_db_engine, create_session_factory, init_db
 from movora.metadata import AniListProvider
-from movora.normalize import requeue_interrupted, run_worker
+from movora.normalize import dedupe_tasks, requeue_interrupted, run_worker
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -26,6 +26,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # A crash/reload can leave a task RUNNING with its ffmpeg killed; put those
         # back in the queue and start the worker so it resumes on its own.
         with app.state.session_factory() as session:
+            dedupe_tasks(session)  # clean up any duplicate tasks first
             requeue_interrupted(session)
         threading.Thread(
             target=run_worker,
