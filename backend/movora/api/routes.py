@@ -189,7 +189,11 @@ def list_series(library_id: int, session: SessionDep) -> list[SeriesRead]:
         session.scalars(
             select(Series)
             .where(Series.library_id == library_id)
-            .options(selectinload(Series.seasons).selectinload(Season.episodes))
+            .options(
+                selectinload(Series.seasons)
+                .selectinload(Season.episodes)
+                .selectinload(Episode.media_files)
+            )
         )
     )
     user = current_user(session)
@@ -213,6 +217,9 @@ def _series_summary(series: Series, watched: set[int]) -> SeriesRead:
         status = "completed"
     else:
         status = "watching"
+    media_files = [
+        mf for season in series.seasons for episode in season.episodes for mf in episode.media_files
+    ]
     return SeriesRead(
         id=series.id,
         title=series.title,
@@ -224,6 +231,7 @@ def _series_summary(series: Series, watched: set[int]) -> SeriesRead:
         episode_count=total,
         watch_status=status,
         watch_percent=round(seen * 100 / total) if total else 0,
+        normalized=len(media_files) > 0 and all(mf.is_normalized for mf in media_files),
     )
 
 
@@ -265,6 +273,7 @@ def _home_series(overview: SeriesOverview) -> HomeSeries:
         watch_status=overview.watch_status,
         watch_percent=overview.watch_percent,
         continue_episode_id=overview.continue_episode_id,
+        normalized=overview.normalized,
     )
 
 

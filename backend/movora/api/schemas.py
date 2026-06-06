@@ -62,6 +62,7 @@ class SeriesRead(BaseModel):
     episode_count: int = 0
     watch_status: str = "not_started"  # not_started | watching | completed
     watch_percent: int = 0
+    normalized: bool = False  # every episode is Direct-Play ready (optimized)
 
 
 class RecommendationRead(BaseModel):
@@ -120,6 +121,7 @@ class HomeSeries(BaseModel):
     watch_status: str = "not_started"
     watch_percent: int = 0
     continue_episode_id: int | None = None
+    normalized: bool = False  # every episode is Direct-Play ready (optimized)
 
 
 class CollectionRead(BaseModel):

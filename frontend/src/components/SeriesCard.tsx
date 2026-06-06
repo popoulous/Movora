@@ -1,5 +1,5 @@
 import { type TFunction } from "i18next";
-import { Star } from "lucide-react";
+import { Check, Star } from "lucide-react";
 
 // The minimal shape both SeriesSummary and HomeSeries satisfy.
 export interface CardSeries {
@@ -11,6 +11,19 @@ export interface CardSeries {
   cover_image_url: string | null;
   episode_count: number;
   watch_percent: number;
+  normalized?: boolean;
+}
+
+// A green check badge marking a fully optimized (Direct-Play ready) series.
+function OptimizedBadge({ title }: { title: string }): JSX.Element {
+  return (
+    <span
+      title={title}
+      className="absolute bottom-1.5 right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 shadow ring-2 ring-black/25"
+    >
+      <Check className="h-3 w-3 text-white" strokeWidth={3} />
+    </span>
+  );
 }
 
 export const cardTitle = (series: CardSeries): string => series.display_title ?? series.title;
@@ -84,6 +97,7 @@ export function SeriesCard({
           )}
         </div>
         {series.watch_percent > 0 && <ProgressBar percent={series.watch_percent} />}
+        {series.normalized === true && <OptimizedBadge title={t("series.optimized")} />}
       </div>
       <div className="mt-2 truncate text-sm font-medium">{cardTitle(series)}</div>
       {series.year !== null && <div className="text-xs text-neutral-500">{series.year}</div>}
@@ -108,6 +122,7 @@ export function SeriesRow({
       <div className="relative h-[84px] w-14 shrink-0 overflow-hidden rounded-lg bg-white/5">
         <Poster series={series} />
         {series.watch_percent > 0 && <ProgressBar percent={series.watch_percent} />}
+        {series.normalized === true && <OptimizedBadge title={t("series.optimized")} />}
       </div>
       <div className="min-w-0 flex-1">
         <div className="truncate font-medium text-neutral-100">{cardTitle(series)}</div>

@@ -10,7 +10,7 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from movora.db.models import Season, Series, User, WatchState
+from movora.db.models import Episode, Season, Series, User, WatchState
 
 _MIN = datetime.min  # sort key for missing timestamps (naive, like WatchState.updated_at)
 
@@ -25,6 +25,7 @@ class SeriesOverview:
     continue_episode_id: int | None
     last_watched_at: datetime | None
     finished_at: datetime | None
+    normalized: bool  # every episode is Direct-Play ready (optimized)
 
 
 @dataclass
@@ -44,7 +45,11 @@ class HomeOverview:
 def home_overview(session: Session, user: User) -> HomeOverview:
     series_list = list(
         session.scalars(
-            select(Series).options(selectinload(Series.seasons).selectinload(Season.episodes))
+            select(Series).options(
+                selectinload(Series.seasons)
+                .selectinload(Season.episodes)
+                .selectinload(Episode.media_files)
+            )
         )
     )
     states = {
@@ -106,6 +111,7 @@ def _overview(series: Series, states: dict[int, WatchState]) -> SeriesOverview:
         status = "watching"
     times = [states[ep.id].updated_at for ep in ordered if ep.id in states]
     last_watched_at = max(times) if times else None
+    media_files = [mf for ep in ordered for mf in ep.media_files]
     return SeriesOverview(
         series=series,
         episode_count=total,
@@ -115,6 +121,7 @@ def _overview(series: Series, states: dict[int, WatchState]) -> SeriesOverview:
         continue_episode_id=next((ep.id for ep in ordered if ep.id not in watched_ids), None),
         last_watched_at=last_watched_at,
         finished_at=last_watched_at if status == "completed" else None,
+        normalized=len(media_files) > 0 and all(mf.is_normalized for mf in media_files),
     )
 
 

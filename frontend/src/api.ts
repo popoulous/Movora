@@ -18,6 +18,7 @@ export interface SeriesSummary {
   episode_count: number;
   watch_status: WatchStatus;
   watch_percent: number;
+  normalized: boolean;
 }
 
 export interface Episode {
@@ -87,6 +88,7 @@ export interface HomeSeries {
   watch_status: WatchStatus;
   watch_percent: number;
   continue_episode_id: number | null;
+  normalized: boolean;
 }
 
 export interface Collection {
