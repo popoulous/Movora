@@ -43,9 +43,11 @@ export function ActivityBell(): JSX.Element {
     : t("activity.working");
 
   // A window around "now": the last 5 finished, what's running, and the next 5 queued.
+  // Order finished by completion time (ISO strings sort chronologically), not id — a
+  // long NORMALIZE started early can finish after a quick SCAN queued later.
   const finished = tasks
     .filter((task) => task.status === "done" || task.status === "failed")
-    .sort((a, b) => a.id - b.id);
+    .sort((a, b) => (a.finished_at ?? "").localeCompare(b.finished_at ?? ""));
   const runningTasks = tasks.filter((task) => task.status === "running").sort((a, b) => a.id - b.id);
   const upcoming = tasks.filter((task) => task.status === "pending").sort((a, b) => a.id - b.id);
   const shown = [...finished.slice(-5), ...runningTasks, ...upcoming.slice(0, 5)];

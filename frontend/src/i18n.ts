@@ -22,6 +22,9 @@ const en = {
     inProgress: "In progress",
     done: "Done",
     failed: "Failed",
+    cancel: "Cancel",
+    cancelAllQueued: "Cancel all queued ({{count}})",
+    confirmCancel: "Click again to confirm",
   },
   topbar: { activity: "Activity", language: "Language" },
   home: {
@@ -194,6 +197,9 @@ const hu: typeof en = {
     inProgress: "Folyamatban",
     done: "Kész",
     failed: "Hibás",
+    cancel: "Mégse",
+    cancelAllQueued: "Összes várakozó leállítása ({{count}})",
+    confirmCancel: "Kattints újra a megerősítéshez",
   },
   topbar: { activity: "Folyamatok", language: "Nyelv" },
   home: {

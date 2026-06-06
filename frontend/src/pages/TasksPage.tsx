@@ -1,10 +1,36 @@
-import { CheckCircle2, ChevronRight, Clock, Loader2, XCircle } from "lucide-react";
-import { type ReactNode } from "react";
+import { CheckCircle2, ChevronRight, Clock, Loader2, X, XCircle } from "lucide-react";
+import { type MouseEvent, type ReactNode, useState } from "react";
 import { type TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 
 import { useActivity } from "../ActivityContext";
-import type { Task, TaskStatus } from "../api";
+import { api, type Task, type TaskStatus } from "../api";
+
+function activeIds(tasks: Task[]): number[] {
+  return tasks
+    .filter((task) => task.status === "pending" || task.status === "running")
+    .map((task) => task.id);
+}
+
+function CancelButton({ ids }: { ids: number[] }): JSX.Element | null {
+  const { t } = useTranslation();
+  const { refreshSoon } = useActivity();
+  if (ids.length === 0) return null;
+  const cancel = (event: MouseEvent): void => {
+    event.preventDefault(); // don't toggle the <details> when the ✕ sits in a <summary>
+    event.stopPropagation();
+    api.cancelTasks(ids).then(refreshSoon).catch(() => undefined);
+  };
+  return (
+    <button
+      onClick={cancel}
+      title={t("tasks.cancel")}
+      className="shrink-0 rounded-md p-1 text-neutral-500 transition hover:bg-white/10 hover:text-red-300"
+    >
+      <X className="h-3.5 w-3.5" />
+    </button>
+  );
+}
 
 function groupBy<T>(items: T[], key: (item: T) => string | number): T[][] {
   const map = new Map<string, T[]>();
@@ -76,11 +102,13 @@ function Group({
   label,
   status,
   defaultOpen,
+  cancelIds = [],
   children,
 }: {
   label: string;
   status: TaskStatus;
   defaultOpen: boolean;
+  cancelIds?: number[];
   children: ReactNode;
 }): JSX.Element {
   return (
@@ -88,7 +116,8 @@ function Group({
       <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-white/5">
         <ChevronRight className="h-3.5 w-3.5 shrink-0 text-neutral-500 transition group-open:rotate-90" />
         <StatusIcon status={status} />
-        <span className="truncate text-sm font-medium">{label}</span>
+        <span className="min-w-0 flex-1 truncate text-sm font-medium">{label}</span>
+        <CancelButton ids={cancelIds} />
       </summary>
       <div className="ml-[18px] border-l border-white/10 pl-2">{children}</div>
     </details>
@@ -100,8 +129,9 @@ function Leaf({ label, task }: { label: string; task: Task }): JSX.Element {
   return (
     <div className="flex items-center gap-2 px-2 py-1 text-sm">
       <StatusIcon status={task.status} />
-      <span className="truncate text-neutral-300">{label}</span>
-      <span className="ml-auto shrink-0 text-xs text-neutral-500">{statusDetail(task, t)}</span>
+      <span className="min-w-0 flex-1 truncate text-neutral-300">{label}</span>
+      <span className="shrink-0 text-xs text-neutral-500">{statusDetail(task, t)}</span>
+      <CancelButton ids={activeIds([task])} />
     </div>
   );
 }
@@ -134,7 +164,7 @@ function SeriesGroup({ tasks }: { tasks: Task[] }): JSX.Element {
 
   const seasons = byQueue(groupBy(tasks, (task) => task.season_number ?? 1));
   return (
-    <Group label={title} status={status} defaultOpen={inProgress(tasks)}>
+    <Group label={title} status={status} defaultOpen={inProgress(tasks)} cancelIds={activeIds(tasks)}>
       {seasons.map((seasonTasks) => {
         const episodes = [...seasonTasks].sort(
           (a, b) => (a.episode_number ?? 0) - (b.episode_number ?? 0),
@@ -145,6 +175,7 @@ function SeriesGroup({ tasks }: { tasks: Task[] }): JSX.Element {
             label={t("tasks.season", { number: seasonTasks[0].season_number ?? 1 })}
             status={aggregate(seasonTasks)}
             defaultOpen={inProgress(seasonTasks)}
+            cancelIds={activeIds(seasonTasks)}
           >
             {episodes.map((task) => (
               <Leaf
@@ -162,7 +193,8 @@ function SeriesGroup({ tasks }: { tasks: Task[] }): JSX.Element {
 
 export function TasksPage(): JSX.Element {
   const { t } = useTranslation();
-  const { tasks } = useActivity();
+  const { tasks, refreshSoon } = useActivity();
+  const [confirming, setConfirming] = useState(false);
 
   if (tasks.length === 0) {
     return (
@@ -174,10 +206,28 @@ export function TasksPage(): JSX.Element {
   }
 
   const types = byQueue(groupBy(tasks, (task) => task.type));
+  const queuedIds = tasks.filter((task) => task.status === "pending").map((task) => task.id);
+  const cancelAllQueued = (): void => {
+    api.cancelTasks(queuedIds).then(refreshSoon).catch(() => undefined);
+    setConfirming(false);
+  };
 
   return (
     <div className="max-w-3xl space-y-4">
-      <h1 className="text-2xl font-bold tracking-tight">{t("tasks.title")}</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-bold tracking-tight">{t("tasks.title")}</h1>
+        {queuedIds.length > 0 && (
+          <button
+            onClick={() => (confirming ? cancelAllQueued() : setConfirming(true))}
+            onBlur={() => setConfirming(false)}
+            className="rounded-lg bg-white/5 px-3 py-1.5 text-xs font-medium text-neutral-300 ring-1 ring-white/10 transition hover:bg-red-500/15 hover:text-red-200"
+          >
+            {confirming
+              ? t("tasks.confirmCancel")
+              : t("tasks.cancelAllQueued", { count: queuedIds.length })}
+          </button>
+        )}
+      </div>
       <div className="rounded-2xl bg-white/[0.02] p-2 ring-1 ring-white/10">
         {types.map((typeTasks) => (
           <Group
@@ -185,6 +235,7 @@ export function TasksPage(): JSX.Element {
             label={t(`tasks.type_${typeTasks[0].type}`)}
             status={aggregate(typeTasks)}
             defaultOpen={inProgress(typeTasks)}
+            cancelIds={activeIds(typeTasks)}
           >
             {typeTasks[0].type === "normalize" ? (
               byQueue(groupBy(typeTasks, (task) => task.series_id ?? 0)).map((seriesTasks) => (

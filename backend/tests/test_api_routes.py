@@ -1,9 +1,11 @@
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from movora.api.app import create_app
 from movora.config import Settings
+from movora.db.models import JobStatus, MediaFile, Task, TaskType
 
 
 def _make_client(tmp_path: Path) -> tuple[TestClient, Path]:
@@ -61,6 +63,31 @@ def test_series_normalize_marks_episodes(tmp_path: Path) -> None:
 def test_series_normalize_missing_returns_404(tmp_path: Path) -> None:
     client, _ = _make_client(tmp_path)
     assert client.post("/api/series/999/normalize").status_code == 404
+
+
+def test_cancel_tasks_drops_queued(tmp_path: Path) -> None:
+    media = tmp_path / "media"
+    media.mkdir()
+    (media / "[ReinForce] To Aru Kagaku no Railgun - 01 (BD).mkv").write_bytes(b"")
+    app = create_app(Settings(database_path=tmp_path / "test.db"))
+    client = TestClient(app)
+    client.post("/api/libraries", json={"path": str(media), "name": "A", "kind": "anime"})
+
+    # The TestClient drains real tasks immediately, so insert a queued one to cancel.
+    with app.state.session_factory() as session:
+        mf_id = session.scalar(select(MediaFile.id))
+        task = Task(type=TaskType.NORMALIZE, media_file_id=mf_id, status=JobStatus.PENDING)
+        session.add(task)
+        session.commit()
+        task_id = task.id
+
+    result = client.post("/api/tasks/cancel", json={"ids": [task_id]})
+    assert result.status_code == 200
+    assert result.json()["cancelled"] == 1
+    tasks = client.get("/api/tasks").json()
+    assert all(item["id"] != task_id for item in tasks)
+    # Finished tasks (the auto scan/metadata) carry a completion time for ordering.
+    assert all(item["finished_at"] is not None for item in tasks if item["status"] == "done")
 
 
 def test_scan_missing_library_returns_404(tmp_path: Path) -> None:

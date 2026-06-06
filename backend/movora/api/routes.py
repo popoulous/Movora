@@ -34,6 +34,7 @@ from movora.api.schemas import (
     SettingsRead,
     SettingsUpdate,
     SubtitleTrackRead,
+    TaskCancel,
     TaskRead,
     WatchStateUpdate,
 )
@@ -613,6 +614,31 @@ def list_tasks(session: SessionDep) -> list[TaskRead]:
     return [_task_read(task) for task in tasks]
 
 
+@router.post("/tasks/cancel")
+def cancel_tasks(payload: TaskCancel, session: SessionDep, request: Request) -> dict[str, int]:
+    """Cancel queued/running tasks: kill any running transcode and drop the rows."""
+    tasks = list(
+        session.scalars(
+            select(Task).where(
+                Task.id.in_(payload.ids),
+                Task.status.in_([JobStatus.PENDING, JobStatus.RUNNING]),
+            )
+        )
+    )
+    # Read the ffmpeg pids BEFORE deleting the rows so the worker sees the task gone and
+    # won't start an encoder-fallback retry (the delete_library cancellation pattern).
+    media_file_ids = {task.media_file_id for task in tasks if task.media_file_id is not None}
+    pids = transcode_pids(session, media_file_ids)
+    for task in tasks:
+        session.delete(task)
+    session.commit()
+    cancel_transcodes(media_file_ids, pids)
+    normalized_dir = _normalized_dir(request)
+    for media_file_id in media_file_ids:
+        _unlink_quiet(normalized_dir / f"{media_file_id}.part.mp4")
+    return {"cancelled": len(tasks)}
+
+
 def _task_read(task: Task) -> TaskRead:
     media_file = task.media_file
     if media_file is not None:  # per-file task (NORMALIZE): full series/season/episode
@@ -627,6 +653,7 @@ def _task_read(task: Task) -> TaskRead:
             progress=task.progress,
             eta_seconds=task.eta_seconds,
             message=task.message,
+            finished_at=task.finished_at,
             library_id=library.id,
             library_name=library.name,
             library_kind=library.kind.value,
@@ -645,6 +672,7 @@ def _task_read(task: Task) -> TaskRead:
         progress=task.progress,
         eta_seconds=task.eta_seconds,
         message=task.message,
+        finished_at=task.finished_at,
         library_id=lib.id if lib is not None else None,
         library_name=lib.name if lib is not None else None,
         library_kind=lib.kind.value if lib is not None else None,

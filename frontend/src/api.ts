@@ -164,6 +164,7 @@ export interface Task {
   progress: number;
   eta_seconds: number | null;
   message: string | null;
+  finished_at: string | null;
   library_id: number | null;
   library_name: string | null;
   library_kind: string | null;
@@ -233,6 +234,12 @@ export const api = {
   normalizeSeries: (seriesId: number): Promise<void> =>
     fetch(`/api/series/${seriesId}/normalize`, { method: "POST" }).then(throwIfNotOk),
   listTasks: (): Promise<Task[]> => fetch("/api/tasks").then(asJson<Task[]>),
+  cancelTasks: (ids: number[]): Promise<void> =>
+    fetch("/api/tasks/cancel", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    }).then(throwIfNotOk),
   normalizeAll: (): Promise<void> =>
     fetch("/api/normalize/all", { method: "POST" }).then(throwIfNotOk),
   getSettings: (): Promise<ServerSettings> =>

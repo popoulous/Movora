@@ -191,6 +191,7 @@ class TaskRead(BaseModel):
     progress: int
     eta_seconds: int | None = None
     message: str | None = None
+    finished_at: datetime | None = None  # completion time, for "most recent" ordering
     library_id: int | None = None
     library_name: str | None = None
     library_kind: str | None = None  # "movie" has no season/episode levels in the tree
@@ -200,6 +201,10 @@ class TaskRead(BaseModel):
     episode_id: int | None = None
     episode_number: int | None = None
     episode_title: str | None = None
+
+
+class TaskCancel(BaseModel):
+    ids: list[int]
 
 
 class FsEntry(BaseModel):
