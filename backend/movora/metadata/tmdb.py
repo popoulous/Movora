@@ -29,17 +29,26 @@ def _httpx_transport(url: str, params: dict[str, str | int]) -> dict[str, Any]:
 
 class TmdbProvider:
     def __init__(
-        self, media_type: str, api_key: str | None, transport: Transport | None = None
+        self,
+        media_type: str,
+        api_key: str | None,
+        language: str = "en-US",
+        transport: Transport | None = None,
     ) -> None:
         self._media_type = media_type  # "movie" | "tv"
         self._api_key = api_key
+        self._language = language  # matches localised titles (e.g. hu-HU) + result language
         self._transport = transport or _httpx_transport
         self._genres: dict[int, str] | None = None
 
     def fetch(self, parsed: ParsedFields) -> SeriesMetadata | None:
         if not self._api_key or not parsed.title:
             return None
-        params: dict[str, str | int] = {"api_key": self._api_key, "query": parsed.title}
+        params: dict[str, str | int] = {
+            "api_key": self._api_key,
+            "query": parsed.title,
+            "language": self._language,
+        }
         if parsed.year is not None:
             key = "year" if self._media_type == "movie" else "first_air_date_year"
             params[key] = parsed.year
@@ -49,7 +58,10 @@ class TmdbProvider:
 
     def _genre_map(self) -> dict[int, str]:
         if self._genres is None:
-            params: dict[str, str | int] = {"api_key": self._api_key or ""}
+            params: dict[str, str | int] = {
+                "api_key": self._api_key or "",
+                "language": self._language,
+            }
             payload = self._transport(f"{TMDB_URL}/genre/{self._media_type}/list", params)
             self._genres = {g["id"]: g["name"] for g in payload.get("genres") or []}
         return self._genres

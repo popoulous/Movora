@@ -164,6 +164,26 @@ def test_rescan_reconciles_seasons_and_keeps_media_file_id(tmp_path: Path) -> No
         assert {season.number for season in session.scalars(select(Season))} == {1, 2}
 
 
+def test_scan_movie_title_cleaned_by_guessit(tmp_path: Path) -> None:
+    # Film/series scene folders ("Title.Year.Extended.2160p…") clean better with guessit
+    # than the anime heuristic, which would leave "Gladiator.2000.Extended".
+    folder = tmp_path / "Gladiator.2000.Extended.2160p.UHD.BluRay.x265-GROUP"
+    folder.mkdir()
+    (folder / "Gladiator.2000.Extended.2160p.mkv").write_bytes(b"")
+
+    engine = create_db_engine(":memory:")
+    init_db(engine)
+    factory = create_session_factory(engine)
+    with factory() as session:
+        library = Library(path=str(tmp_path), name="Films", kind=LibraryKind.MOVIE)
+        session.add(library)
+        session.commit()
+
+        scan_library(session, library, title_prober=lambda path: None)
+        titles = {series.title for series in session.scalars(select(Series))}
+        assert titles == {"Gladiator"}
+
+
 def test_scan_sets_episode_titles_from_prober(tmp_path: Path) -> None:
     (tmp_path / "[Group] Show - 01.mkv").write_bytes(b"")
     engine = create_db_engine(":memory:")

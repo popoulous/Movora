@@ -13,9 +13,10 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from movora.db.models import Episode, Library, MediaFile, Season, Series
+from movora.db.models import Episode, Library, LibraryKind, MediaFile, Season, Series
 from movora.domain import ParsedFields
 from movora.ffprobe import probe_container_title
+from movora.interfaces import ParserStrategy
 from movora.parsing import parser_for
 
 MEDIA_EXTENSIONS = {".mkv", ".mp4", ".m4v", ".avi", ".webm"}
@@ -60,7 +61,7 @@ def scan_library(
         if on_progress is not None:
             on_progress(index, total)
         fields = parser.parse(path.name)
-        title = _series_title(path, root, fields)
+        title = _series_title(path, root, parser, fields, library.kind)
         series = _get_or_create_series(session, library, title)
         season_num = _season_number(path, root, fields, season_index)
         season = _get_or_create_season(session, series, season_num)
@@ -117,11 +118,20 @@ def _is_extra(path: Path, root: Path) -> bool:
     return False
 
 
-def _series_title(path: Path, root: Path, fields: ParsedFields) -> str:
-    """Group by the top-level folder under the library (cleaned); else parse the file."""
+def _series_title(
+    path: Path, root: Path, parser: ParserStrategy, fields: ParsedFields, kind: LibraryKind
+) -> str:
+    """Group by the top-level folder under the library; else parse the file name.
+
+    Anime release folders ("Title (BD…)") clean well with the heuristic; film/series
+    use scene names ("Gladiator.2000.Extended.2160p…"), so guessit cleans those better.
+    """
     relative = path.relative_to(root)
     if len(relative.parts) > 1:
-        return _clean_folder_title(relative.parts[0])
+        folder = relative.parts[0]
+        if kind is LibraryKind.ANIME:
+            return _clean_folder_title(folder)
+        return parser.parse(folder).title or _clean_folder_title(folder)
     return fields.title or path.stem
 
 
