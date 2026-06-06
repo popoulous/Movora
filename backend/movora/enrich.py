@@ -11,7 +11,7 @@ from collections.abc import Callable
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from movora.db.models import Library, Series
+from movora.db.models import Library, Recommendation, Series
 from movora.domain import ParsedFields
 from movora.interfaces import MetadataProvider
 
@@ -53,6 +53,17 @@ def enrich_library(
         series.format = metadata.format
         series.episode_duration = metadata.episode_duration
         series.end_year = metadata.end_year
+        series.recommendations.clear()  # delete-orphan removes the old ones on flush
+        series.recommendations.extend(
+            Recommendation(
+                external_id=rec.external_id,
+                title=rec.title,
+                cover_image_url=rec.cover_image_url,
+                score=rec.score,
+                rank=rank,
+            )
+            for rank, rec in enumerate(metadata.recommendations)
+        )
         updated += 1
     session.commit()
     return updated

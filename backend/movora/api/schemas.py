@@ -54,6 +54,13 @@ class SeriesRead(BaseModel):
     cover_image_url: str | None = None
 
 
+class RecommendationRead(BaseModel):
+    title: str
+    cover_image_url: str | None = None
+    score: int | None = None  # 0-100
+    target_series_id: int | None = None  # the matching in-library series, if we have it
+
+
 class SeriesDetail(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -71,6 +78,7 @@ class SeriesDetail(BaseModel):
     description: str | None = None
     genres: str | None = None
     seasons: list[SeasonRead]
+    recommendations: list[RecommendationRead] = []
 
 
 class SubtitleTrackRead(BaseModel):

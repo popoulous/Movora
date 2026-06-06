@@ -35,6 +35,16 @@ class SubtitleRendering:
 
 
 @dataclass(frozen=True)
+class Recommendation:
+    """A "you may also like" suggestion from a metadata provider."""
+
+    external_id: str  # provider id of the recommended title
+    title: str
+    cover_image_url: str | None = None
+    score: int | None = None  # 0-100
+
+
+@dataclass(frozen=True)
 class SeriesMetadata:
     """Canonical series metadata resolved from a provider (AniList / TMDB)."""
 
@@ -52,3 +62,4 @@ class SeriesMetadata:
     format: str | None = None  # e.g. TV, MOVIE
     episode_duration: int | None = None  # minutes per episode
     end_year: int | None = None
+    recommendations: tuple[Recommendation, ...] = ()

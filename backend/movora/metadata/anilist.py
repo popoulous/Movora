@@ -11,7 +11,7 @@ from typing import Any
 
 import httpx
 
-from movora.domain import ParsedFields, SeriesMetadata
+from movora.domain import ParsedFields, Recommendation, SeriesMetadata
 
 ANILIST_URL = "https://graphql.anilist.co"
 
@@ -31,6 +31,16 @@ query ($search: String) {
       format
       duration
       endDate { year }
+      recommendations(perPage: 8, sort: RATING_DESC) {
+        nodes {
+          mediaRecommendation {
+            id
+            title { romaji english }
+            coverImage { large }
+            averageScore
+          }
+        }
+      }
     }
   }
 }
@@ -73,7 +83,31 @@ def _to_metadata(media: dict[str, Any], fallback_title: str) -> SeriesMetadata:
         format=media.get("format"),
         episode_duration=media.get("duration"),
         end_year=(media.get("endDate") or {}).get("year"),
+        recommendations=_parse_recommendations(media),
     )
+
+
+def _parse_recommendations(media: dict[str, Any]) -> tuple[Recommendation, ...]:
+    nodes = (media.get("recommendations") or {}).get("nodes") or []
+    recommendations = []
+    for node in nodes:
+        rec = node.get("mediaRecommendation") or {}
+        if rec.get("id") is None:
+            continue  # AniList returns a null node when the suggestion was removed
+        names = rec.get("title") or {}
+        cover = rec.get("coverImage") or {}
+        title = names.get("english") or names.get("romaji")
+        if not title:
+            continue
+        recommendations.append(
+            Recommendation(
+                external_id=str(rec["id"]),
+                title=title,
+                cover_image_url=cover.get("large"),
+                score=rec.get("averageScore"),
+            )
+        )
+    return tuple(recommendations)
 
 
 class AniListProvider:

@@ -68,6 +68,25 @@ class Series(Base):
     seasons: Mapped[list[Season]] = relationship(
         back_populates="series", cascade="all, delete-orphan"
     )
+    recommendations: Mapped[list[Recommendation]] = relationship(
+        back_populates="series", cascade="all, delete-orphan"
+    )
+
+
+class Recommendation(Base):
+    """A "you may also like" suggestion from the metadata provider (cached per series)."""
+
+    __tablename__ = "recommendation"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    series_id: Mapped[int] = mapped_column(ForeignKey("series.id"))
+    external_id: Mapped[str]  # provider id of the recommended title
+    title: Mapped[str]
+    cover_image_url: Mapped[str | None] = mapped_column(default=None)
+    score: Mapped[int | None] = mapped_column(default=None)
+    rank: Mapped[int] = mapped_column(default=0)
+
+    series: Mapped[Series] = relationship(back_populates="recommendations")
 
 
 class Season(Base):

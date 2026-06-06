@@ -21,6 +21,8 @@ from movora.api.schemas import (
     LibraryRead,
     LibraryUpdate,
     PlaybackInfo,
+    RecommendationRead,
+    SeasonRead,
     SeriesDetail,
     SeriesRead,
     SettingsRead,
@@ -155,15 +157,58 @@ def list_series(library_id: int, session: SessionDep) -> list[Series]:
 
 
 @router.get("/series/{series_id}", response_model=SeriesDetail)
-def series_detail(series_id: int, session: SessionDep) -> Series:
+def series_detail(series_id: int, session: SessionDep) -> SeriesDetail:
     series = session.scalar(
         select(Series)
         .where(Series.id == series_id)
-        .options(selectinload(Series.seasons).selectinload(Season.episodes))
+        .options(
+            selectinload(Series.seasons).selectinload(Season.episodes),
+            selectinload(Series.recommendations),
+        )
     )
     if series is None:
         raise HTTPException(status_code=404, detail="series not found")
-    return series
+    return _series_detail(session, series)
+
+
+def _series_detail(session: Session, series: Series) -> SeriesDetail:
+    return SeriesDetail(
+        id=series.id,
+        title=series.title,
+        display_title=series.display_title,
+        native_title=series.native_title,
+        year=series.year,
+        end_year=series.end_year,
+        format=series.format,
+        episode_duration=series.episode_duration,
+        score=series.score,
+        cover_image_url=series.cover_image_url,
+        banner_image_url=series.banner_image_url,
+        description=series.description,
+        genres=series.genres,
+        seasons=[SeasonRead.model_validate(season) for season in series.seasons],
+        recommendations=_recommendations(session, series),
+    )
+
+
+def _recommendations(session: Session, series: Series) -> list[RecommendationRead]:
+    recs = sorted(series.recommendations, key=lambda rec: rec.rank)
+    external_ids = [rec.external_id for rec in recs]
+    matches: dict[str, int] = {}
+    if external_ids:
+        rows = session.execute(
+            select(Series.external_id, Series.id).where(Series.external_id.in_(external_ids))
+        ).all()
+        matches = {external_id: sid for external_id, sid in rows if external_id is not None}
+    return [
+        RecommendationRead(
+            title=rec.title,
+            cover_image_url=rec.cover_image_url,
+            score=rec.score,
+            target_series_id=matches.get(rec.external_id),
+        )
+        for rec in recs
+    ]
 
 
 @router.get("/episodes/{episode_id}/playback", response_model=PlaybackInfo)
