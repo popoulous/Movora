@@ -13,6 +13,7 @@ to a data dir outside the library, is ffprobe-verified, and recorded on the file
 
 from __future__ import annotations
 
+import contextlib
 import shutil
 import subprocess
 import threading
@@ -48,10 +49,22 @@ _active: tuple[int, subprocess.Popen[str]] | None = None
 
 
 def cancel_media_files(media_file_ids: set[int]) -> None:
-    """Terminate the running transcode if it is for one of these media files."""
+    """Terminate the running transcode if it is for one of these media files.
+
+    Waits for ffmpeg to exit so it releases the output file handle before the
+    caller deletes it (Windows locks files held by a live process).
+    """
     with _active_lock:
-        if _active is not None and _active[0] in media_file_ids:
-            _active[1].terminate()
+        proc = _active[1] if _active is not None and _active[0] in media_file_ids else None
+    if proc is None:
+        return
+    proc.terminate()
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            proc.wait(timeout=5)
 
 
 # --- normalization primitive -------------------------------------------------

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import shutil
 from pathlib import Path
 from urllib.parse import quote
@@ -110,11 +111,17 @@ def delete_library(library_id: int, session: SessionDep, request: Request) -> No
 
 def _remove_generated(media_file: MediaFile, request: Request) -> None:
     normalized_dir = _normalized_dir(request)
-    (normalized_dir / f"{media_file.id}.mp4").unlink(missing_ok=True)
-    (normalized_dir / f"{media_file.id}.part.mp4").unlink(missing_ok=True)
+    _unlink_quiet(normalized_dir / f"{media_file.id}.mp4")
+    _unlink_quiet(normalized_dir / f"{media_file.id}.part.mp4")
     assets = _assets_dir(request, media_file.id)
     if assets.is_dir():
         shutil.rmtree(assets, ignore_errors=True)
+
+
+def _unlink_quiet(path: Path) -> None:
+    # May still be held by a terminating process; it cleans up its own partial.
+    with contextlib.suppress(OSError):
+        path.unlink(missing_ok=True)
 
 
 @router.post("/libraries/{library_id}/scan", status_code=202)
