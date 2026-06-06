@@ -16,7 +16,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useActivity } from "../ActivityContext";
 import { api, type LibraryKind, type SeriesSummary, type WatchStatus } from "../api";
 import { LibrarySettings } from "../components/LibrarySettings";
-import { SeriesCard, SeriesRow } from "../components/SeriesCard";
+import { ContinueCard, SeriesCard, SeriesRow } from "../components/SeriesCard";
 import { useLibraries } from "../LibrariesContext";
 
 type Filter = "all" | WatchStatus;
@@ -154,15 +154,6 @@ export function LibraryPage(): JSX.Element {
       )}
       {busy !== null && <p className="mt-3 text-sm text-violet-300">{busy}</p>}
 
-      {/* Continue watching — resume the most recently watched series in this library. */}
-      {continueList.length > 0 && (
-        <div className="mt-5">
-          <Section title={t("library.continueWatching")}>
-            <Grid items={continueList} view="grid" onOpen={resume} t={t} />
-          </Section>
-        </div>
-      )}
-
       {/* Toolbar: search + filters + view toggle */}
       {series.length > 0 && (
         <div className="mt-6 flex flex-wrap items-center gap-3">
@@ -198,6 +189,15 @@ export function LibraryPage(): JSX.Element {
         <p className="mt-6 text-sm text-neutral-500">{t("library.noSeries")}</p>
       ) : browsing ? (
         <div className="mt-6 space-y-8">
+          {continueList.length > 0 && (
+            <Section title={t("library.continueWatching")}>
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+                {continueList.map((s) => (
+                  <ContinueCard key={s.id} series={s} onClick={() => resume(s)} t={t} />
+                ))}
+              </div>
+            </Section>
+          )}
           {series.length > 12 && (
             <Section title={t("library.recentlyAdded")}>
               <Grid items={recentlyAdded} view="grid" onOpen={open} t={t} />

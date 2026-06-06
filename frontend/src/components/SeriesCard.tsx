@@ -1,5 +1,12 @@
 import { type TFunction } from "i18next";
-import { Check, Star } from "lucide-react";
+import { Check, Play, Star } from "lucide-react";
+
+function fmtTime(seconds: number): string {
+  const total = Math.floor(seconds);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
 
 // The minimal shape both SeriesSummary and HomeSeries satisfy.
 export interface CardSeries {
@@ -101,6 +108,51 @@ export function SeriesCard({
       </div>
       <div className="mt-2 truncate text-sm font-medium">{cardTitle(series)}</div>
       {series.year !== null && <div className="text-xs text-neutral-500">{series.year}</div>}
+    </button>
+  );
+}
+
+// A "continue watching" card: the episode to resume + progress within that episode.
+export interface ContinueSeries extends CardSeries {
+  continue_episode_number: number | null;
+  continue_percent: number;
+  continue_position_seconds: number;
+}
+
+export function ContinueCard({
+  series,
+  onClick,
+  t,
+  className = "",
+}: {
+  series: ContinueSeries;
+  onClick: () => void;
+  t: TFunction;
+  className?: string;
+}): JSX.Element {
+  return (
+    <button onClick={onClick} className={`group text-left ${className}`}>
+      <div className="relative aspect-[2/3] overflow-hidden rounded-xl bg-white/5 ring-1 ring-white/10 transition group-hover:ring-violet-400/40">
+        <Poster series={series} />
+        <div className="absolute inset-0 flex items-center justify-center bg-black/25 opacity-0 transition group-hover:opacity-100">
+          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white/15 ring-1 ring-white/25 backdrop-blur">
+            <Play className="h-5 w-5 fill-white text-white" />
+          </span>
+        </div>
+        <div className="absolute inset-x-0 bottom-0 h-1.5 bg-black/50">
+          <div
+            className="h-full bg-gradient-to-r from-[#7A4DFF] to-[#EC4899]"
+            style={{ width: `${series.continue_percent}%` }}
+          />
+        </div>
+      </div>
+      <div className="mt-2 truncate text-sm font-medium">{cardTitle(series)}</div>
+      <div className="truncate text-xs text-violet-300">
+        {series.continue_episode_number !== null &&
+          t("series.episode", { number: series.continue_episode_number })}
+        {series.continue_position_seconds > 0 &&
+          ` · ${fmtTime(series.continue_position_seconds)}`}
+      </div>
     </button>
   );
 }

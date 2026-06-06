@@ -222,6 +222,13 @@ def _series_summary(series: Series, states: dict[int, WatchState]) -> SeriesRead
         status = "watching"
     times = [states[ep.id].updated_at for ep in ordered if ep.id in states]
     media_files = [mf for ep in ordered for mf in ep.media_files]
+    continue_ep = next((ep for ep in ordered if ep.id not in watched_ids), None)
+    position = (
+        states[continue_ep.id].position_seconds
+        if continue_ep is not None and continue_ep.id in states
+        else 0.0
+    )
+    ep_seconds = (series.episode_duration or 0) * 60  # metadata gives an avg episode length
     return SeriesRead(
         id=series.id,
         title=series.title,
@@ -234,7 +241,10 @@ def _series_summary(series: Series, states: dict[int, WatchState]) -> SeriesRead
         watch_status=status,
         watch_percent=round(seen * 100 / total) if total else 0,
         normalized=len(media_files) > 0 and all(mf.is_normalized for mf in media_files),
-        continue_episode_id=next((ep.id for ep in ordered if ep.id not in watched_ids), None),
+        continue_episode_id=continue_ep.id if continue_ep is not None else None,
+        continue_episode_number=continue_ep.number if continue_ep is not None else None,
+        continue_percent=min(100, round(position * 100 / ep_seconds)) if ep_seconds > 0 else 0,
+        continue_position_seconds=position,
         last_watched_at=max(times) if times else None,
     )
 

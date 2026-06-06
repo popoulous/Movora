@@ -20,6 +20,9 @@ export interface SeriesSummary {
   watch_percent: number;
   normalized: boolean;
   continue_episode_id: number | null;
+  continue_episode_number: number | null;
+  continue_percent: number;
+  continue_position_seconds: number;
   last_watched_at: string | null;
 }
 

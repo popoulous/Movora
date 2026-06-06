@@ -64,6 +64,9 @@ class SeriesRead(BaseModel):
     watch_percent: int = 0
     normalized: bool = False  # every episode is Direct-Play ready (optimized)
     continue_episode_id: int | None = None  # first unwatched episode, to resume from
+    continue_episode_number: int | None = None  # its number, for the continue card
+    continue_percent: int = 0  # progress *within* that episode (0-100)
+    continue_position_seconds: float = 0.0  # resume position in that episode
     last_watched_at: datetime | None = None  # for ordering the continue-watching row
 
 
