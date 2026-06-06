@@ -21,6 +21,7 @@ export function PlayerPage(): JSX.Element {
   const id = Number(episodeId);
   const navigate = useNavigate();
   const videoRef = useRef<HTMLVideoElement>(null);
+  const lastSaved = useRef(0); // last position (s) we sent, to throttle progress writes
   const [playback, setPlayback] = useState<PlaybackInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [trackId, setTrackId] = useState<string | null>(null);
@@ -31,11 +32,29 @@ export function PlayerPage(): JSX.Element {
     setError(null);
     setTrackId(null);
     setNormalizing(false);
+    lastSaved.current = 0;
     api
       .getPlayback(id)
       .then(setPlayback)
       .catch((reason: unknown) => setError(String(reason)));
   }, [id]);
+
+  // Record watch progress: throttled position on play, watched on end, resume on load.
+  const saveProgress = (): void => {
+    const video = videoRef.current;
+    if (video === null || video.currentTime - lastSaved.current < 10) return;
+    lastSaved.current = video.currentTime;
+    void api.recordWatch(id, { position_seconds: video.currentTime }).catch(() => undefined);
+  };
+  const markWatched = (): void => {
+    void api.recordWatch(id, { watched: true }).catch(() => undefined);
+  };
+  const resume = (): void => {
+    const video = videoRef.current;
+    if (video !== null && playback !== null && playback.resume_position > 0) {
+      video.currentTime = playback.resume_position;
+    }
+  };
 
   const normalize = (): void => {
     setNormalizing(true);
@@ -131,6 +150,9 @@ export function PlayerPage(): JSX.Element {
           src={playback.stream_url}
           controls
           autoPlay
+          onLoadedMetadata={resume}
+          onTimeUpdate={saveProgress}
+          onEnded={markWatched}
           className="aspect-video w-full"
         >
           {vttTrack !== null && (
