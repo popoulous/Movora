@@ -101,8 +101,8 @@ export function Layout(): JSX.Element {
   return (
     <LibrariesContext.Provider value={{ libraries, reload: loadLibraries }}>
       <ActivityContext.Provider value={{ tasks, running, refreshSoon }}>
-        <div className="flex min-h-screen">
-        <aside className="flex w-[280px] shrink-0 flex-col border-r border-white/5 bg-[#080a12]/[0.72] px-5 py-8 backdrop-blur-2xl">
+        <div className="flex h-screen overflow-hidden">
+        <aside className="flex w-[280px] shrink-0 flex-col overflow-y-auto border-r border-white/5 bg-[#080a12]/[0.72] px-5 py-8 backdrop-blur-2xl">
           <Link to="/" className="mb-8 flex items-center gap-2.5 px-1">
             <img
               src="/movora_logo.png"
