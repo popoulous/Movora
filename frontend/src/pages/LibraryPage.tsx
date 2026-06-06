@@ -3,11 +3,9 @@ import {
   LayoutGrid,
   List,
   type LucideIcon,
-  Play,
   Search,
   Settings,
   Sparkles,
-  Star,
   Tv,
 } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
@@ -81,13 +79,15 @@ export function LibraryPage(): JSX.Element {
       .catch(fail);
   };
 
-  const featured = useMemo(() => {
-    if (series.length === 0) return null;
-    return (
-      series.find((s) => s.watch_status === "watching") ??
-      [...series].sort((a, b) => (b.score ?? 0) - (a.score ?? 0))[0]
-    );
-  }, [series]);
+  // The most recently watched series in this library, to resume from the top.
+  const continueList = useMemo(
+    () =>
+      [...series]
+        .filter((s) => s.watch_status === "watching")
+        .sort((a, b) => (b.last_watched_at ?? "").localeCompare(a.last_watched_at ?? ""))
+        .slice(0, 12),
+    [series],
+  );
 
   const query = search.trim().toLowerCase();
   const browsing = query === "" && filter === "all";
@@ -96,11 +96,13 @@ export function LibraryPage(): JSX.Element {
     const matchesFilter = filter === "all" || s.watch_status === filter;
     return matchesSearch && matchesFilter;
   });
-  const watching = series.filter((s) => s.watch_status === "watching");
   const recentlyAdded = [...series].sort((a, b) => b.id - a.id).slice(0, 12);
 
   const open = (s: SeriesSummary): void => {
     navigate(`/series/${s.id}`);
+  };
+  const resume = (s: SeriesSummary): void => {
+    navigate(s.continue_episode_id !== null ? `/watch/${s.continue_episode_id}` : `/series/${s.id}`);
   };
 
   return (
@@ -152,8 +154,14 @@ export function LibraryPage(): JSX.Element {
       )}
       {busy !== null && <p className="mt-3 text-sm text-violet-300">{busy}</p>}
 
-      {/* Hero */}
-      {featured !== null && <Hero featured={featured} onPlay={() => open(featured)} t={t} />}
+      {/* Continue watching — resume the most recently watched series in this library. */}
+      {continueList.length > 0 && (
+        <div className="mt-5">
+          <Section title={t("library.continueWatching")}>
+            <Grid items={continueList} view="grid" onOpen={resume} t={t} />
+          </Section>
+        </div>
+      )}
 
       {/* Toolbar: search + filters + view toggle */}
       {series.length > 0 && (
@@ -190,11 +198,6 @@ export function LibraryPage(): JSX.Element {
         <p className="mt-6 text-sm text-neutral-500">{t("library.noSeries")}</p>
       ) : browsing ? (
         <div className="mt-6 space-y-8">
-          {watching.length > 0 && (
-            <Section title={t("library.continueWatching")}>
-              <Grid items={watching} view="grid" onOpen={open} t={t} />
-            </Section>
-          )}
           {series.length > 12 && (
             <Section title={t("library.recentlyAdded")}>
               <Grid items={recentlyAdded} view="grid" onOpen={open} t={t} />
@@ -306,83 +309,6 @@ function Section({ title, children }: { title: string; children: ReactNode }): J
       </h2>
       {children}
     </section>
-  );
-}
-
-function Hero({
-  featured,
-  onPlay,
-  t,
-}: {
-  featured: SeriesSummary;
-  onPlay: () => void;
-  t: TFunction;
-}): JSX.Element {
-  const title = seriesTitle(featured);
-  const score = featured.score !== null ? (featured.score / 10).toFixed(1) : null;
-  return (
-    <div className="relative mt-5 overflow-hidden rounded-3xl ring-1 ring-white/10">
-      <div className="absolute inset-0">
-        {featured.banner_image_url !== null ? (
-          <img
-            src={featured.banner_image_url}
-            alt=""
-            className="h-full w-full scale-105 object-cover opacity-40 blur-[2px]"
-          />
-        ) : featured.cover_image_url !== null ? (
-          <img
-            src={featured.cover_image_url}
-            alt=""
-            className="h-full w-full scale-110 object-cover opacity-30 blur-xl"
-          />
-        ) : (
-          <div className="h-full w-full bg-gradient-to-br from-violet-900/50 to-fuchsia-900/30" />
-        )}
-        <div className="absolute inset-0 bg-gradient-to-r from-[#05060B] via-[#05060B]/80 to-[#05060B]/30" />
-      </div>
-
-      <div className="relative flex items-end gap-5 p-6 sm:p-8">
-        {featured.cover_image_url !== null && (
-          <div className="hidden h-44 w-28 shrink-0 overflow-hidden rounded-xl shadow-2xl ring-1 ring-white/15 sm:block">
-            <img src={featured.cover_image_url} alt="" className="h-full w-full object-cover" />
-          </div>
-        )}
-        <div className="min-w-0">
-          {featured.watch_status === "watching" && (
-            <div className="mb-1.5 text-xs font-semibold tracking-wide text-violet-300 uppercase">
-              {t("library.continueWatching")}
-            </div>
-          )}
-          <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">{title}</h2>
-          <div className="mt-2 flex items-center gap-3 text-sm text-neutral-300">
-            {score !== null && (
-              <span className="inline-flex items-center gap-1">
-                <Star className="h-4 w-4 fill-amber-400 text-amber-400" /> {score}
-              </span>
-            )}
-            {featured.year !== null && <span>{featured.year}</span>}
-            <span>{t("library.episodesShort", { count: featured.episode_count })}</span>
-          </div>
-          {featured.watch_percent > 0 && (
-            <div className="mt-3 h-1.5 w-56 max-w-full overflow-hidden rounded-full bg-white/10">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-[#7A4DFF] to-[#EC4899]"
-                style={{ width: `${featured.watch_percent}%` }}
-              />
-            </div>
-          )}
-          <button
-            onClick={onPlay}
-            className="mt-5 inline-flex items-center gap-2 rounded-2xl bg-gradient-to-br from-[#7A4DFF] via-[#A855F7] to-[#EC4899] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_40px_rgba(168,85,247,0.4)] transition hover:brightness-110"
-          >
-            <Play className="h-4 w-4 fill-current" />
-            {featured.watch_status === "watching"
-              ? t("series.continueWatching")
-              : t("series.play")}
-          </button>
-        </div>
-      </div>
-    </div>
   );
 }
 

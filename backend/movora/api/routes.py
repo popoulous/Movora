@@ -197,29 +197,30 @@ def list_series(library_id: int, session: SessionDep) -> list[SeriesRead]:
         )
     )
     user = current_user(session)
-    watched = set(
-        session.scalars(
-            select(WatchState.episode_id).where(
-                WatchState.user_id == user.id, WatchState.watched.is_(True)
-            )
-        )
-    )
-    return [_series_summary(series, watched) for series in series_list]
+    states = {
+        state.episode_id: state
+        for state in session.scalars(select(WatchState).where(WatchState.user_id == user.id))
+    }
+    return [_series_summary(series, states) for series in series_list]
 
 
-def _series_summary(series: Series, watched: set[int]) -> SeriesRead:
-    episode_ids = [episode.id for season in series.seasons for episode in season.episodes]
-    total = len(episode_ids)
-    seen = sum(1 for episode_id in episode_ids if episode_id in watched)
+def _series_summary(series: Series, states: dict[int, WatchState]) -> SeriesRead:
+    ordered = [
+        episode
+        for season in sorted(series.seasons, key=lambda s: (s.number == 0, s.number))
+        for episode in sorted(season.episodes, key=lambda e: e.number)
+    ]
+    watched_ids = {ep.id for ep in ordered if ep.id in states and states[ep.id].watched}
+    total = len(ordered)
+    seen = len(watched_ids)
     if seen == 0:
         status = "not_started"
     elif seen >= total:
         status = "completed"
     else:
         status = "watching"
-    media_files = [
-        mf for season in series.seasons for episode in season.episodes for mf in episode.media_files
-    ]
+    times = [states[ep.id].updated_at for ep in ordered if ep.id in states]
+    media_files = [mf for ep in ordered for mf in ep.media_files]
     return SeriesRead(
         id=series.id,
         title=series.title,
@@ -232,6 +233,8 @@ def _series_summary(series: Series, watched: set[int]) -> SeriesRead:
         watch_status=status,
         watch_percent=round(seen * 100 / total) if total else 0,
         normalized=len(media_files) > 0 and all(mf.is_normalized for mf in media_files),
+        continue_episode_id=next((ep.id for ep in ordered if ep.id not in watched_ids), None),
+        last_watched_at=max(times) if times else None,
     )
 
 

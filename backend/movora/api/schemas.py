@@ -63,6 +63,8 @@ class SeriesRead(BaseModel):
     watch_status: str = "not_started"  # not_started | watching | completed
     watch_percent: int = 0
     normalized: bool = False  # every episode is Direct-Play ready (optimized)
+    continue_episode_id: int | None = None  # first unwatched episode, to resume from
+    last_watched_at: datetime | None = None  # for ordering the continue-watching row
 
 
 class RecommendationRead(BaseModel):

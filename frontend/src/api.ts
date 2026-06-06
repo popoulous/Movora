@@ -19,6 +19,8 @@ export interface SeriesSummary {
   watch_status: WatchStatus;
   watch_percent: number;
   normalized: boolean;
+  continue_episode_id: number | null;
+  last_watched_at: string | null;
 }
 
 export interface Episode {
