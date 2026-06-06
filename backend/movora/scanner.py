@@ -58,19 +58,49 @@ def scan_library(
     for index, path in enumerate(candidates, start=1):
         if on_progress is not None:
             on_progress(index, total)
-        if _media_file_exists(session, str(path)):
-            continue
         fields = parser.parse(path.name)
         series = _get_or_create_series(session, library, _series_title(path, root, fields))
         season = _get_or_create_season(
             session, series, _season_number(path, root, fields, season_index)
         )
-        episode = _get_or_create_episode(session, season, fields.episode or 1, prober(path))
+        number = fields.episode or 1
+        existing = session.scalar(select(MediaFile).where(MediaFile.path == str(path)))
+        if existing is not None:
+            # Re-scan reconciles: move the file if its season/episode mapping changed,
+            # keeping the media_file id so the normalized output stays linked.
+            episode = _get_or_create_episode(session, season, number, existing.episode.title)
+            if existing.episode_id != episode.id:
+                existing.episode = episode
+            continue
+        episode = _get_or_create_episode(session, season, number, prober(path))
         media_file = MediaFile(episode=episode, path=str(path))
         session.add(media_file)
         new_files.append(media_file)
+    session.flush()
+    _prune_empty(session, library.id)
     session.commit()
     return [media_file.id for media_file in new_files]
+
+
+def _prune_empty(session: Session, library_id: int) -> None:
+    """Delete episodes/seasons/series left empty after a reconcile (cascade handles children)."""
+    for episode in session.scalars(
+        select(Episode)
+        .join(Season)
+        .join(Series)
+        .where(Series.library_id == library_id, ~Episode.media_files.any())
+    ):
+        session.delete(episode)
+    session.flush()
+    for season in session.scalars(
+        select(Season).join(Series).where(Series.library_id == library_id, ~Season.episodes.any())
+    ):
+        session.delete(season)
+    session.flush()
+    for series in session.scalars(
+        select(Series).where(Series.library_id == library_id, ~Series.seasons.any())
+    ):
+        session.delete(series)
 
 
 def _is_extra(path: Path, root: Path) -> bool:
@@ -153,10 +183,6 @@ def _clean_folder_title(folder: str) -> str:
     name = _RELEASE_TAIL.sub("", name)  # drop a trailing release/format tail
     name = re.sub(r"\s+", " ", name).strip(" -_.")
     return name or folder
-
-
-def _media_file_exists(session: Session, path: str) -> bool:
-    return session.scalar(select(MediaFile).where(MediaFile.path == path)) is not None
 
 
 def _get_or_create_series(session: Session, library: Library, title: str) -> Series:

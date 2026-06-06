@@ -122,6 +122,40 @@ def test_scan_numbers_named_seasons_with_specials_last(tmp_path: Path) -> None:
         assert season_of["Railgun OVA"] == 4  # specials sort last
 
 
+def test_rescan_reconciles_seasons_and_keeps_media_file_id(tmp_path: Path) -> None:
+    show = tmp_path / "Show"
+    (show / "Railgun").mkdir(parents=True)
+    (show / "Railgun" / "[g] Railgun - 01.mkv").write_bytes(b"")
+    (show / "Railgun S").mkdir()
+    (show / "Railgun S" / "[g] Railgun S - 01.mkv").write_bytes(b"")
+
+    engine = create_db_engine(":memory:")
+    init_db(engine)
+    factory = create_session_factory(engine)
+    with factory() as session:
+        library = Library(path=str(tmp_path), name="A", kind=LibraryKind.ANIME)
+        session.add(library)
+        session.commit()
+
+        scan_library(session, library, title_prober=lambda path: None)
+        s_file = session.scalar(select(MediaFile).where(MediaFile.path.like("%Railgun S%")))
+        assert s_file is not None and s_file.episode.season.number == 2
+        original_id = s_file.id
+
+        # Simulate the old buggy mapping: mis-place the season-2 file into season 1.
+        season_one = session.scalar(select(Season).where(Season.number == 1))
+        assert season_one is not None
+        s_file.episode = season_one.episodes[0]
+        session.commit()
+
+        # A plain re-scan now reconciles it back, keeping the same media_file id.
+        scan_library(session, library, title_prober=lambda path: None)
+        fixed = session.get(MediaFile, original_id)
+        assert fixed is not None  # same id -> normalized output stays linked
+        assert fixed.episode.season.number == 2
+        assert {season.number for season in session.scalars(select(Season))} == {1, 2}
+
+
 def test_scan_sets_episode_titles_from_prober(tmp_path: Path) -> None:
     (tmp_path / "[Group] Show - 01.mkv").write_bytes(b"")
     engine = create_db_engine(":memory:")
