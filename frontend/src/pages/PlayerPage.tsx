@@ -1,3 +1,4 @@
+import fallbackFontUrl from "@fontsource/noto-sans/files/noto-sans-latin-400-normal.woff2?url";
 import { type TFunction } from "i18next";
 import JASSUB from "jassub";
 import { Check, Play, SkipForward, Star } from "lucide-react";
@@ -198,7 +199,16 @@ export function PlayerPage(): JSX.Element {
         if (cancelled || current === null) {
           return;
         }
-        instance = new JASSUB({ video: current, subContent, fonts: playback.fonts });
+        instance = new JASSUB({
+          video: current,
+          subContent,
+          fonts: playback.fonts, // fonts embedded in the source mkv
+          availableFonts: { "noto sans": fallbackFontUrl },
+          defaultFont: "noto sans", // used when the .ass font isn't embedded
+          // The browser local-font query sends an uncloneable callback to the worker
+          // (JASSUB DataCloneError) and isn't needed once we ship a fallback font.
+          queryFonts: false,
+        });
       });
     return () => {
       cancelled = true;
