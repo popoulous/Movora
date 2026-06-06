@@ -32,11 +32,12 @@ from movora.db.models import Episode, Library, MediaFile, Season, Series, Task
 from movora.domain import CapabilityProfile
 from movora.filesystem import list_directories
 from movora.normalize import (
-    cancel_media_files,
+    cancel_transcodes,
     enqueue_metadata,
     enqueue_normalize,
     enqueue_scan,
     start_workers,
+    transcode_pids,
 )
 from movora.streaming import DirectPlayStrategy
 from movora.subtitles import (
@@ -102,11 +103,13 @@ def delete_library(library_id: int, session: SessionDep, request: Request) -> No
             .where(Series.library_id == library_id)
         )
     )
-    cancel_media_files(session, {media_file.id for media_file in media_files})
+    media_file_ids = {media_file.id for media_file in media_files}
+    pids = transcode_pids(session, media_file_ids)  # read pids before deleting the tasks
+    session.delete(library)  # cascade-delete rows FIRST so the worker won't retry
+    session.commit()
+    cancel_transcodes(media_file_ids, pids)  # then kill the ffmpeg(s)
     for media_file in media_files:
         _remove_generated(media_file, request)
-    session.delete(library)  # cascades DB rows: series, episodes, media files, tasks
-    session.commit()
 
 
 def _remove_generated(media_file: MediaFile, request: Request) -> None:

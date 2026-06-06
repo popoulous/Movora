@@ -26,6 +26,7 @@ from pathlib import Path
 from send2trash import send2trash
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm.exc import StaleDataError
 
 from movora import settings_store
 from movora.db.models import JobStatus, MediaFile, Task, TaskType
@@ -53,34 +54,44 @@ _LIGHT_TYPES = (TaskType.SCAN, TaskType.METADATA)
 # Production runs the workers in threads; tests set this False to run them inline.
 _run_in_thread = True
 
+class _Cancelled(Exception):
+    """Raised inside the worker when its task vanished (the library was deleted)."""
+
+
 # The currently-running transcode, so it can be cancelled (e.g. on library delete).
 _active_lock = threading.Lock()
 _active: tuple[int, subprocess.Popen[str]] | None = None
 
 
-def cancel_media_files(session: Session, media_file_ids: set[int]) -> None:
-    """Stop the running transcode(s) for these media files.
+def transcode_pids(session: Session, media_file_ids: set[int]) -> set[int]:
+    """The ffmpeg pids of transcodes running for these media files.
 
-    Terminates the in-process ffmpeg if it is one of ours, and also kills by the
-    pid recorded on the running task — so cancellation works even when the worker
-    runs in a different process than the request handler (e.g. uvicorn --reload on
-    Windows spawns the app in a subprocess).
+    Read BEFORE the tasks are deleted; kill with cancel_transcodes AFTER, so the
+    worker sees the task gone and does not start a software-encoder retry.
     """
-    with _active_lock:
-        proc = _active[1] if _active is not None and _active[0] in media_file_ids else None
-    if proc is not None:
-        _terminate(proc)
-    running = session.scalars(
-        select(Task).where(
+    rows = session.scalars(
+        select(Task.pid).where(
             Task.type == TaskType.NORMALIZE,
             Task.status == JobStatus.RUNNING,
             Task.media_file_id.in_(media_file_ids),
             Task.pid.is_not(None),
         )
     )
-    for task in running:
-        if task.pid is not None:
-            _kill_pid(task.pid)
+    return {pid for pid in rows if pid is not None}
+
+
+def cancel_transcodes(media_file_ids: set[int], pids: set[int]) -> None:
+    """Kill the in-process ffmpeg (if ours) and the given pids (cross-process).
+
+    Works even when the worker runs in a different process than the request
+    handler — uvicorn --reload spawns the app in a subprocess on Windows.
+    """
+    with _active_lock:
+        proc = _active[1] if _active is not None and _active[0] in media_file_ids else None
+    if proc is not None:
+        _terminate(proc)
+    for pid in pids:
+        _kill_pid(pid)
 
 
 def _terminate(proc: subprocess.Popen[str]) -> None:
@@ -139,19 +150,20 @@ def normalize_media_file(
     global _active
     with _active_lock:
         _active = (media_file.id, proc)
-    if on_start is not None:
-        on_start(proc.pid)  # record the pid so another process can cancel it
     try:
+        if on_start is not None:
+            on_start(proc.pid)  # record the pid so another process can cancel it
         _track_progress(proc, duration, on_progress)
         stderr = proc.stderr.read() if proc.stderr is not None else ""
         if proc.wait() != 0:
-            partial.unlink(missing_ok=True)
             raise RuntimeError(f"ffmpeg failed: {stderr[-500:]}")
 
         out_probe = probe_media(partial)
         if out_probe is None or out_probe.get("video_codec") != "h264":
-            partial.unlink(missing_ok=True)
             raise RuntimeError("normalized output failed verification")
+    except BaseException:
+        partial.unlink(missing_ok=True)  # killed/failed/cancelled — drop the partial
+        raise
     finally:
         with _active_lock:
             _active = None
@@ -404,20 +416,25 @@ def _process_task(
                 _run_scan_task(session, task)
             elif task.type == TaskType.METADATA:
                 _run_metadata_task(session, task, provider)
+        except _Cancelled:
+            session.rollback()  # the task was deleted mid-run (library removed) — stop
         except Exception as exc:  # keep the worker alive; retry a few times then fail
+            session.rollback()  # the session may be dirty; make it usable before retrying
+            task = session.get(Task, task_id)
+            if task is None:
+                return  # task deleted (e.g. library removed) — nothing to record
             task.attempts += 1
             task.message = str(exc)[:200]
             task.progress = 0
             task.eta_seconds = None
+            task.pid = None
             if task.attempts < _MAX_ATTEMPTS:
                 task.status = JobStatus.PENDING  # back in the queue for another try
             else:
                 task.status = JobStatus.FAILED
                 task.finished_at = datetime.now(timezone.utc)
-            try:
+            with contextlib.suppress(Exception):
                 session.commit()
-            except Exception:  # the task may have been deleted (e.g. library removed mid-run)
-                session.rollback()
 
 
 def _run_normalize_task(session: Session, task: Task, output_dir: Path) -> None:
@@ -425,16 +442,17 @@ def _run_normalize_task(session: Session, task: Task, output_dir: Path) -> None:
     if media_file is None or not should_normalize(media_file):
         _finish(session, task, message="already optimized")
         return
+    task_id = task.id
     _start(session, task)
 
     def on_progress(pct: int, eta: int | None) -> None:
         task.progress = pct
         task.eta_seconds = eta
-        session.commit()
+        _commit_or_cancel(session)
 
     def on_start(pid: int) -> None:  # record the ffmpeg pid so delete can cancel it
         task.pid = pid
-        session.commit()
+        _commit_or_cancel(session)
 
     encoder = detect_h264_encoder()
     try:
@@ -445,7 +463,12 @@ def _run_normalize_task(session: Session, task: Task, output_dir: Path) -> None:
     except RuntimeError:
         if encoder == "libx264":
             raise  # software already; nothing more reliable to fall back to
-        # A hardware encoder can choke on specific content — retry in software.
+        # The ffmpeg failed. If the task is gone, the transcode was cancelled
+        # (library deleted) — do NOT start a software retry. Otherwise a hardware
+        # encoder may have choked on the content, so fall back to libx264.
+        session.rollback()
+        if session.get(Task, task_id) is None:
+            raise _Cancelled() from None
         task.progress = 0
         session.commit()
         normalize_media_file(
@@ -455,6 +478,15 @@ def _run_normalize_task(session: Session, task: Task, output_dir: Path) -> None:
     if settings_store.get_bool(session, settings_store.DELETE_ORIGINAL):
         _delete_original(session, media_file, output_dir.parent / "assets" / str(media_file.id))
     _finish(session, task)
+
+
+def _commit_or_cancel(session: Session) -> None:
+    """Commit progress; if the row vanished (library deleted mid-run), abort cleanly."""
+    try:
+        session.commit()
+    except StaleDataError as exc:
+        session.rollback()
+        raise _Cancelled() from exc
 
 
 def _delete_original(session: Session, media_file: MediaFile, assets_dir: Path) -> None:

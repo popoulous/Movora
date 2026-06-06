@@ -18,11 +18,12 @@ from movora.db.models import (
     TaskType,
 )
 from movora.normalize import (
-    cancel_media_files,
+    cancel_transcodes,
     clean_partials,
     dedupe_tasks,
     enqueue_normalize,
     requeue_interrupted,
+    transcode_pids,
 )
 
 
@@ -128,7 +129,9 @@ def test_cancel_kills_running_task_by_pid() -> None:
                 )
             )
             session.commit()
-            cancel_media_files(session, {media_file_id})  # cross-process kill by pid
+            pids = transcode_pids(session, {media_file_id})  # read before delete
+            assert pids == {proc.pid}
+            cancel_transcodes({media_file_id}, pids)  # cross-process kill by pid
         proc.wait(timeout=5)
         assert proc.poll() is not None
     finally:
