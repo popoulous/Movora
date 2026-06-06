@@ -24,6 +24,27 @@ function aggregate(tasks: Task[]): TaskStatus {
   return "done";
 }
 
+// Open only groups that are actively in progress; collapse finished and not-yet-started.
+function inProgress(tasks: Task[]): boolean {
+  const running = tasks.some((task) => task.status === "running");
+  const pending = tasks.some((task) => task.status === "pending");
+  const done = tasks.some((task) => task.status === "done");
+  return running || (done && pending);
+}
+
+// Order groups the way the queue will reach them: lowest queued/running id first,
+// finished groups (nothing left to run) last.
+function queueKey(tasks: Task[]): number {
+  const active = tasks
+    .filter((task) => task.status === "running" || task.status === "pending")
+    .map((task) => task.id);
+  return active.length > 0 ? Math.min(...active) : Number.MAX_SAFE_INTEGER;
+}
+
+function byQueue(groups: Task[][]): Task[][] {
+  return [...groups].sort((a, b) => queueKey(a) - queueKey(b));
+}
+
 function fmtEta(seconds: number | null): string {
   if (seconds === null || seconds <= 0) return "";
   const minutes = Math.floor(seconds / 60);
@@ -83,8 +104,8 @@ function Leaf({ label, task }: { label: string; task: Task }): JSX.Element {
 }
 
 function LibraryLeaves({ tasks }: { tasks: Task[] }): JSX.Element {
-  // Library-level tasks (SCAN / METADATA): one leaf per library, newest first.
-  const libraries = groupBy(tasks, (task) => task.library_id ?? 0);
+  // Library-level tasks (SCAN / METADATA): one leaf per library, in queue order.
+  const libraries = byQueue(groupBy(tasks, (task) => task.library_id ?? 0));
   return (
     <>
       {libraries.map((libTasks) => (
@@ -108,13 +129,10 @@ function SeriesGroup({ tasks }: { tasks: Task[] }): JSX.Element {
     return <Leaf label={title} task={tasks[0]} />;
   }
 
-  const seasons = groupBy(tasks, (task) => task.season_number ?? 1).sort(
-    (a, b) => (a[0].season_number ?? 0) - (b[0].season_number ?? 0),
-  );
+  const seasons = byQueue(groupBy(tasks, (task) => task.season_number ?? 1));
   return (
-    <Group label={title} status={status} defaultOpen={status === "running" || status === "pending"}>
+    <Group label={title} status={status} defaultOpen={inProgress(tasks)}>
       {seasons.map((seasonTasks) => {
-        const seasonStatus = aggregate(seasonTasks);
         const episodes = [...seasonTasks].sort(
           (a, b) => (a.episode_number ?? 0) - (b.episode_number ?? 0),
         );
@@ -122,8 +140,8 @@ function SeriesGroup({ tasks }: { tasks: Task[] }): JSX.Element {
           <Group
             key={seasonTasks[0].season_number ?? 1}
             label={t("tasks.season", { number: seasonTasks[0].season_number ?? 1 })}
-            status={seasonStatus}
-            defaultOpen={seasonStatus === "running" || seasonStatus === "pending"}
+            status={aggregate(seasonTasks)}
+            defaultOpen={inProgress(seasonTasks)}
           >
             {episodes.map((task) => (
               <Leaf
@@ -152,7 +170,7 @@ export function TasksPage(): JSX.Element {
     );
   }
 
-  const types = groupBy(tasks, (task) => task.type);
+  const types = byQueue(groupBy(tasks, (task) => task.type));
 
   return (
     <div className="max-w-3xl space-y-4">
@@ -163,14 +181,12 @@ export function TasksPage(): JSX.Element {
             key={typeTasks[0].type}
             label={t(`tasks.type_${typeTasks[0].type}`)}
             status={aggregate(typeTasks)}
-            defaultOpen
+            defaultOpen={inProgress(typeTasks)}
           >
             {typeTasks[0].type === "normalize" ? (
-              groupBy(typeTasks, (task) => task.series_id ?? 0)
-                .sort((a, b) => (a[0].series_title ?? "").localeCompare(b[0].series_title ?? ""))
-                .map((seriesTasks) => (
-                  <SeriesGroup key={seriesTasks[0].series_id ?? 0} tasks={seriesTasks} />
-                ))
+              byQueue(groupBy(typeTasks, (task) => task.series_id ?? 0)).map((seriesTasks) => (
+                <SeriesGroup key={seriesTasks[0].series_id ?? 0} tasks={seriesTasks} />
+              ))
             ) : (
               <LibraryLeaves tasks={typeTasks} />
             )}
