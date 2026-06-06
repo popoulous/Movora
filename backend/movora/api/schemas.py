@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict
 
 from movora.db.models import LibraryKind
@@ -33,6 +35,7 @@ class EpisodeRead(BaseModel):
     id: int
     number: int
     title: str | None = None
+    watched: bool = False
 
 
 class SeasonRead(BaseModel):
@@ -61,6 +64,21 @@ class RecommendationRead(BaseModel):
     target_series_id: int | None = None  # the matching in-library series, if we have it
 
 
+class SeriesWatchRead(BaseModel):
+    status: str  # not_started | watching | completed
+    episodes_watched: int
+    total: int
+    percent: int
+    continue_episode_id: int | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+
+
+class WatchStateUpdate(BaseModel):
+    position_seconds: float | None = None
+    watched: bool | None = None
+
+
 class SeriesDetail(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -79,6 +97,7 @@ class SeriesDetail(BaseModel):
     genres: str | None = None
     seasons: list[SeasonRead]
     recommendations: list[RecommendationRead] = []
+    watch: SeriesWatchRead | None = None
 
 
 class SubtitleTrackRead(BaseModel):
@@ -96,6 +115,7 @@ class PlaybackInfo(BaseModel):
     direct_play: bool  # False -> needs ingest-normalization before it plays in a browser
     subtitle_tracks: list[SubtitleTrackRead] = []
     fonts: list[str] = []  # URLs of embedded fonts for JASSUB
+    resume_position: float = 0.0  # saved playback position to seek back to (seconds)
 
 
 class SettingsRead(BaseModel):

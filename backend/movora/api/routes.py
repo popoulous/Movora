@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session, selectinload
 from movora import settings_store
 from movora.api.deps import SessionDep
 from movora.api.schemas import (
+    EpisodeRead,
     FsEntry,
     FsListing,
     LibraryCreate,
@@ -25,10 +26,12 @@ from movora.api.schemas import (
     SeasonRead,
     SeriesDetail,
     SeriesRead,
+    SeriesWatchRead,
     SettingsRead,
     SettingsUpdate,
     SubtitleTrackRead,
     TaskRead,
+    WatchStateUpdate,
 )
 from movora.db.models import Episode, Library, MediaFile, Season, Series, Task
 from movora.domain import CapabilityProfile
@@ -49,6 +52,13 @@ from movora.subtitles import (
     extract_fonts,
     load_subtitle,
     srt_to_vtt,
+)
+from movora.watch import (
+    current_user,
+    record_watch,
+    resume_position,
+    series_watch_summary,
+    watched_episode_ids,
 )
 
 router = APIRouter(prefix="/api")
@@ -172,6 +182,26 @@ def series_detail(series_id: int, session: SessionDep) -> SeriesDetail:
 
 
 def _series_detail(session: Session, series: Series) -> SeriesDetail:
+    user = current_user(session)
+    episode_ids = [episode.id for season in series.seasons for episode in season.episodes]
+    watched = watched_episode_ids(session, user, episode_ids)
+    summary = series_watch_summary(session, user, series)
+    seasons = [
+        SeasonRead(
+            id=season.id,
+            number=season.number,
+            episodes=[
+                EpisodeRead(
+                    id=episode.id,
+                    number=episode.number,
+                    title=episode.title,
+                    watched=episode.id in watched,
+                )
+                for episode in sorted(season.episodes, key=lambda e: e.number)
+            ],
+        )
+        for season in sorted(series.seasons, key=lambda s: s.number)
+    ]
     return SeriesDetail(
         id=series.id,
         title=series.title,
@@ -186,8 +216,17 @@ def _series_detail(session: Session, series: Series) -> SeriesDetail:
         banner_image_url=series.banner_image_url,
         description=series.description,
         genres=series.genres,
-        seasons=[SeasonRead.model_validate(season) for season in series.seasons],
+        seasons=seasons,
         recommendations=_recommendations(session, series),
+        watch=SeriesWatchRead(
+            status=summary.status,
+            episodes_watched=summary.episodes_watched,
+            total=summary.total,
+            percent=summary.percent,
+            continue_episode_id=summary.continue_episode_id,
+            started_at=summary.started_at,
+            finished_at=summary.finished_at,
+        ),
     )
 
 
@@ -223,7 +262,24 @@ def episode_playback(episode_id: int, session: SessionDep, request: Request) -> 
         # Subtitles/fonts come from the original, or the preserved assets if it was deleted.
         subtitle_tracks=_subtitle_tracks(episode_id, _subtitle_base(media_file, request)),
         fonts=_font_urls(episode_id, media_file, request),
+        resume_position=resume_position(session, current_user(session), episode_id),
     )
+
+
+@router.patch("/episodes/{episode_id}/watch-state", status_code=204)
+def update_watch_state(
+    episode_id: int, body: WatchStateUpdate, session: SessionDep
+) -> Response:
+    if session.get(Episode, episode_id) is None:
+        raise HTTPException(status_code=404, detail="episode not found")
+    record_watch(
+        session,
+        current_user(session),
+        episode_id,
+        position_seconds=body.position_seconds,
+        watched=body.watched,
+    )
+    return Response(status_code=204)
 
 
 @router.get("/episodes/{episode_id}/stream")
