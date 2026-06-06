@@ -53,6 +53,7 @@ def scan_library(
         and not _is_extra(path, root)
     ]
     total = len(candidates)
+    season_index = _season_map(candidates, root)
     new_files: list[MediaFile] = []
     for index, path in enumerate(candidates, start=1):
         if on_progress is not None:
@@ -61,7 +62,9 @@ def scan_library(
             continue
         fields = parser.parse(path.name)
         series = _get_or_create_series(session, library, _series_title(path, root, fields))
-        season = _get_or_create_season(session, series, _season_number(path, root, fields))
+        season = _get_or_create_season(
+            session, series, _season_number(path, root, fields, season_index)
+        )
         episode = _get_or_create_episode(session, season, fields.episode or 1, prober(path))
         media_file = MediaFile(episode=episode, path=str(path))
         session.add(media_file)
@@ -87,15 +90,50 @@ def _series_title(path: Path, root: Path, fields: ParsedFields) -> str:
     return fields.title or path.stem
 
 
-def _season_number(path: Path, root: Path, fields: ParsedFields) -> int:
-    """Season from the file name; else from a season sub-folder (S01, Season 2)."""
+def _season_map(candidates: list[Path], root: Path) -> dict[tuple[str, str], int]:
+    """Number the sub-folders of each show in sorted order (Railgun / Railgun S / T...).
+
+    Anime box-sets name seasons by the title suffix, not "S01/S02", so when no
+    explicit marker exists the season is the position of the sub-folder.
+    """
+    shows: dict[str, set[str]] = {}
+    for path in candidates:
+        parts = path.relative_to(root).parts
+        if len(parts) >= 3:  # show / season-folder / … / file
+            shows.setdefault(parts[0], set()).add(parts[1])
+    return {
+        (show, folder): number
+        for show, folders in shows.items()
+        for number, folder in enumerate(sorted(folders, key=_folder_sort_key), start=1)
+    }
+
+
+_SPECIAL_FOLDER = re.compile(r"\b(ova|oad|special|specials|sp|nced|ncop)\b", re.IGNORECASE)
+
+
+def _folder_sort_key(folder: str) -> tuple[bool, int, str]:
+    """Order season folders: explicit "01." prefix first, OVAs/specials last."""
+    prefix = re.match(r"^(\d+)", folder)
+    return (
+        bool(_SPECIAL_FOLDER.search(folder)),  # specials/OVAs after the main seasons
+        int(prefix.group(1)) if prefix else 10_000,  # honour an explicit "01." ordering
+        folder.lower(),
+    )
+
+
+def _season_number(
+    path: Path, root: Path, fields: ParsedFields, season_index: dict[tuple[str, str], int]
+) -> int:
+    """Season from the file name, an explicit S01/Season-N folder, else the folder order."""
     if fields.season is not None:
         return fields.season
-    folders = path.relative_to(root).parts[:-1]
-    for folder in reversed(folders[1:]):  # nearest sub-folder first; skip the show folder
+    parts = path.relative_to(root).parts
+    for folder in reversed(parts[1:-1]):  # sub-folders below the show; nearest first
         match = _SEASON_FOLDER.search(folder)
         if match:
             return int(match.group(1))
+    if len(parts) >= 3:  # nested in a season folder with no explicit marker
+        return season_index.get((parts[0], parts[1]), 1)
     return 1
 
 

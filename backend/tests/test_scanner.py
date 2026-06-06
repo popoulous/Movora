@@ -95,6 +95,33 @@ def test_scan_reads_season_from_subfolder(tmp_path: Path) -> None:
         assert len(list(session.scalars(select(MediaFile)))) == 2
 
 
+def test_scan_numbers_named_seasons_with_specials_last(tmp_path: Path) -> None:
+    # Railgun-style: seasons named by title suffix (no S01), OVAs after the main ones.
+    show = tmp_path / "To Aru Kagaku no Railgun BDBOX"
+    for sub in ("Railgun", "Railgun OVA", "Railgun S", "Railgun T"):
+        (show / sub).mkdir(parents=True)
+        (show / sub / f"[grp] {sub} - 01.mkv").write_bytes(b"")
+
+    engine = create_db_engine(":memory:")
+    init_db(engine)
+    factory = create_session_factory(engine)
+    with factory() as session:
+        library = Library(path=str(tmp_path), name="A", kind=LibraryKind.ANIME)
+        session.add(library)
+        session.commit()
+
+        scan_library(session, library, title_prober=lambda path: None)
+        assert {season.number for season in session.scalars(select(Season))} == {1, 2, 3, 4}
+        season_of = {
+            Path(media_file.path).parent.name: media_file.episode.season.number
+            for media_file in session.scalars(select(MediaFile))
+        }
+        assert season_of["Railgun"] == 1
+        assert season_of["Railgun S"] == 2
+        assert season_of["Railgun T"] == 3
+        assert season_of["Railgun OVA"] == 4  # specials sort last
+
+
 def test_scan_sets_episode_titles_from_prober(tmp_path: Path) -> None:
     (tmp_path / "[Group] Show - 01.mkv").write_bytes(b"")
     engine = create_db_engine(":memory:")
