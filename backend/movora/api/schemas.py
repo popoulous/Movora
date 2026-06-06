@@ -91,6 +91,14 @@ class PlaybackInfo(BaseModel):
     subtitle_tracks: list[SubtitleTrackRead] = []
 
 
+class SettingsRead(BaseModel):
+    auto_normalize: bool
+
+
+class SettingsUpdate(BaseModel):
+    auto_normalize: bool | None = None
+
+
 class ScanResult(BaseModel):
     added: int
 

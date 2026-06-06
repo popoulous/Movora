@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from movora import settings_store
 from movora.api.deps import MetadataProviderDep, SessionDep
 from movora.api.schemas import (
     EnrichResult,
@@ -24,6 +25,8 @@ from movora.api.schemas import (
     ScanResult,
     SeriesDetail,
     SeriesRead,
+    SettingsRead,
+    SettingsUpdate,
     SubtitleTrackRead,
 )
 from movora.db.models import Episode, Job, JobStatus, Library, MediaFile, Season, Series
@@ -231,6 +234,22 @@ def browse_fs(path: str | None = None) -> FsListing:
 def list_jobs(session: SessionDep) -> list[Job]:
     return list(
         session.scalars(select(Job).order_by(Job.created_at.desc(), Job.id.desc()).limit(20))
+    )
+
+
+@router.get("/settings", response_model=SettingsRead)
+def get_settings(session: SessionDep) -> SettingsRead:
+    return SettingsRead(
+        auto_normalize=settings_store.get_bool(session, settings_store.AUTO_NORMALIZE)
+    )
+
+
+@router.patch("/settings", response_model=SettingsRead)
+def update_settings(payload: SettingsUpdate, session: SessionDep) -> SettingsRead:
+    if payload.auto_normalize is not None:
+        settings_store.set_bool(session, settings_store.AUTO_NORMALIZE, payload.auto_normalize)
+    return SettingsRead(
+        auto_normalize=settings_store.get_bool(session, settings_store.AUTO_NORMALIZE)
     )
 
 

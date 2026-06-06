@@ -198,6 +198,15 @@ class ConversionJob(Base):
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
+class Setting(Base):
+    """A persisted server-wide key/value setting (e.g. auto-normalize)."""
+
+    __tablename__ = "setting"
+
+    key: Mapped[str] = mapped_column(primary_key=True)
+    value: Mapped[str]
+
+
 class Job(Base):
     """An activity record (scan / metadata fetch) surfaced in the activity bell."""
 
