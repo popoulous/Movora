@@ -35,9 +35,11 @@ export function ActivityBell(): JSX.Element {
 
   const runningTask = tasks.find((task) => task.status === "running");
   const queued = tasks.filter((task) => task.status === "pending").length;
-  const pct = runningTask && runningTask.progress > 0 ? ` ${runningTask.progress}%` : "";
+  const detail = runningTask
+    ? (runningTask.message ?? (runningTask.progress > 0 ? `${runningTask.progress}%` : ""))
+    : "";
   const indicator = runningTask
-    ? `${taskLabel(runningTask, t)}${pct}` + (queued > 0 ? ` (+${queued})` : "")
+    ? `${taskLabel(runningTask, t)}${detail ? ` ${detail}` : ""}` + (queued > 0 ? ` (+${queued})` : "")
     : t("activity.working");
 
   // A window around "now": the last 5 finished, what's running, and the next 5 queued.
@@ -89,8 +91,10 @@ export function ActivityBell(): JSX.Element {
                     <span className="min-w-0 flex-1 truncate text-neutral-300">
                       {taskLabel(task, t)}
                     </span>
-                    {task.status === "running" && task.progress > 0 && (
-                      <span className="shrink-0 text-xs text-neutral-500">{task.progress}%</span>
+                    {task.status === "running" && (task.message ?? task.progress > 0) && (
+                      <span className="shrink-0 text-xs text-neutral-500">
+                        {task.message ?? `${task.progress}%`}
+                      </span>
                     )}
                   </li>
                 ))}

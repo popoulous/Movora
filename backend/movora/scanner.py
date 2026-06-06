@@ -19,18 +19,28 @@ from movora.parsing import parser_for
 MEDIA_EXTENSIONS = {".mkv", ".mp4", ".m4v", ".avi", ".webm"}
 
 TitleProber = Callable[[Path], str | None]
+ProgressFn = Callable[[int, int], None]  # (done, total)
 
 
 def scan_library(
-    session: Session, library: Library, title_prober: TitleProber | None = None
+    session: Session,
+    library: Library,
+    title_prober: TitleProber | None = None,
+    on_progress: ProgressFn | None = None,
 ) -> list[int]:
     """Index new media files under the library. Returns the ids of the files added."""
     prober = title_prober or probe_container_title
     parser = parser_for(library.kind)
+    candidates = [
+        path
+        for path in sorted(Path(library.path).rglob("*"))
+        if path.is_file() and path.suffix.lower() in MEDIA_EXTENSIONS
+    ]
+    total = len(candidates)
     new_files: list[MediaFile] = []
-    for path in sorted(Path(library.path).rglob("*")):
-        if not path.is_file() or path.suffix.lower() not in MEDIA_EXTENSIONS:
-            continue
+    for index, path in enumerate(candidates, start=1):
+        if on_progress is not None:
+            on_progress(index, total)
         if _media_file_exists(session, str(path)):
             continue
         fields = parser.parse(path.name)

@@ -342,8 +342,7 @@ def _run_normalize_task(session: Session, task: Task, output_dir: Path) -> None:
     if media_file is None or not should_normalize(media_file):
         _finish(session, task, message="already optimized")
         return
-    task.status = JobStatus.RUNNING
-    session.commit()
+    _start(session, task)
 
     def on_progress(pct: int, eta: int | None) -> None:
         task.progress = pct
@@ -390,9 +389,8 @@ def _run_scan_task(session: Session, task: Task) -> None:
     if library is None:
         _finish(session, task, message="library gone")
         return
-    task.status = JobStatus.RUNNING
-    session.commit()
-    new_ids = scan_library(session, library)
+    _start(session, task)
+    new_ids = scan_library(session, library, on_progress=_counter(session, task))
     # Chain: always refresh metadata; normalize new files when auto-normalize is on.
     enqueue_metadata(session, library.id)
     if new_ids and settings_store.get_bool(session, settings_store.AUTO_NORMALIZE):
@@ -405,10 +403,27 @@ def _run_metadata_task(session: Session, task: Task, provider: MetadataProvider)
     if library is None:
         _finish(session, task, message="library gone")
         return
-    task.status = JobStatus.RUNNING
-    session.commit()
-    updated = enrich_library(session, library, provider)
+    _start(session, task)
+    updated = enrich_library(session, library, provider, on_progress=_counter(session, task))
     _finish(session, task, message=f"{updated} updated")
+
+
+def _start(session: Session, task: Task) -> None:
+    task.status = JobStatus.RUNNING
+    task.message = None
+    task.progress = 0
+    session.commit()
+
+
+def _counter(session: Session, task: Task) -> Callable[[int, int], None]:
+    """Progress callback that records 'done/total' + percent on the task."""
+
+    def on_progress(done: int, total: int) -> None:
+        task.progress = int(done * 100 / total) if total else 100
+        task.message = f"{done}/{total}"
+        session.commit()
+
+    return on_progress
 
 
 def _finish(session: Session, task: Task, *, message: str | None = None) -> None:

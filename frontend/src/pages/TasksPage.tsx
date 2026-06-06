@@ -53,9 +53,11 @@ function fmtEta(seconds: number | null): string {
 
 function statusDetail(task: Task, t: TFunction): string {
   if (task.status === "running") {
-    if (task.progress <= 0) return t("tasks.inProgress"); // scan/metadata have no real %
-    const eta = task.eta_seconds ? ` · ETA ${fmtEta(task.eta_seconds)}` : "";
-    return `${t("tasks.inProgress")} ${task.progress}%${eta}`;
+    const parts = [t("tasks.inProgress")];
+    if (task.message) parts.push(task.message); // "7/12" for scan/metadata
+    if (task.progress > 0) parts.push(`${task.progress}%`);
+    if (task.eta_seconds) parts.push(`ETA ${fmtEta(task.eta_seconds)}`);
+    return parts.join(" · ");
   }
   if (task.status === "done") return t("tasks.done");
   if (task.status === "failed") return task.message ?? t("tasks.failed");

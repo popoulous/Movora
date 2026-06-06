@@ -6,6 +6,8 @@ re-running is cheap; pass force=True to re-fetch everything.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -13,17 +15,28 @@ from movora.db.models import Library, Series
 from movora.domain import ParsedFields
 from movora.interfaces import MetadataProvider
 
+ProgressFn = Callable[[int, int], None]  # (done, total)
+
 
 def enrich_library(
-    session: Session, library: Library, provider: MetadataProvider, *, force: bool = False
+    session: Session,
+    library: Library,
+    provider: MetadataProvider,
+    *,
+    force: bool = False,
+    on_progress: ProgressFn | None = None,
 ) -> int:
     """Fetch metadata for the library's series. By default only not-yet-enriched ones;
     force=True re-fetches all (e.g. after the metadata schema grows)."""
     query = select(Series).where(Series.library_id == library.id)
     if not force:
         query = query.where(Series.external_id.is_(None))
+    series_list = list(session.scalars(query))
+    total = len(series_list)
     updated = 0
-    for series in session.scalars(query):
+    for index, series in enumerate(series_list, start=1):
+        if on_progress is not None:
+            on_progress(index, total)
         metadata = provider.fetch(ParsedFields(title=series.title))
         if metadata is None:
             continue
