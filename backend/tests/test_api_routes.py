@@ -32,8 +32,8 @@ def test_create_scan_and_browse(tmp_path: Path) -> None:
     assert len(series) == 1
     assert series[0]["title"] == "To Aru Kagaku no Railgun"
 
-    # An explicit re-scan now finds nothing new.
-    assert client.post(f"/api/libraries/{library_id}/scan").json()["added"] == 0
+    # An explicit re-scan is accepted and queued.
+    assert client.post(f"/api/libraries/{library_id}/scan").status_code == 202
 
     detail = client.get(f"/api/series/{series[0]['id']}").json()
     episodes = detail["seasons"][0]["episodes"]
@@ -70,14 +70,10 @@ def test_update_and_delete_library(tmp_path: Path) -> None:
     assert client.delete(f"/api/libraries/{library_id}").status_code == 404
 
 
-def test_scan_is_recorded_as_a_job(tmp_path: Path) -> None:
+def test_scan_creates_a_task(tmp_path: Path) -> None:
     client, media = _make_client(tmp_path)
-    library = client.post(
-        "/api/libraries", json={"path": str(media), "name": "A", "kind": "anime"}
-    ).json()
-    client.post(f"/api/libraries/{library['id']}/scan")
+    # Adding a library queues a SCAN task (which the worker drains in the TestClient).
+    client.post("/api/libraries", json={"path": str(media), "name": "A", "kind": "anime"})
 
-    jobs = client.get("/api/jobs").json()
-    assert len(jobs) >= 1
-    assert jobs[0]["kind"] == "scan"
-    assert jobs[0]["status"] == "done"
+    tasks = client.get("/api/tasks").json()
+    assert any(task["type"] == "scan" and task["status"] == "done" for task in tasks)

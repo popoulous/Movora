@@ -30,16 +30,14 @@ def test_tasks_track_normalization(tmp_path: Path) -> None:
         check=True, capture_output=True,
     )
     client = _client(tmp_path)
-    library = client.post(
-        "/api/libraries", json={"path": str(media), "name": "M", "kind": "anime"}
-    ).json()
-    # auto_normalize defaults ON -> scanning queues a task and the worker drains it.
-    client.post(f"/api/libraries/{library['id']}/scan")
-
-    tasks = client.get("/api/tasks").json()
-    assert len(tasks) == 1
-    task = tasks[0]
-    assert task["type"] == "normalize"
+    client.post("/api/libraries", json={"path": str(media), "name": "M", "kind": "anime"})
+    # auto_normalize defaults ON -> adding the library queues scan -> metadata ->
+    # normalize tasks, and the worker drains them all in the TestClient.
+    normalize_tasks = [
+        task for task in client.get("/api/tasks").json() if task["type"] == "normalize"
+    ]
+    assert len(normalize_tasks) == 1
+    task = normalize_tasks[0]
     assert task["status"] == "done"
     assert task["progress"] == 100
     assert task["library_kind"] == "anime"

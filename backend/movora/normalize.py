@@ -1,11 +1,14 @@
-"""Normalize media to a web Direct-Play mp4, draining a per-file task queue.
+"""Background task queue: scan, fetch metadata, and normalize media.
 
-Non-destructive: the original is kept; the normalized mp4 goes to a data dir
-outside the library, is ffprobe-verified, and recorded on the MediaFile. Work is
-modelled as Task rows (queued -> running -> done/failed) drained by a single
-serial worker, so the Tasks view can show progress, ETA and what is queued
-(IMPLEMENTATION_PLAN §3.9). The dedicated worker-process + idempotency-by-hash
-come later; this in-process worker is what that will replace.
+All background work is modelled as Task rows (PENDING -> RUNNING -> DONE/FAILED)
+drained by a single serial in-process worker, so the Tasks view shows progress,
+ETA and what is queued (IMPLEMENTATION_PLAN §3.9). Adding/scanning a library
+queues a SCAN task; when it runs it chains a METADATA task and NORMALIZE tasks
+for the new files. The dedicated worker-process + idempotency-by-hash come later;
+this in-process worker is what that will replace.
+
+Normalization is non-destructive: the original is kept; the normalized mp4 goes
+to a data dir outside the library, is ffprobe-verified, and recorded on the file.
 """
 
 from __future__ import annotations
@@ -20,17 +23,24 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
+from movora import settings_store
 from movora.db.models import JobStatus, MediaFile, Task, TaskType
 from movora.encoders import detect_h264_encoder
+from movora.enrich import enrich_library
 from movora.ffprobe import probe_media
-from movora.interfaces import NormalizationPlanner
+from movora.interfaces import MetadataProvider, NormalizationPlanner
 from movora.normalization import WEB_TARGET, RemuxFirstPlanner, needs_normalization
+from movora.scanner import scan_library
 from movora.streaming import DirectPlayStrategy
 
 # (percent, eta_seconds) -> None
 ProgressCallback = Callable[[int, int | None], None]
 
 _worker_lock = threading.Lock()
+_ACTIVE = (JobStatus.PENDING, JobStatus.RUNNING)
+
+
+# --- normalization primitive -------------------------------------------------
 
 
 def normalize_media_file(
@@ -72,7 +82,6 @@ def normalize_media_file(
         partial.unlink(missing_ok=True)
         raise RuntimeError(f"ffmpeg failed: {stderr[-500:]}")
 
-    # Verify the output before committing to it (the plan mandates verification).
     out_probe = probe_media(partial)
     if out_probe is None or out_probe.get("video_codec") != "h264":
         partial.unlink(missing_ok=True)
@@ -129,16 +138,27 @@ def should_normalize(media_file: MediaFile) -> bool:
     return not (container_ok and not needs_normalization(probe))
 
 
-def enqueue_tasks(session: Session, media_file_ids: list[int]) -> int:
-    """Queue normalize Tasks for the given files, skipping duplicates and done ones.
+# --- queue -------------------------------------------------------------------
 
-    Cheap (no probing): the worker decides per task whether work is actually needed,
-    so queued items show up instantly.
-    """
+
+def enqueue_scan(session: Session, library_id: int) -> None:
+    if not _has_active_library_task(session, library_id, TaskType.SCAN):
+        session.add(Task(type=TaskType.SCAN, library_id=library_id))
+        session.commit()
+
+
+def enqueue_metadata(session: Session, library_id: int) -> None:
+    if not _has_active_library_task(session, library_id, TaskType.METADATA):
+        session.add(Task(type=TaskType.METADATA, library_id=library_id))
+        session.commit()
+
+
+def enqueue_normalize(session: Session, media_file_ids: list[int]) -> int:
+    """Queue normalize Tasks, skipping duplicates and already-optimized files."""
     active = set(
         session.scalars(
             select(Task.media_file_id).where(
-                Task.status.in_([JobStatus.PENDING, JobStatus.RUNNING])
+                Task.type == TaskType.NORMALIZE, Task.status.in_(_ACTIVE)
             )
         )
     )
@@ -158,7 +178,25 @@ def enqueue_tasks(session: Session, media_file_ids: list[int]) -> int:
     return queued
 
 
-def run_worker(session_factory: sessionmaker[Session], output_dir: Path) -> None:
+def _has_active_library_task(session: Session, library_id: int, task_type: TaskType) -> bool:
+    return (
+        session.scalar(
+            select(Task.id).where(
+                Task.library_id == library_id,
+                Task.type == task_type,
+                Task.status.in_(_ACTIVE),
+            )
+        )
+        is not None
+    )
+
+
+# --- worker ------------------------------------------------------------------
+
+
+def run_worker(
+    session_factory: sessionmaker[Session], output_dir: Path, provider: MetadataProvider
+) -> None:
     """Drain the pending task queue serially. Only one worker runs at a time."""
     if not _worker_lock.acquire(blocking=False):
         return  # another worker is already draining the queue
@@ -170,46 +208,86 @@ def run_worker(session_factory: sessionmaker[Session], output_dir: Path) -> None
                 ).first()
                 if task is None:
                     return
-                task_id, media_file_id = task.id, task.media_file_id
-            _process_task(session_factory, task_id, media_file_id, output_dir)
+                task_id = task.id
+            _process_task(session_factory, task_id, output_dir, provider)
     finally:
         _worker_lock.release()
 
 
 def _process_task(
-    session_factory: sessionmaker[Session], task_id: int, media_file_id: int, output_dir: Path
+    session_factory: sessionmaker[Session],
+    task_id: int,
+    output_dir: Path,
+    provider: MetadataProvider,
 ) -> None:
     with session_factory() as session:
         task = session.get(Task, task_id)
-        media_file = session.get(MediaFile, media_file_id)
         if task is None:
             return
-        if media_file is None or not should_normalize(media_file):
-            task.status = JobStatus.DONE
-            task.progress = 100
-            task.message = "already optimized"
-            task.finished_at = datetime.now(timezone.utc)
-            session.commit()
-            return
-
-        task.status = JobStatus.RUNNING
-        session.commit()
-
-        def on_progress(pct: int, eta: int | None) -> None:
-            task.progress = pct
-            task.eta_seconds = eta
-            session.commit()
-
         try:
-            planner = RemuxFirstPlanner(detect_h264_encoder())
-            normalize_media_file(
-                session, media_file, planner, output_dir=output_dir, on_progress=on_progress
-            )
-            task.status = JobStatus.DONE
-            task.progress = 100
-            task.eta_seconds = None
-        except Exception as exc:  # record any failure on the task, don't crash the worker
+            if task.type == TaskType.NORMALIZE:
+                _run_normalize_task(session, task, output_dir)
+            elif task.type == TaskType.SCAN:
+                _run_scan_task(session, task)
+            elif task.type == TaskType.METADATA:
+                _run_metadata_task(session, task, provider)
+        except Exception as exc:  # record the failure on the task, keep the worker alive
             task.status = JobStatus.FAILED
             task.message = str(exc)[:200]
-        task.finished_at = datetime.now(timezone.utc)
+            task.finished_at = datetime.now(timezone.utc)
+            session.commit()
+
+
+def _run_normalize_task(session: Session, task: Task, output_dir: Path) -> None:
+    media_file = task.media_file
+    if media_file is None or not should_normalize(media_file):
+        _finish(session, task, message="already optimized")
+        return
+    task.status = JobStatus.RUNNING
+    session.commit()
+
+    def on_progress(pct: int, eta: int | None) -> None:
+        task.progress = pct
+        task.eta_seconds = eta
         session.commit()
+
+    normalize_media_file(
+        session, media_file, RemuxFirstPlanner(detect_h264_encoder()),
+        output_dir=output_dir, on_progress=on_progress,
+    )
+    _finish(session, task)
+
+
+def _run_scan_task(session: Session, task: Task) -> None:
+    library = task.library
+    if library is None:
+        _finish(session, task, message="library gone")
+        return
+    task.status = JobStatus.RUNNING
+    session.commit()
+    new_ids = scan_library(session, library)
+    # Chain: always refresh metadata; normalize new files when auto-normalize is on.
+    enqueue_metadata(session, library.id)
+    if new_ids and settings_store.get_bool(session, settings_store.AUTO_NORMALIZE):
+        enqueue_normalize(session, new_ids)
+    _finish(session, task, message=f"{len(new_ids)} added")
+
+
+def _run_metadata_task(session: Session, task: Task, provider: MetadataProvider) -> None:
+    library = task.library
+    if library is None:
+        _finish(session, task, message="library gone")
+        return
+    task.status = JobStatus.RUNNING
+    session.commit()
+    updated = enrich_library(session, library, provider)
+    _finish(session, task, message=f"{updated} updated")
+
+
+def _finish(session: Session, task: Task, *, message: str | None = None) -> None:
+    task.status = JobStatus.DONE
+    task.progress = 100
+    task.eta_seconds = None
+    task.message = message
+    task.finished_at = datetime.now(timezone.utc)
+    session.commit()

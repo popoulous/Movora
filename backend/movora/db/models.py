@@ -39,6 +39,9 @@ class Library(Base):
     series: Mapped[list[Series]] = relationship(
         back_populates="library", cascade="all, delete-orphan"
     )
+    tasks: Mapped[list[Task]] = relationship(
+        back_populates="library", cascade="all, delete-orphan"
+    )
 
 
 class Series(Base):
@@ -211,21 +214,26 @@ class Setting(Base):
 
 
 class TaskType(str, enum.Enum):
+    SCAN = "scan"
+    METADATA = "metadata"
     NORMALIZE = "normalize"
     # v2: INTRO = "intro", OUTRO = "outro" — the task center already groups by type.
 
 
 class Task(Base):
-    """A queued background task per media file (the Tasks/queue view).
+    """A queued background task (the Tasks/queue view).
 
-    Reuses JobStatus: PENDING = queued, RUNNING = in progress, DONE/FAILED.
+    Library-level tasks (SCAN, METADATA) carry library_id; per-file tasks
+    (NORMALIZE) carry media_file_id. Reuses JobStatus: PENDING = queued,
+    RUNNING = in progress, DONE/FAILED.
     """
 
     __tablename__ = "task"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     type: Mapped[TaskType]
-    media_file_id: Mapped[int] = mapped_column(ForeignKey("media_file.id"))
+    media_file_id: Mapped[int | None] = mapped_column(ForeignKey("media_file.id"), default=None)
+    library_id: Mapped[int | None] = mapped_column(ForeignKey("library.id"), default=None)
     status: Mapped[JobStatus] = mapped_column(default=JobStatus.PENDING)
     progress: Mapped[int] = mapped_column(default=0)  # 0-100
     eta_seconds: Mapped[int | None] = mapped_column(default=None)
@@ -233,18 +241,5 @@ class Task(Base):
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     finished_at: Mapped[datetime | None] = mapped_column(default=None)
 
-    media_file: Mapped[MediaFile] = relationship(back_populates="tasks")
-
-
-class Job(Base):
-    """An activity record (scan / metadata fetch) surfaced in the activity bell."""
-
-    __tablename__ = "job"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    kind: Mapped[str]  # "scan" | "enrich"
-    library_id: Mapped[int | None] = mapped_column(ForeignKey("library.id"), default=None)
-    status: Mapped[JobStatus] = mapped_column(default=JobStatus.DONE)
-    message: Mapped[str | None] = mapped_column(default=None)
-    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
-    finished_at: Mapped[datetime | None] = mapped_column(default=None)
+    media_file: Mapped[MediaFile | None] = relationship(back_populates="tasks")
+    library: Mapped[Library | None] = relationship(back_populates="tasks")

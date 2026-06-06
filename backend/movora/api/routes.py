@@ -2,27 +2,23 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from fastapi.responses import FileResponse, Response
-from sqlalchemy import delete, select
-from sqlalchemy.orm import Session, selectinload, sessionmaker
+from sqlalchemy import select
+from sqlalchemy.orm import Session, selectinload
 
 from movora import settings_store
-from movora.api.deps import MetadataProviderDep, SessionDep
+from movora.api.deps import SessionDep
 from movora.api.schemas import (
-    EnrichResult,
     FsEntry,
     FsListing,
-    JobRead,
     LibraryCreate,
     LibraryRead,
     LibraryUpdate,
     PlaybackInfo,
-    ScanResult,
     SeriesDetail,
     SeriesRead,
     SettingsRead,
@@ -30,13 +26,10 @@ from movora.api.schemas import (
     SubtitleTrackRead,
     TaskRead,
 )
-from movora.db.models import Episode, Job, JobStatus, Library, MediaFile, Season, Series, Task
+from movora.db.models import Episode, Library, MediaFile, Season, Series, Task
 from movora.domain import CapabilityProfile
-from movora.enrich import enrich_library
 from movora.filesystem import list_directories
-from movora.interfaces import MetadataProvider
-from movora.normalize import enqueue_tasks, run_worker
-from movora.scanner import scan_library
+from movora.normalize import enqueue_metadata, enqueue_normalize, enqueue_scan, run_worker
 from movora.streaming import DirectPlayStrategy
 from movora.subtitles import SoftAssOrSrtResolver, discover_tracks, load_subtitle, srt_to_vtt
 
@@ -53,41 +46,10 @@ def create_library(
     session.add(library)
     session.commit()
     session.refresh(library)
-    # Automation-first: scan + fetch metadata + queue normalization right after adding.
-    background.add_task(
-        _auto_ingest,
-        request.app.state.session_factory,
-        request.app.state.metadata_provider,
-        library.id,
-        _normalized_dir(request),
-        settings_store.get_bool(session, settings_store.AUTO_NORMALIZE),
-    )
+    # Automation-first: a SCAN task chains metadata + normalization right after adding.
+    enqueue_scan(session, library.id)
+    _run_worker(request, background)
     return library
-
-
-def _auto_ingest(
-    session_factory: sessionmaker[Session],
-    provider: MetadataProvider,
-    library_id: int,
-    output_dir: Path,
-    normalize: bool,
-) -> None:
-    new_ids: list[int] = []
-    with session_factory() as session:
-        library = session.get(Library, library_id)
-        if library is None:
-            return
-        new_ids = scan_library(session, library)
-        _log_job(session, "scan", library_id, f"{len(new_ids)} added")
-        try:
-            updated = enrich_library(session, library, provider)
-            _log_job(session, "enrich", library_id, f"{updated} updated")
-        except Exception:  # metadata is best-effort (network / rate limits)
-            pass
-        if normalize and new_ids:
-            enqueue_tasks(session, new_ids)
-    if normalize and new_ids:
-        run_worker(session_factory, output_dir)
 
 
 @router.get("/libraries", response_model=list[LibraryRead])
@@ -114,41 +76,30 @@ def delete_library(library_id: int, session: SessionDep) -> None:
     library = session.get(Library, library_id)
     if library is None:
         raise HTTPException(status_code=404, detail="library not found")
-    # Activity jobs reference the library; remove them before the cascade delete.
-    session.execute(delete(Job).where(Job.library_id == library_id))
-    session.delete(library)
+    session.delete(library)  # cascades to series and tasks
     session.commit()
 
 
-@router.post("/libraries/{library_id}/scan", response_model=ScanResult)
+@router.post("/libraries/{library_id}/scan", status_code=202)
 def scan(
     library_id: int, session: SessionDep, request: Request, background: BackgroundTasks
-) -> ScanResult:
-    library = session.get(Library, library_id)
-    if library is None:
+) -> dict[str, str]:
+    if session.get(Library, library_id) is None:
         raise HTTPException(status_code=404, detail="library not found")
-    new_ids = scan_library(session, library)
-    _log_job(session, "scan", library_id, f"{len(new_ids)} added")
-    # Automation-first: queue newly-found files for Direct-Play optimization.
-    if new_ids and settings_store.get_bool(session, settings_store.AUTO_NORMALIZE):
-        enqueue_tasks(session, new_ids)
-        background.add_task(run_worker, request.app.state.session_factory, _normalized_dir(request))
-    return ScanResult(added=len(new_ids))
+    enqueue_scan(session, library_id)
+    _run_worker(request, background)
+    return {"status": "queued"}
 
 
-@router.post("/libraries/{library_id}/enrich", response_model=EnrichResult)
+@router.post("/libraries/{library_id}/enrich", status_code=202)
 def enrich(
-    library_id: int,
-    session: SessionDep,
-    provider: MetadataProviderDep,
-    force: bool = False,
-) -> EnrichResult:
-    library = session.get(Library, library_id)
-    if library is None:
+    library_id: int, session: SessionDep, request: Request, background: BackgroundTasks
+) -> dict[str, str]:
+    if session.get(Library, library_id) is None:
         raise HTTPException(status_code=404, detail="library not found")
-    enriched = enrich_library(session, library, provider, force=force)
-    _log_job(session, "enrich", library_id, f"{enriched} updated")
-    return EnrichResult(enriched=enriched)
+    enqueue_metadata(session, library_id)
+    _run_worker(request, background)
+    return {"status": "queued"}
 
 
 @router.get("/libraries/{library_id}/series", response_model=list[SeriesRead])
@@ -197,8 +148,8 @@ def normalize_episode(
     episode_id: int, session: SessionDep, request: Request, background: BackgroundTasks
 ) -> dict[str, str]:
     media_file = _episode_media_file(session, episode_id)
-    enqueue_tasks(session, [media_file.id])
-    background.add_task(run_worker, request.app.state.session_factory, _normalized_dir(request))
+    enqueue_normalize(session, [media_file.id])
+    _run_worker(request, background)
     return {"status": "queued"}
 
 
@@ -207,9 +158,18 @@ def normalize_all(
     session: SessionDep, request: Request, background: BackgroundTasks
 ) -> dict[str, str]:
     """Queue every file in the library that still needs optimizing (background)."""
-    enqueue_tasks(session, list(session.scalars(select(MediaFile.id))))
-    background.add_task(run_worker, request.app.state.session_factory, _normalized_dir(request))
+    enqueue_normalize(session, list(session.scalars(select(MediaFile.id))))
+    _run_worker(request, background)
     return {"status": "queued"}
+
+
+def _run_worker(request: Request, background: BackgroundTasks) -> None:
+    background.add_task(
+        run_worker,
+        request.app.state.session_factory,
+        _normalized_dir(request),
+        request.app.state.metadata_provider,
+    )
 
 
 def _normalized_dir(request: Request) -> Path:
@@ -280,13 +240,6 @@ def browse_fs(path: str | None = None) -> FsListing:
     )
 
 
-@router.get("/jobs", response_model=list[JobRead])
-def list_jobs(session: SessionDep) -> list[Job]:
-    return list(
-        session.scalars(select(Job).order_by(Job.created_at.desc(), Job.id.desc()).limit(20))
-    )
-
-
 @router.get("/tasks", response_model=list[TaskRead])
 def list_tasks(session: SessionDep) -> list[TaskRead]:
     tasks = session.scalars(
@@ -294,21 +247,42 @@ def list_tasks(session: SessionDep) -> list[TaskRead]:
         .order_by(Task.id.desc())
         .limit(2000)
         .options(
+            selectinload(Task.library),
             selectinload(Task.media_file)
             .selectinload(MediaFile.episode)
             .selectinload(Episode.season)
             .selectinload(Season.series)
-            .selectinload(Series.library)
+            .selectinload(Series.library),
         )
     )
     return [_task_read(task) for task in tasks]
 
 
 def _task_read(task: Task) -> TaskRead:
-    episode = task.media_file.episode
-    season = episode.season
-    series = season.series
-    library = series.library
+    media_file = task.media_file
+    if media_file is not None:  # per-file task (NORMALIZE): full series/season/episode
+        episode = media_file.episode
+        season = episode.season
+        series = season.series
+        library = series.library
+        return TaskRead(
+            id=task.id,
+            type=task.type.value,
+            status=task.status.value,
+            progress=task.progress,
+            eta_seconds=task.eta_seconds,
+            message=task.message,
+            library_id=library.id,
+            library_name=library.name,
+            library_kind=library.kind.value,
+            series_id=series.id,
+            series_title=series.display_title or series.title,
+            season_number=season.number,
+            episode_id=episode.id,
+            episode_number=episode.number,
+            episode_title=episode.title,
+        )
+    lib = task.library  # library-level task (SCAN / METADATA)
     return TaskRead(
         id=task.id,
         type=task.type.value,
@@ -316,13 +290,9 @@ def _task_read(task: Task) -> TaskRead:
         progress=task.progress,
         eta_seconds=task.eta_seconds,
         message=task.message,
-        library_kind=library.kind.value,
-        series_id=series.id,
-        series_title=series.display_title or series.title,
-        season_number=season.number,
-        episode_id=episode.id,
-        episode_number=episode.number,
-        episode_title=episode.title,
+        library_id=lib.id if lib is not None else None,
+        library_name=lib.name if lib is not None else None,
+        library_kind=lib.kind.value if lib is not None else None,
     )
 
 
@@ -343,10 +313,8 @@ def update_settings(
         )
         # Turning on "include existing" queues the whole library right away.
         if payload.auto_normalize_existing:
-            enqueue_tasks(session, list(session.scalars(select(MediaFile.id))))
-            background.add_task(
-                run_worker, request.app.state.session_factory, _normalized_dir(request)
-            )
+            enqueue_normalize(session, list(session.scalars(select(MediaFile.id))))
+            _run_worker(request, background)
     return _read_settings(session)
 
 
@@ -357,16 +325,3 @@ def _read_settings(session: Session) -> SettingsRead:
             session, settings_store.AUTO_NORMALIZE_EXISTING
         ),
     )
-
-
-def _log_job(session: Session, kind: str, library_id: int, message: str) -> None:
-    session.add(
-        Job(
-            kind=kind,
-            library_id=library_id,
-            status=JobStatus.DONE,
-            message=message,
-            finished_at=datetime.now(timezone.utc),
-        )
-    )
-    session.commit()

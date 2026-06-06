@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-
 from pydantic import BaseModel, ConfigDict
 
 from movora.db.models import LibraryKind
@@ -103,11 +101,13 @@ class SettingsUpdate(BaseModel):
 
 class TaskRead(BaseModel):
     id: int
-    type: str
+    type: str  # scan | metadata | normalize
     status: str  # pending | running | done | failed
     progress: int
     eta_seconds: int | None = None
     message: str | None = None
+    library_id: int | None = None
+    library_name: str | None = None
     library_kind: str | None = None  # "movie" has no season/episode levels in the tree
     series_id: int | None = None
     series_title: str | None = None
@@ -115,14 +115,6 @@ class TaskRead(BaseModel):
     episode_id: int | None = None
     episode_number: int | None = None
     episode_title: str | None = None
-
-
-class ScanResult(BaseModel):
-    added: int
-
-
-class EnrichResult(BaseModel):
-    enriched: int
 
 
 class FsEntry(BaseModel):
@@ -134,15 +126,3 @@ class FsListing(BaseModel):
     path: str | None
     parent: str | None
     directories: list[FsEntry]
-
-
-class JobRead(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    kind: str
-    library_id: int | None = None
-    status: str
-    message: str | None = None
-    created_at: datetime
-    finished_at: datetime | None = None

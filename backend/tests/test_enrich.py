@@ -4,7 +4,6 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from movora.api.app import create_app
-from movora.api.deps import get_metadata_provider
 from movora.config import Settings
 from movora.db.base import create_db_engine, create_session_factory, init_db
 from movora.db.models import Library, LibraryKind, Series
@@ -62,17 +61,14 @@ def test_enrich_endpoint_sets_cover_and_year(tmp_path: Path) -> None:
     (media / "To Aru Kagaku no Railgun - S01E01.mkv").write_bytes(b"")
 
     app = create_app(Settings(database_path=tmp_path / "t.db"))
-    app.dependency_overrides[get_metadata_provider] = _StubProvider
+    app.state.metadata_provider = _StubProvider()  # the metadata task uses this
     client = TestClient(app)
 
+    # Adding the library auto-scans then fetches metadata (a METADATA task), so the
+    # stub's cover/year land without any explicit call (the worker runs in TestClient).
     library = client.post(
         "/api/libraries", json={"path": str(media), "name": "A", "kind": "anime"}
     ).json()
-    client.post(f"/api/libraries/{library['id']}/scan")
-
-    enriched = client.post(f"/api/libraries/{library['id']}/enrich")
-    assert enriched.status_code == 200
-    assert enriched.json()["enriched"] == 1
 
     series = client.get(f"/api/libraries/{library['id']}/series").json()
     assert series[0]["cover_image_url"] == "http://example/cover.jpg"
