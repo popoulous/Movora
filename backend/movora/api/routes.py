@@ -9,7 +9,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from fastapi.responses import FileResponse, Response
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session, selectinload
 
 from movora import settings_store
@@ -161,6 +161,12 @@ def enrich(
 ) -> dict[str, str]:
     if session.get(Library, library_id) is None:
         raise HTTPException(status_code=404, detail="library not found")
+    # Manual enrich is a force-refresh: clear the cached match so every series is
+    # re-fetched (e.g. after fixing titles or changing the metadata language).
+    session.execute(
+        update(Series).where(Series.library_id == library_id).values(external_id=None)
+    )
+    session.commit()
     enqueue_metadata(session, library_id)
     _run_worker(request, background)
     return {"status": "queued"}
