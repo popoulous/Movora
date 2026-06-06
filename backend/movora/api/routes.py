@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
@@ -17,14 +19,17 @@ from movora.api.schemas import (
     LibraryCreate,
     LibraryRead,
     LibraryUpdate,
+    PlaybackInfo,
     ScanResult,
     SeriesDetail,
     SeriesRead,
 )
-from movora.db.models import Job, JobStatus, Library, Season, Series
+from movora.db.models import Episode, Job, JobStatus, Library, MediaFile, Season, Series
+from movora.domain import CapabilityProfile
 from movora.enrich import enrich_library
 from movora.filesystem import list_directories
 from movora.scanner import scan_library
+from movora.streaming import DirectPlayStrategy
 
 router = APIRouter(prefix="/api")
 
@@ -108,6 +113,41 @@ def series_detail(series_id: int, session: SessionDep) -> Series:
     if series is None:
         raise HTTPException(status_code=404, detail="series not found")
     return series
+
+
+@router.get("/episodes/{episode_id}/playback", response_model=PlaybackInfo)
+def episode_playback(episode_id: int, session: SessionDep) -> PlaybackInfo:
+    media_file = _episode_media_file(session, episode_id)
+    stream = DirectPlayStrategy().open_stream(media_file.path, CapabilityProfile())
+    return PlaybackInfo(
+        media_file_id=media_file.id,
+        stream_url=f"/api/episodes/{episode_id}/stream",
+        media_type=stream.media_type,
+        direct_play=stream.direct_play,
+        subtitle_tracks=[],
+    )
+
+
+@router.get("/episodes/{episode_id}/stream")
+def stream_episode(episode_id: int, session: SessionDep) -> FileResponse:
+    media_file = _episode_media_file(session, episode_id)
+    path = Path(media_file.path)
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="media file is missing on disk")
+    # FileResponse honours the Range header (HTTP 206) so the player can seek.
+    stream = DirectPlayStrategy().open_stream(str(path), CapabilityProfile())
+    return FileResponse(path, media_type=stream.media_type)
+
+
+def _episode_media_file(session: Session, episode_id: int) -> MediaFile:
+    if session.get(Episode, episode_id) is None:
+        raise HTTPException(status_code=404, detail="episode not found")
+    media_file = session.scalar(
+        select(MediaFile).where(MediaFile.episode_id == episode_id).order_by(MediaFile.id)
+    )
+    if media_file is None:
+        raise HTTPException(status_code=404, detail="no media file for this episode")
+    return media_file
 
 
 @router.get("/fs", response_model=FsListing)

@@ -75,6 +75,22 @@ class SeriesDetail(BaseModel):
     seasons: list[SeasonRead]
 
 
+class SubtitleTrackRead(BaseModel):
+    id: str  # opaque handle the subtitle endpoint can resolve back to a track
+    label: str
+    language: str | None = None
+    format: str  # "ass" (rendered by JASSUB) | "vtt" (native <track>)
+    url: str
+
+
+class PlaybackInfo(BaseModel):
+    media_file_id: int
+    stream_url: str
+    media_type: str
+    direct_play: bool  # False -> needs ingest-normalization before it plays in a browser
+    subtitle_tracks: list[SubtitleTrackRead] = []
+
+
 class ScanResult(BaseModel):
     added: int
 
