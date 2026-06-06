@@ -37,7 +37,17 @@ from movora.api.schemas import (
     TaskRead,
     WatchStateUpdate,
 )
-from movora.db.models import Episode, Library, MediaFile, Season, Series, Task, WatchState
+from movora.db.models import (
+    Episode,
+    JobStatus,
+    Library,
+    MediaFile,
+    Season,
+    Series,
+    Task,
+    TaskType,
+    WatchState,
+)
 from movora.domain import CapabilityProfile
 from movora.filesystem import list_directories
 from movora.home import SeriesOverview, home_overview
@@ -263,7 +273,9 @@ def series_detail(series_id: int, session: SessionDep) -> SeriesDetail:
         select(Series)
         .where(Series.id == series_id)
         .options(
-            selectinload(Series.seasons).selectinload(Season.episodes),
+            selectinload(Series.seasons)
+            .selectinload(Season.episodes)
+            .selectinload(Episode.media_files),
             selectinload(Series.recommendations),
         )
     )
@@ -277,6 +289,32 @@ def _series_detail(session: Session, series: Series) -> SeriesDetail:
     episode_ids = [episode.id for season in series.seasons for episode in season.episodes]
     watched = watched_episode_ids(session, user, episode_ids)
     summary = series_watch_summary(session, user, series)
+    media_by_episode = {
+        episode.id: (episode.media_files[0] if episode.media_files else None)
+        for season in series.seasons
+        for episode in season.episodes
+    }
+    media_ids = [mf.id for mf in media_by_episode.values() if mf is not None]
+    normalizing_ids = (
+        set(
+            session.scalars(
+                select(Task.media_file_id).where(
+                    Task.type == TaskType.NORMALIZE,
+                    Task.media_file_id.in_(media_ids),
+                    Task.status.in_([JobStatus.PENDING, JobStatus.RUNNING]),
+                )
+            )
+        )
+        if media_ids
+        else set()
+    )
+    normalized_by_ep = {
+        ep_id: mf is not None and mf.is_normalized for ep_id, mf in media_by_episode.items()
+    }
+    normalizing_by_ep = {
+        ep_id: mf is not None and mf.id in normalizing_ids
+        for ep_id, mf in media_by_episode.items()
+    }
     seasons = [
         SeasonRead(
             id=season.id,
@@ -288,6 +326,8 @@ def _series_detail(session: Session, series: Series) -> SeriesDetail:
                     end_number=episode.end_number,
                     title=episode.title,
                     watched=episode.id in watched,
+                    normalized=normalized_by_ep[episode.id],
+                    normalizing=normalizing_by_ep[episode.id],
                 )
                 for episode in sorted(season.episodes, key=lambda e: e.number)
             ],
@@ -390,6 +430,26 @@ def normalize_episode(
 ) -> dict[str, str]:
     media_file = _episode_media_file(session, episode_id)
     enqueue_normalize(session, [media_file.id])
+    _run_worker(request, background)
+    return {"status": "queued"}
+
+
+@router.post("/series/{series_id}/normalize", status_code=202)
+def normalize_series(
+    series_id: int, session: SessionDep, request: Request, background: BackgroundTasks
+) -> dict[str, str]:
+    """Queue every file of a series that still needs optimizing (background)."""
+    if session.get(Series, series_id) is None:
+        raise HTTPException(status_code=404, detail="series not found")
+    media_ids = list(
+        session.scalars(
+            select(MediaFile.id)
+            .join(Episode, MediaFile.episode_id == Episode.id)
+            .join(Season, Episode.season_id == Season.id)
+            .where(Season.series_id == series_id)
+        )
+    )
+    enqueue_normalize(session, media_ids)
     _run_worker(request, background)
     return {"status": "queued"}
 
@@ -590,14 +650,6 @@ def update_settings(
 ) -> SettingsRead:
     if payload.auto_normalize is not None:
         settings_store.set_bool(session, settings_store.AUTO_NORMALIZE, payload.auto_normalize)
-    if payload.auto_normalize_existing is not None:
-        settings_store.set_bool(
-            session, settings_store.AUTO_NORMALIZE_EXISTING, payload.auto_normalize_existing
-        )
-        # Turning on "include existing" queues the whole library right away.
-        if payload.auto_normalize_existing:
-            enqueue_normalize(session, list(session.scalars(select(MediaFile.id))))
-            _run_worker(request, background)
     if payload.delete_original is not None:
         settings_store.set_bool(session, settings_store.DELETE_ORIGINAL, payload.delete_original)
     if payload.tmdb_language is not None:
@@ -608,9 +660,6 @@ def update_settings(
 def _read_settings(session: Session) -> SettingsRead:
     return SettingsRead(
         auto_normalize=settings_store.get_bool(session, settings_store.AUTO_NORMALIZE),
-        auto_normalize_existing=settings_store.get_bool(
-            session, settings_store.AUTO_NORMALIZE_EXISTING
-        ),
         delete_original=settings_store.get_bool(session, settings_store.DELETE_ORIGINAL),
         tmdb_language=settings_store.get_str(session, settings_store.TMDB_LANGUAGE),
     )

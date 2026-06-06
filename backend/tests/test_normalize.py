@@ -46,8 +46,9 @@ def test_auto_normalize_runs_on_scan(tmp_path: Path) -> None:
     media = tmp_path / "media"
     _make_mkv(media)
     client = _client(tmp_path)
-    # auto_normalize defaults ON, so scanning sweeps the new file (the TestClient
-    # runs the background task before returning).
+    client.patch("/api/settings", json={"auto_normalize": True})
+    # With auto_normalize ON, scanning sweeps the new file (the TestClient runs the
+    # background task before returning).
     episode_id = _scan_to_episode(client, media)
     after = client.get(f"/api/episodes/{episode_id}/playback").json()
     assert after["direct_play"] is True

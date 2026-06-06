@@ -30,9 +30,10 @@ def test_tasks_track_normalization(tmp_path: Path) -> None:
         check=True, capture_output=True,
     )
     client = _client(tmp_path)
+    client.patch("/api/settings", json={"auto_normalize": True})
     client.post("/api/libraries", json={"path": str(media), "name": "M", "kind": "anime"})
-    # auto_normalize defaults ON -> adding the library queues scan -> metadata ->
-    # normalize tasks, and the worker drains them all in the TestClient.
+    # With auto_normalize ON, adding the library queues scan -> metadata -> normalize
+    # tasks, and the worker drains them all in the TestClient.
     normalize_tasks = [
         task for task in client.get("/api/tasks").json() if task["type"] == "normalize"
     ]

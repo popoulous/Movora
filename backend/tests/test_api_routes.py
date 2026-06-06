@@ -40,6 +40,29 @@ def test_create_scan_and_browse(tmp_path: Path) -> None:
     assert {e["number"] for e in episodes} == {1, 2}
 
 
+def test_series_normalize_marks_episodes(tmp_path: Path) -> None:
+    client, media = _make_client(tmp_path)
+    library_id = client.post(
+        "/api/libraries", json={"path": str(media), "name": "Anime", "kind": "anime"}
+    ).json()["id"]
+    series_id = client.get(f"/api/libraries/{library_id}/series").json()[0]["id"]
+
+    # auto_normalize defaults OFF, so nothing is optimized on scan.
+    episodes = client.get(f"/api/series/{series_id}").json()["seasons"][0]["episodes"]
+    assert all(not e["normalized"] and not e["normalizing"] for e in episodes)
+
+    assert client.post(f"/api/series/{series_id}/normalize").status_code == 202
+
+    # The empty test files have no video stream -> nothing to optimize -> marked ready.
+    episodes = client.get(f"/api/series/{series_id}").json()["seasons"][0]["episodes"]
+    assert all(e["normalized"] for e in episodes)
+
+
+def test_series_normalize_missing_returns_404(tmp_path: Path) -> None:
+    client, _ = _make_client(tmp_path)
+    assert client.post("/api/series/999/normalize").status_code == 404
+
+
 def test_scan_missing_library_returns_404(tmp_path: Path) -> None:
     client, _ = _make_client(tmp_path)
     assert client.post("/api/libraries/999/scan").status_code == 404

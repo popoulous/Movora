@@ -68,7 +68,7 @@ export function SettingsPage(): JSX.Element {
       .catch(() => undefined);
   }, [i18n.language]);
 
-  const toggle = (key: "auto_normalize" | "auto_normalize_existing" | "delete_original"): void => {
+  const toggle = (key: "auto_normalize" | "delete_original"): void => {
     if (settings === null) return;
     const next = { ...settings, [key]: !settings[key] };
     setSettings(next);
@@ -108,12 +108,6 @@ export function SettingsPage(): JSX.Element {
             description={t("settings.autoNormalizeDesc")}
             on={settings.auto_normalize}
             onToggle={() => toggle("auto_normalize")}
-          />
-          <Toggle
-            label={t("settings.autoNormalizeExisting")}
-            description={t("settings.autoNormalizeExistingDesc")}
-            on={settings.auto_normalize_existing}
-            onToggle={() => toggle("auto_normalize_existing")}
           />
           <Toggle
             label={t("settings.deleteOriginal")}

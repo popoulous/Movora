@@ -30,9 +30,9 @@ def test_delete_original_after_normalize(
     )
 
     client = TestClient(create_app(Settings(database_path=tmp_path / "t.db")))
-    client.patch("/api/settings", json={"delete_original": True})
+    client.patch("/api/settings", json={"auto_normalize": True, "delete_original": True})
 
-    # Adding the library auto-normalizes (default ON); with delete_original on, the
+    # Adding the library auto-normalizes (enabled above); with delete_original on, the
     # original is sent to "trash" once a verified mp4 exists.
     library = client.post(
         "/api/libraries", json={"path": str(media), "name": "M", "kind": "anime"}

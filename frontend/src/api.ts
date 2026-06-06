@@ -26,6 +26,8 @@ export interface Episode {
   end_number: number | null;
   title: string | null;
   watched: boolean;
+  normalized: boolean;
+  normalizing: boolean;
 }
 
 export interface Season {
@@ -140,7 +142,6 @@ export interface FsListing {
 
 export interface ServerSettings {
   auto_normalize: boolean;
-  auto_normalize_existing: boolean;
   delete_original: boolean;
   tmdb_language: string;
 }
@@ -220,6 +221,8 @@ export const api = {
     }).then(throwIfNotOk),
   normalizeEpisode: (episodeId: number): Promise<void> =>
     fetch(`/api/episodes/${episodeId}/normalize`, { method: "POST" }).then(throwIfNotOk),
+  normalizeSeries: (seriesId: number): Promise<void> =>
+    fetch(`/api/series/${seriesId}/normalize`, { method: "POST" }).then(throwIfNotOk),
   listTasks: (): Promise<Task[]> => fetch("/api/tasks").then(asJson<Task[]>),
   normalizeAll: (): Promise<void> =>
     fetch("/api/normalize/all", { method: "POST" }).then(throwIfNotOk),

@@ -1,9 +1,4 @@
-"""Persisted server-wide settings (key/value), with typed accessors.
-
-Movora is automation-first, so these gate hands-off behaviour. Defaults are chosen
-so the server does the right thing with no setup: auto-normalize is ON by default,
-meaning new media is optimized for Direct Play without the user lifting a finger.
-"""
+"""Persisted server-wide settings (key/value), with typed accessors."""
 
 from __future__ import annotations
 
@@ -11,11 +6,9 @@ from sqlalchemy.orm import Session
 
 from movora.db.models import Setting
 
+# Auto-optimize new media on scan. OFF by default — the owner prefers explicit control
+# (normalize per episode/series from the detail page, or "Normalize everything now").
 AUTO_NORMALIZE = "auto_normalize"
-# Whether to also sweep the EXISTING library (off by default, so enabling auto
-# normalization never kicks off a surprise multi-hour job over the whole library;
-# new files are still optimized on scan, and "Normalize all" triggers a sweep).
-AUTO_NORMALIZE_EXISTING = "auto_normalize_existing"
 # After a verified normalize, move the original to the OS trash to reclaim space
 # (off by default; embedded subtitles and fonts are preserved first).
 DELETE_ORIGINAL = "delete_original"
@@ -23,8 +16,7 @@ DELETE_ORIGINAL = "delete_original"
 # locale, so Hungarian titles match (Troja -> Trója) and metadata comes back localised.
 TMDB_LANGUAGE = "tmdb_language"
 _DEFAULTS: dict[str, bool] = {
-    AUTO_NORMALIZE: True,
-    AUTO_NORMALIZE_EXISTING: False,
+    AUTO_NORMALIZE: False,
     DELETE_ORIGINAL: False,
 }
 _STRING_DEFAULTS: dict[str, str] = {

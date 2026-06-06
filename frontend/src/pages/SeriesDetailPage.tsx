@@ -1,12 +1,14 @@
-import { Check, Lock, Play, Plus, Star } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { Check, CheckCircle2, Loader2, Lock, Play, Plus, Star, Wand2 } from "lucide-react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { type TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
+import { useActivity } from "../ActivityContext";
 import { api, type Recommendation, type SeriesDetail, type SeriesWatch } from "../api";
 
 type Tab = "episodes" | "overview";
+type NormalizeStatus = "optimize" | "optimizing" | "optimized";
 
 const COMING_SOON = ["tabCharacters", "tabReviews", "tabStats"] as const;
 
@@ -49,6 +51,7 @@ export function SeriesDetailPage(): JSX.Element {
   const { id } = useParams();
   const seriesId = Number(id);
   const navigate = useNavigate();
+  const { running, refreshSoon } = useActivity();
   const [series, setSeries] = useState<SeriesDetail | null>(null);
   const [tab, setTab] = useState<Tab>("episodes");
   const [seasonId, setSeasonId] = useState<number | null>(null);
@@ -68,6 +71,26 @@ export function SeriesDetailPage(): JSX.Element {
       })
       .catch((reason: unknown) => setError(String(reason)));
   }, [seriesId]);
+
+  const reload = useCallback(() => {
+    api.getSeries(seriesId).then(setSeries).catch(() => undefined);
+  }, [seriesId]);
+
+  // While background work runs, refresh so optimize status updates live.
+  useEffect(() => {
+    if (!running) return;
+    const timer = setInterval(reload, 3000);
+    return () => clearInterval(timer);
+  }, [running, reload]);
+
+  const normalizeSeries = (): void => {
+    api.normalizeSeries(seriesId).then(reload).catch(() => undefined);
+    refreshSoon();
+  };
+  const normalizeEpisode = (episodeId: number): void => {
+    api.normalizeEpisode(episodeId).then(reload).catch(() => undefined);
+    refreshSoon();
+  };
 
   const orderedEpisodes = useMemo(
     () =>
@@ -91,6 +114,11 @@ export function SeriesDetailPage(): JSX.Element {
     if (continueId !== null) navigate(`/watch/${continueId}`);
   };
   const ctaLabel = watch?.status === "completed" ? t("series.rewatch") : t("series.continueWatching");
+  const normalizeStatus: NormalizeStatus = orderedEpisodes.some((e) => e.normalizing)
+    ? "optimizing"
+    : orderedEpisodes.length > 0 && orderedEpisodes.every((e) => e.normalized)
+      ? "optimized"
+      : "optimize";
 
   const score = series.score !== null ? (series.score / 10).toFixed(1) : null;
   const synopsis = series.description !== null ? stripHtml(series.description) : null;
@@ -136,6 +164,8 @@ export function SeriesDetailPage(): JSX.Element {
             ctaLabel={ctaLabel}
             canPlay={continueId !== null}
             onPlay={playContinue}
+            normalizeStatus={normalizeStatus}
+            onNormalize={normalizeSeries}
             t={t}
           />
 
@@ -152,6 +182,7 @@ export function SeriesDetailPage(): JSX.Element {
               setSeasonId={setSeasonId}
               continueId={watch?.continue_episode_id ?? null}
               navigate={navigate}
+              onNormalizeEpisode={normalizeEpisode}
               t={t}
             />
           )}
@@ -180,6 +211,8 @@ function Hero({
   ctaLabel,
   canPlay,
   onPlay,
+  normalizeStatus,
+  onNormalize,
   t,
 }: {
   series: SeriesDetail;
@@ -191,6 +224,8 @@ function Hero({
   ctaLabel: string;
   canPlay: boolean;
   onPlay: () => void;
+  normalizeStatus: NormalizeStatus;
+  onNormalize: () => void;
   t: TFunction;
 }): JSX.Element {
   return (
@@ -264,7 +299,7 @@ function Hero({
           </div>
         )}
 
-        <div className="mt-7 flex items-center gap-3">
+        <div className="mt-7 flex flex-wrap items-center gap-3">
           <button
             onClick={onPlay}
             disabled={!canPlay}
@@ -278,9 +313,43 @@ function Hero({
           >
             <Plus className="h-5 w-5" />
           </button>
+          <SeriesOptimizeButton status={normalizeStatus} onClick={onNormalize} t={t} />
         </div>
       </div>
     </div>
+  );
+}
+
+function SeriesOptimizeButton({
+  status,
+  onClick,
+  t,
+}: {
+  status: NormalizeStatus;
+  onClick: () => void;
+  t: TFunction;
+}): JSX.Element {
+  if (status === "optimized") {
+    return (
+      <span className="inline-flex items-center gap-2 rounded-2xl bg-emerald-500/10 px-5 py-3 text-sm font-medium text-emerald-300 ring-1 ring-emerald-400/20">
+        <CheckCircle2 className="h-4 w-4" /> {t("series.optimized")}
+      </span>
+    );
+  }
+  if (status === "optimizing") {
+    return (
+      <span className="inline-flex items-center gap-2 rounded-2xl bg-white/[0.04] px-5 py-3 text-sm font-medium text-neutral-300 ring-1 ring-white/10">
+        <Loader2 className="h-4 w-4 animate-spin" /> {t("series.optimizing")}
+      </span>
+    );
+  }
+  return (
+    <button
+      onClick={onClick}
+      className="inline-flex items-center gap-2 rounded-2xl bg-white/[0.04] px-5 py-3 text-sm font-medium text-neutral-200 ring-1 ring-white/10 transition hover:bg-white/[0.08]"
+    >
+      <Wand2 className="h-4 w-4" /> {t("series.optimize")}
+    </button>
   );
 }
 
@@ -325,6 +394,7 @@ function EpisodesSection({
   setSeasonId,
   continueId,
   navigate,
+  onNormalizeEpisode,
   t,
 }: {
   series: SeriesDetail;
@@ -332,6 +402,7 @@ function EpisodesSection({
   setSeasonId: (id: number) => void;
   continueId: number | null;
   navigate: (to: string) => void;
+  onNormalizeEpisode: (episodeId: number) => void;
   t: TFunction;
 }): JSX.Element {
   const seasons = [...series.seasons].sort((a, b) => seasonOrder(a.number) - seasonOrder(b.number));
@@ -385,6 +456,21 @@ function EpisodesSection({
               <span className={`min-w-0 flex-1 truncate ${episode.watched ? "text-neutral-400" : "text-neutral-100"}`}>
                 {episode.title ?? t("series.episode", { number: label })}
               </span>
+              {episode.normalized ? (
+                <span title={t("series.optimized")} className="shrink-0 text-emerald-400/70">
+                  <CheckCircle2 className="h-4 w-4" />
+                </span>
+              ) : episode.normalizing ? (
+                <Loader2 className="h-4 w-4 shrink-0 animate-spin text-neutral-400" />
+              ) : (
+                <button
+                  onClick={() => onNormalizeEpisode(episode.id)}
+                  title={t("series.optimizeEpisode")}
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-neutral-500 transition hover:bg-white/10 hover:text-white"
+                >
+                  <Wand2 className="h-4 w-4" />
+                </button>
+              )}
               {episode.watched && (
                 <Check className="h-4 w-4 shrink-0 text-emerald-400" aria-label="watched" />
               )}

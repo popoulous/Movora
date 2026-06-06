@@ -50,12 +50,9 @@ const en = {
     metadataLanguageDesc:
       "Language for film/series titles and descriptions (TMDB). Helps match localised titles.",
     playbackTitle: "Playback optimization",
-    autoNormalize: "Optimize everything for Direct Play",
+    autoNormalize: "Auto-optimize new media on scan",
     autoNormalizeDesc:
-      "Automatically convert new media to a browser-playable format (H.264/AAC mp4). Originals are kept untouched.",
-    autoNormalizeExisting: "Include the existing library",
-    autoNormalizeExistingDesc:
-      "Also optimize files already in your libraries — a large one-time background job.",
+      "Convert newly scanned media to a browser-playable mp4 (H.264/AAC). Off by default — you can also optimize per title from its page, or with the button below. Originals are kept.",
     deleteOriginal: "Delete the original after optimizing",
     deleteOriginalDesc:
       "Once a file is verified and optimized, move the original to the OS trash to save space. Embedded subtitles and fonts are preserved first.",
@@ -131,6 +128,10 @@ const en = {
     perEp: "Per ep",
     continueWatching: "Continue Watching",
     rewatch: "Rewatch",
+    optimize: "Optimize",
+    optimized: "Optimized",
+    optimizing: "Optimizing…",
+    optimizeEpisode: "Optimize this episode",
     tabCharacters: "Characters",
     tabReviews: "Reviews",
     tabStats: "Stats",
@@ -216,12 +217,9 @@ const hu: typeof en = {
     metadataLanguageDesc:
       "A film/sorozat címek és leírások nyelve (TMDB). A lokalizált címek matchelését segíti.",
     playbackTitle: "Lejátszás-optimalizálás",
-    autoNormalize: "Minden optimalizálása Direct Play-re",
+    autoNormalize: "Új média automatikus optimalizálása szkenneléskor",
     autoNormalizeDesc:
-      "Az új médiát automatikusan böngészőben lejátszható formátumra (H.264/AAC mp4) alakítja. Az eredetik érintetlenek maradnak.",
-    autoNormalizeExisting: "A meglévő könyvtár is",
-    autoNormalizeExistingDesc:
-      "A könyvtáraidban már meglévő fájlokat is optimalizálja — egyszeri, nagy háttérmunka.",
+      "A szkenneléskor talált új médiát böngészőben lejátszható mp4-re (H.264/AAC) alakítja. Alapból KI — címenként is optimalizálhatsz az adatlapon, vagy a lenti gombbal. Az eredetik megmaradnak.",
     deleteOriginal: "Eredeti törlése optimalizálás után",
     deleteOriginalDesc:
       "A verifikált, optimalizált fájl után az eredetit a rendszer Lomtárába mozgatja a helyspórolásért. A beágyazott feliratok és fontok előbb megőrződnek.",
@@ -297,6 +295,10 @@ const hu: typeof en = {
     perEp: "Epizódonként",
     continueWatching: "Folytatás",
     rewatch: "Újranézés",
+    optimize: "Optimalizálás",
+    optimized: "Optimalizálva",
+    optimizing: "Folyamatban…",
+    optimizeEpisode: "Rész optimalizálása",
     tabCharacters: "Karakterek",
     tabReviews: "Vélemények",
     tabStats: "Statisztika",

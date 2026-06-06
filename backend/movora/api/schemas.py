@@ -37,6 +37,8 @@ class EpisodeRead(BaseModel):
     end_number: int | None = None  # multi-episode file: show "1-2" when set
     title: str | None = None
     watched: bool = False
+    normalized: bool = False  # media file is Direct-Play ready (optimized or already fine)
+    normalizing: bool = False  # an optimize task is queued/running for it
 
 
 class SeasonRead(BaseModel):
@@ -162,14 +164,12 @@ class PlaybackInfo(BaseModel):
 
 class SettingsRead(BaseModel):
     auto_normalize: bool
-    auto_normalize_existing: bool
     delete_original: bool
     tmdb_language: str
 
 
 class SettingsUpdate(BaseModel):
     auto_normalize: bool | None = None
-    auto_normalize_existing: bool | None = None
     delete_original: bool | None = None
     tmdb_language: str | None = None
 

@@ -440,7 +440,14 @@ def _process_task(
 
 def _run_normalize_task(session: Session, task: Task, output_dir: Path) -> None:
     media_file = task.media_file
-    if media_file is None or not should_normalize(media_file):
+    if media_file is None:
+        _finish(session, task, message="media gone")
+        return
+    if not should_normalize(media_file):
+        # Nothing to do — already optimized, or the source is already Direct-Play.
+        # Mark it ready (unless the source vanished) so the UI shows it as optimized.
+        if media_file.normalized_path or Path(media_file.path).is_file():
+            media_file.is_normalized = True
         _finish(session, task, message="already optimized")
         return
     task_id = task.id
