@@ -285,6 +285,7 @@ def _series_detail(session: Session, series: Series) -> SeriesDetail:
                 EpisodeRead(
                     id=episode.id,
                     number=episode.number,
+                    end_number=episode.end_number,
                     title=episode.title,
                     watched=episode.id in watched,
                 )

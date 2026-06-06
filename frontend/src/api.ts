@@ -23,6 +23,7 @@ export interface SeriesSummary {
 export interface Episode {
   id: number;
   number: number;
+  end_number: number | null;
   title: string | null;
   watched: boolean;
 }

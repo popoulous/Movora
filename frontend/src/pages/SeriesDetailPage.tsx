@@ -364,6 +364,10 @@ function EpisodesSection({
       <ul className="min-w-0 flex-1 divide-y divide-white/5 overflow-hidden rounded-2xl bg-white/[0.03] ring-1 ring-white/10 backdrop-blur">
         {episodes.map((episode) => {
           const selected = episode.id === continueId;
+          const label =
+            episode.end_number !== null
+              ? `${episode.number}–${episode.end_number}`
+              : String(episode.number);
           return (
             <li
               key={episode.id}
@@ -377,9 +381,9 @@ function EpisodesSection({
               >
                 <Play className="h-3 w-3 fill-current" />
               </button>
-              <span className="w-6 text-right tabular-nums text-neutral-500">{episode.number}</span>
+              <span className="w-10 text-right tabular-nums text-neutral-500">{label}</span>
               <span className={`min-w-0 flex-1 truncate ${episode.watched ? "text-neutral-400" : "text-neutral-100"}`}>
-                {episode.title ?? t("series.episode", { number: episode.number })}
+                {episode.title ?? t("series.episode", { number: label })}
               </span>
               {episode.watched && (
                 <Check className="h-4 w-4 shrink-0 text-emerald-400" aria-label="watched" />

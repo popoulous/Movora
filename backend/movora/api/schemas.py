@@ -34,6 +34,7 @@ class EpisodeRead(BaseModel):
 
     id: int
     number: int
+    end_number: int | None = None  # multi-episode file: show "1-2" when set
     title: str | None = None
     watched: bool = False
 

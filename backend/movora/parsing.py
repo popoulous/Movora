@@ -27,16 +27,34 @@ def _first_int(value: Any) -> int | None:
         return None
 
 
+def _last_int(value: Any) -> int | None:
+    if isinstance(value, list):
+        value = value[-1] if value else None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _range_end(value: Any, first: int | None) -> int | None:
+    """The last number of a multi-episode value (E01-E02 -> 2), else None."""
+    last = _last_int(value)
+    return last if last is not None and first is not None and last > first else None
+
+
 class AnimeParser:
     """Parse anime release file names with anitopy."""
 
     def parse(self, filename: str) -> ParsedFields:
         data: dict[str, Any] = anitopy.parse(filename) or {}
+        episode = data.get("episode_number")
+        first = _first_int(episode)
         return ParsedFields(
             title=data.get("anime_title"),
-            episode=_first_int(data.get("episode_number")),
+            episode=first,
             season=_first_int(data.get("anime_season")),
             release_group=data.get("release_group"),
+            episode_end=_range_end(episode, first),
         )
 
 
@@ -46,12 +64,15 @@ class VideoParser:
     def parse(self, filename: str) -> ParsedFields:
         data: dict[str, Any] = dict(guessit(filename))
         title = data.get("title")
+        episode = data.get("episode")
+        first = _first_int(episode)
         return ParsedFields(
             title=str(title) if title is not None else None,
-            episode=_first_int(data.get("episode")),
+            episode=first,
             season=_first_int(data.get("season")),
             release_group=data.get("release_group"),
             year=_first_int(data.get("year")),
+            episode_end=_range_end(episode, first),
         )
 
 

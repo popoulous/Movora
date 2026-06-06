@@ -68,17 +68,21 @@ def scan_library(
         if season_num == 0:  # specials: number sequentially so OVAs/movies don't collide
             special_next[title] = special_next.get(title, 0) + 1
             number = special_next[title]
+            end_number = None
         else:
             number = fields.episode or 1
+            end_number = fields.episode_end  # multi-episode file (E01-E02) -> labelled 1-2
         existing = session.scalar(select(MediaFile).where(MediaFile.path == str(path)))
         if existing is not None:
             # Re-scan reconciles: move the file if its season/episode mapping changed,
             # keeping the media_file id so the normalized output stays linked.
-            episode = _get_or_create_episode(session, season, number, existing.episode.title)
+            episode = _get_or_create_episode(
+                session, season, number, existing.episode.title, end_number
+            )
             if existing.episode_id != episode.id:
                 existing.episode = episode
             continue
-        episode = _get_or_create_episode(session, season, number, prober(path))
+        episode = _get_or_create_episode(session, season, number, prober(path), end_number)
         media_file = MediaFile(episode=episode, path=str(path))
         session.add(media_file)
         new_files.append(media_file)
@@ -232,7 +236,11 @@ def _get_or_create_season(session: Session, series: Series, number: int) -> Seas
 
 
 def _get_or_create_episode(
-    session: Session, season: Season, number: int, title: str | None = None
+    session: Session,
+    season: Season,
+    number: int,
+    title: str | None = None,
+    end_number: int | None = None,
 ) -> Episode:
     existing = session.scalar(
         select(Episode).where(Episode.season_id == season.id, Episode.number == number)
@@ -240,8 +248,9 @@ def _get_or_create_episode(
     if existing is not None:
         if existing.title is None and title is not None:
             existing.title = title
+        existing.end_number = end_number  # keep the range in sync on re-scan
         return existing
-    episode = Episode(season=season, number=number, title=title)
+    episode = Episode(season=season, number=number, title=title, end_number=end_number)
     session.add(episode)
     session.flush()
     return episode

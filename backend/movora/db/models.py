@@ -108,6 +108,7 @@ class Episode(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     season_id: Mapped[int] = mapped_column(ForeignKey("season.id"))
     number: Mapped[int]
+    end_number: Mapped[int | None] = mapped_column(default=None)  # multi-ep file: E01-E02 -> 2
     absolute_number: Mapped[int | None] = mapped_column(default=None)
     title: Mapped[str | None] = mapped_column(default=None)
 

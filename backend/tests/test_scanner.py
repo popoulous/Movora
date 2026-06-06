@@ -184,6 +184,27 @@ def test_scan_movie_title_cleaned_by_guessit(tmp_path: Path) -> None:
         assert titles == {"Gladiator"}
 
 
+def test_scan_multi_episode_file_records_range(tmp_path: Path) -> None:
+    # A double-episode file (S01E01-E02) is one episode numbered 1 spanning to 2, so the
+    # season has no gap-looking duplicate; the next file is episode 3 (single).
+    show = tmp_path / "Stargate Atlantis"
+    show.mkdir()
+    (show / "Stargate.Atlantis.S01E01-E02.Rising.mkv").write_bytes(b"")
+    (show / "Stargate.Atlantis.S01E03.Hide.mkv").write_bytes(b"")
+
+    engine = create_db_engine(":memory:")
+    init_db(engine)
+    factory = create_session_factory(engine)
+    with factory() as session:
+        library = Library(path=str(tmp_path), name="Shows", kind=LibraryKind.SERIES)
+        session.add(library)
+        session.commit()
+
+        scan_library(session, library, title_prober=lambda path: None)
+        ends = {ep.number: ep.end_number for ep in session.scalars(select(Episode))}
+        assert ends == {1: 2, 3: None}
+
+
 def test_scan_sets_episode_titles_from_prober(tmp_path: Path) -> None:
     (tmp_path / "[Group] Show - 01.mkv").write_bytes(b"")
     engine = create_db_engine(":memory:")

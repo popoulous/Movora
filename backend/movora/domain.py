@@ -25,6 +25,7 @@ class ParsedFields:
     season: int | None = None
     release_group: str | None = None
     year: int | None = None  # release year (guessit) — helps disambiguate film matches
+    episode_end: int | None = None  # last number of a multi-episode file (E01-E02 -> 2)
 
 
 @dataclass(frozen=True)
