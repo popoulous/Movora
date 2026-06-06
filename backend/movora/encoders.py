@@ -37,11 +37,12 @@ def select_h264_encoder(candidates: tuple[str, ...], tester: Callable[[str], boo
 def _probe_encoder(name: str, ffmpeg_path: str) -> bool:
     try:
         result = subprocess.run(
-            [ffmpeg_path, "-hide_banner", "-v", "error", "-f", "lavfi",
+            [ffmpeg_path, "-nostdin", "-hide_banner", "-v", "error", "-f", "lavfi",
              "-i", "color=c=black:s=128x72:r=5", "-frames:v", "3",
              "-c:v", name, "-f", "null", "-"],
             capture_output=True,
             timeout=30,
+            stdin=subprocess.DEVNULL,
         )
     except (OSError, subprocess.SubprocessError):
         return False

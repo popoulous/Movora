@@ -83,3 +83,41 @@ def test_enqueue_skips_already_queued() -> None:
 
         assert enqueue_normalize(session, [media_file_id]) == 0
         assert len(list(session.scalars(select(Task)))) == 1
+
+
+def test_requeue_retries_failed_under_cap() -> None:
+    with _session() as session:
+        media_file_id = _media_file(session)
+        session.add(
+            Task(
+                type=TaskType.NORMALIZE,
+                media_file_id=media_file_id,
+                status=JobStatus.FAILED,
+                attempts=1,
+            )
+        )
+        session.commit()
+
+        assert requeue_interrupted(session) == 1
+        task = session.scalar(select(Task))
+        assert task is not None
+        assert task.status == JobStatus.PENDING
+
+
+def test_requeue_leaves_failed_at_cap() -> None:
+    with _session() as session:
+        media_file_id = _media_file(session)
+        session.add(
+            Task(
+                type=TaskType.NORMALIZE,
+                media_file_id=media_file_id,
+                status=JobStatus.FAILED,
+                attempts=3,
+            )
+        )
+        session.commit()
+
+        assert requeue_interrupted(session) == 0
+        task = session.scalar(select(Task))
+        assert task is not None
+        assert task.status == JobStatus.FAILED

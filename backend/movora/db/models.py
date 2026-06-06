@@ -237,6 +237,7 @@ class Task(Base):
     library_id: Mapped[int | None] = mapped_column(ForeignKey("library.id"), default=None)
     status: Mapped[JobStatus] = mapped_column(default=JobStatus.PENDING)
     progress: Mapped[int] = mapped_column(default=0)  # 0-100
+    attempts: Mapped[int] = mapped_column(default=0)  # for bounded auto-retry
     eta_seconds: Mapped[int | None] = mapped_column(default=None)
     message: Mapped[str | None] = mapped_column(default=None)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())

@@ -40,6 +40,7 @@ ProgressCallback = Callable[[int, int | None], None]
 
 _worker_lock = threading.Lock()
 _ACTIVE = (JobStatus.PENDING, JobStatus.RUNNING)
+_MAX_ATTEMPTS = 3  # bounded auto-retry before a task is marked failed
 
 
 # --- normalization primitive -------------------------------------------------
@@ -70,10 +71,11 @@ def normalize_media_file(
     duration = _as_float(probe.get("duration"))
 
     proc = subprocess.Popen(
-        [ffmpeg, "-y", "-i", str(source), *args,
+        [ffmpeg, "-nostdin", "-y", "-i", str(source), *args,
          "-progress", "pipe:1", "-nostats", "-loglevel", "error", str(partial)],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        stdin=subprocess.DEVNULL,  # don't read the shared stdin (-> "Immediate exit requested")
         text=True,
         encoding="utf-8",
         errors="replace",
@@ -180,6 +182,7 @@ def enqueue_normalize(session: Session, media_file_ids: list[int]) -> int:
         failed = [task for task in existing if task.status == JobStatus.FAILED]
         if failed:
             _reset(failed[-1])  # retry the latest failed attempt in place
+            failed[-1].attempts = 0  # a manual re-queue is a fresh start
         else:
             session.add(Task(type=TaskType.NORMALIZE, media_file_id=media_file_id))
         queued += 1
@@ -188,12 +191,19 @@ def enqueue_normalize(session: Session, media_file_ids: list[int]) -> int:
 
 
 def requeue_interrupted(session: Session) -> int:
-    """Reset tasks left RUNNING by a crash/restart back to the queue."""
-    interrupted = list(session.scalars(select(Task).where(Task.status == JobStatus.RUNNING)))
-    for task in interrupted:
-        _reset(task)
+    """On startup, requeue interrupted (RUNNING) tasks and retry under-cap failures."""
+    rows = list(
+        session.scalars(
+            select(Task).where(Task.status.in_((JobStatus.RUNNING, JobStatus.FAILED)))
+        )
+    )
+    count = 0
+    for task in rows:
+        if task.status == JobStatus.RUNNING or task.attempts < _MAX_ATTEMPTS:
+            _reset(task)
+            count += 1
     session.commit()
-    return len(interrupted)
+    return count
 
 
 def _reset(task: Task) -> None:
@@ -257,10 +267,16 @@ def _process_task(
                 _run_scan_task(session, task)
             elif task.type == TaskType.METADATA:
                 _run_metadata_task(session, task, provider)
-        except Exception as exc:  # record the failure on the task, keep the worker alive
-            task.status = JobStatus.FAILED
+        except Exception as exc:  # keep the worker alive; retry a few times then fail
+            task.attempts += 1
             task.message = str(exc)[:200]
-            task.finished_at = datetime.now(timezone.utc)
+            task.progress = 0
+            task.eta_seconds = None
+            if task.attempts < _MAX_ATTEMPTS:
+                task.status = JobStatus.PENDING  # back in the queue for another try
+            else:
+                task.status = JobStatus.FAILED
+                task.finished_at = datetime.now(timezone.utc)
             session.commit()
 
 

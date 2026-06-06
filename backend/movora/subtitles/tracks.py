@@ -160,8 +160,9 @@ def extract_fonts(
             # ffmpeg writes the attachment then exits non-zero ("no output file"); the
             # file is what matters, so we check it rather than the return code.
             subprocess.run(
-                [exe, "-y", f"-dump_attachment:{font.index}", str(out), "-i", str(media_path)],
-                capture_output=True, timeout=60,
+                [exe, "-nostdin", "-y", f"-dump_attachment:{font.index}",
+                 str(out), "-i", str(media_path)],
+                capture_output=True, timeout=60, stdin=subprocess.DEVNULL,
             )
         if out.is_file():
             extracted.append(out)
@@ -176,9 +177,10 @@ def extract_embedded(
         raise RuntimeError("ffmpeg is not available")
     out_fmt = "ass" if fmt == "ass" else "srt"
     result = subprocess.run(
-        [exe, "-v", "quiet", "-i", str(media_path), "-map", f"0:{stream_index}",
+        [exe, "-nostdin", "-v", "quiet", "-i", str(media_path), "-map", f"0:{stream_index}",
          "-f", out_fmt, "-"],
         capture_output=True, text=True, encoding="utf-8", timeout=120,
+        stdin=subprocess.DEVNULL,
     )
     return result.stdout
 
