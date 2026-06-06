@@ -42,6 +42,17 @@ _worker_lock = threading.Lock()
 _ACTIVE = (JobStatus.PENDING, JobStatus.RUNNING)
 _MAX_ATTEMPTS = 3  # bounded auto-retry before a task is marked failed
 
+# The currently-running transcode, so it can be cancelled (e.g. on library delete).
+_active_lock = threading.Lock()
+_active: tuple[int, subprocess.Popen[str]] | None = None
+
+
+def cancel_media_files(media_file_ids: set[int]) -> None:
+    """Terminate the running transcode if it is for one of these media files."""
+    with _active_lock:
+        if _active is not None and _active[0] in media_file_ids:
+            _active[1].terminate()
+
 
 # --- normalization primitive -------------------------------------------------
 
@@ -80,16 +91,23 @@ def normalize_media_file(
         encoding="utf-8",
         errors="replace",
     )
-    _track_progress(proc, duration, on_progress)
-    stderr = proc.stderr.read() if proc.stderr is not None else ""
-    if proc.wait() != 0:
-        partial.unlink(missing_ok=True)
-        raise RuntimeError(f"ffmpeg failed: {stderr[-500:]}")
+    global _active
+    with _active_lock:
+        _active = (media_file.id, proc)
+    try:
+        _track_progress(proc, duration, on_progress)
+        stderr = proc.stderr.read() if proc.stderr is not None else ""
+        if proc.wait() != 0:
+            partial.unlink(missing_ok=True)
+            raise RuntimeError(f"ffmpeg failed: {stderr[-500:]}")
 
-    out_probe = probe_media(partial)
-    if out_probe is None or out_probe.get("video_codec") != "h264":
-        partial.unlink(missing_ok=True)
-        raise RuntimeError("normalized output failed verification")
+        out_probe = probe_media(partial)
+        if out_probe is None or out_probe.get("video_codec") != "h264":
+            partial.unlink(missing_ok=True)
+            raise RuntimeError("normalized output failed verification")
+    finally:
+        with _active_lock:
+            _active = None
 
     partial.replace(output)
     media_file.normalized_path = str(output)
@@ -300,7 +318,10 @@ def _process_task(
             else:
                 task.status = JobStatus.FAILED
                 task.finished_at = datetime.now(timezone.utc)
-            session.commit()
+            try:
+                session.commit()
+            except Exception:  # the task may have been deleted (e.g. library removed mid-run)
+                session.rollback()
 
 
 def _run_normalize_task(session: Session, task: Task, output_dir: Path) -> None:

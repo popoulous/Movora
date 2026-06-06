@@ -30,7 +30,13 @@ from movora.api.schemas import (
 from movora.db.models import Episode, Library, MediaFile, Season, Series, Task
 from movora.domain import CapabilityProfile
 from movora.filesystem import list_directories
-from movora.normalize import enqueue_metadata, enqueue_normalize, enqueue_scan, run_worker
+from movora.normalize import (
+    cancel_media_files,
+    enqueue_metadata,
+    enqueue_normalize,
+    enqueue_scan,
+    run_worker,
+)
 from movora.streaming import DirectPlayStrategy
 from movora.subtitles import (
     SoftAssOrSrtResolver,
@@ -84,14 +90,18 @@ def delete_library(library_id: int, session: SessionDep, request: Request) -> No
     library = session.get(Library, library_id)
     if library is None:
         raise HTTPException(status_code=404, detail="library not found")
-    # Remove generated files (normalized mp4 + preserved assets); originals are untouched.
-    media_files = session.scalars(
-        select(MediaFile)
-        .join(Episode)
-        .join(Season)
-        .join(Series)
-        .where(Series.library_id == library_id)
+    # Stop any in-progress transcode for this library, then remove generated files
+    # (normalized mp4 + preserved assets). Originals are untouched.
+    media_files = list(
+        session.scalars(
+            select(MediaFile)
+            .join(Episode)
+            .join(Season)
+            .join(Series)
+            .where(Series.library_id == library_id)
+        )
     )
+    cancel_media_files({media_file.id for media_file in media_files})
     for media_file in media_files:
         _remove_generated(media_file, request)
     session.delete(library)  # cascades DB rows: series, episodes, media files, tasks
