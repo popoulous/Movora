@@ -217,7 +217,7 @@ export function SeriesDetailPage(): JSX.Element {
                         {episode.number}
                       </span>
                       <span className="text-neutral-200">
-                        {episode.title ?? t("series.untitled")}
+                        {episode.title ?? t("series.episode", { number: episode.number })}
                       </span>
                     </li>
                   ))}
