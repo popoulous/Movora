@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import pytest
 
+from movora import normalize as normalize_module
 from movora.api import app as app_module
 from movora.domain import ParsedFields, SeriesMetadata
 
@@ -19,5 +20,7 @@ class _OfflineProvider:
 
 
 @pytest.fixture(autouse=True)
-def _offline_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
+def _test_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Offline metadata, and run the background workers inline for determinism.
     monkeypatch.setattr(app_module, "AniListProvider", lambda: _OfflineProvider())
+    monkeypatch.setattr(normalize_module, "_run_in_thread", False)

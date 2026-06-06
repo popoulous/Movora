@@ -36,7 +36,7 @@ from movora.normalize import (
     enqueue_metadata,
     enqueue_normalize,
     enqueue_scan,
-    run_worker,
+    start_workers,
 )
 from movora.streaming import DirectPlayStrategy
 from movora.subtitles import (
@@ -210,7 +210,7 @@ def normalize_all(
 
 def _run_worker(request: Request, background: BackgroundTasks) -> None:
     background.add_task(
-        run_worker,
+        start_workers,
         request.app.state.session_factory,
         _normalized_dir(request),
         request.app.state.metadata_provider,

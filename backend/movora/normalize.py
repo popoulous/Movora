@@ -39,9 +39,17 @@ from movora.subtitles import preserve_embedded_assets
 # (percent, eta_seconds) -> None
 ProgressCallback = Callable[[int, int | None], None]
 
-_worker_lock = threading.Lock()
 _ACTIVE = (JobStatus.PENDING, JobStatus.RUNNING)
 _MAX_ATTEMPTS = 3  # bounded auto-retry before a task is marked failed
+
+# Two independent workers so scan/metadata (I/O + network) run *concurrently* with
+# transcoding (GPU/CPU) instead of queueing behind it.
+_normalize_lock = threading.Lock()
+_light_lock = threading.Lock()
+_NORMALIZE_TYPES = (TaskType.NORMALIZE,)
+_LIGHT_TYPES = (TaskType.SCAN, TaskType.METADATA)
+# Production runs the workers in threads; tests set this False to run them inline.
+_run_in_thread = True
 
 # The currently-running transcode, so it can be cancelled (e.g. on library delete).
 _active_lock = threading.Lock()
@@ -284,24 +292,61 @@ def _has_active_library_task(session: Session, library_id: int, task_type: TaskT
 # --- worker ------------------------------------------------------------------
 
 
+def start_workers(
+    session_factory: sessionmaker[Session], output_dir: Path, provider: MetadataProvider
+) -> None:
+    """Start both workers: transcoding (serial) and scan/metadata (concurrent)."""
+    _spawn(run_light_worker, session_factory, output_dir, provider)
+    _spawn(run_worker, session_factory, output_dir, provider)
+
+
 def run_worker(
     session_factory: sessionmaker[Session], output_dir: Path, provider: MetadataProvider
 ) -> None:
-    """Drain the pending task queue serially. Only one worker runs at a time."""
-    if not _worker_lock.acquire(blocking=False):
-        return  # another worker is already draining the queue
+    """Drain normalize tasks serially — one transcode at a time."""
+    _drain(session_factory, output_dir, provider, _NORMALIZE_TYPES, _normalize_lock)
+
+
+def run_light_worker(
+    session_factory: sessionmaker[Session], output_dir: Path, provider: MetadataProvider
+) -> None:
+    """Drain scan/metadata tasks, concurrently with transcoding."""
+    _drain(session_factory, output_dir, provider, _LIGHT_TYPES, _light_lock)
+
+
+def _spawn(target: Callable[..., None], *args: object) -> None:
+    if _run_in_thread:
+        threading.Thread(target=target, args=args, daemon=True).start()
+    else:
+        target(*args)  # tests run workers inline for determinism
+
+
+def _drain(
+    session_factory: sessionmaker[Session],
+    output_dir: Path,
+    provider: MetadataProvider,
+    types: tuple[TaskType, ...],
+    lock: threading.Lock,
+) -> None:
+    if not lock.acquire(blocking=False):
+        return  # this worker is already draining its queue
     try:
         while True:
             with session_factory() as session:
                 task = session.scalars(
-                    select(Task).where(Task.status == JobStatus.PENDING).order_by(Task.id)
+                    select(Task)
+                    .where(Task.status == JobStatus.PENDING, Task.type.in_(types))
+                    .order_by(Task.id)
                 ).first()
                 if task is None:
                     return
                 task_id = task.id
             _process_task(session_factory, task_id, output_dir, provider)
+            if TaskType.NORMALIZE not in types:
+                # a scan may have queued transcodes — make sure that worker runs
+                _spawn(run_worker, session_factory, output_dir, provider)
     finally:
-        _worker_lock.release()
+        lock.release()
 
 
 def _process_task(

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -15,7 +14,7 @@ from movora.api.routes import router
 from movora.config import Settings, get_settings
 from movora.db.base import create_db_engine, create_session_factory, init_db
 from movora.metadata import AniListProvider
-from movora.normalize import dedupe_tasks, requeue_interrupted, run_worker
+from movora.normalize import dedupe_tasks, requeue_interrupted, start_workers
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -28,15 +27,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         with app.state.session_factory() as session:
             dedupe_tasks(session)  # clean up any duplicate tasks first
             requeue_interrupted(session)
-        threading.Thread(
-            target=run_worker,
-            args=(
-                app.state.session_factory,
-                settings.database_path.parent / "normalized",
-                app.state.metadata_provider,
-            ),
-            daemon=True,
-        ).start()
+        start_workers(
+            app.state.session_factory,
+            settings.database_path.parent / "normalized",
+            app.state.metadata_provider,
+        )
         yield
 
     app = FastAPI(title=settings.app_name, version=__version__, lifespan=lifespan)
