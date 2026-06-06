@@ -53,6 +53,7 @@ function fmtEta(seconds: number | null): string {
 
 function statusDetail(task: Task, t: TFunction): string {
   if (task.status === "running") {
+    if (task.progress <= 0) return t("tasks.inProgress"); // scan/metadata have no real %
     const eta = task.eta_seconds ? ` · ETA ${fmtEta(task.eta_seconds)}` : "";
     return `${t("tasks.inProgress")} ${task.progress}%${eta}`;
   }
