@@ -1,3 +1,5 @@
+import subprocess
+import sys
 from pathlib import Path
 
 from sqlalchemy import select
@@ -16,6 +18,7 @@ from movora.db.models import (
     TaskType,
 )
 from movora.normalize import (
+    cancel_media_files,
     clean_partials,
     dedupe_tasks,
     enqueue_normalize,
@@ -109,6 +112,29 @@ def test_requeue_retries_failed_under_cap() -> None:
         task = session.scalar(select(Task))
         assert task is not None
         assert task.status == JobStatus.PENDING
+
+
+def test_cancel_kills_running_task_by_pid() -> None:
+    proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+    try:
+        with _session() as session:
+            media_file_id = _media_file(session)
+            session.add(
+                Task(
+                    type=TaskType.NORMALIZE,
+                    media_file_id=media_file_id,
+                    status=JobStatus.RUNNING,
+                    pid=proc.pid,
+                )
+            )
+            session.commit()
+            cancel_media_files(session, {media_file_id})  # cross-process kill by pid
+        proc.wait(timeout=5)
+        assert proc.poll() is not None
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait(timeout=5)
 
 
 def test_clean_partials_removes_only_part_files(tmp_path: Path) -> None:

@@ -102,7 +102,7 @@ def delete_library(library_id: int, session: SessionDep, request: Request) -> No
             .where(Series.library_id == library_id)
         )
     )
-    cancel_media_files({media_file.id for media_file in media_files})
+    cancel_media_files(session, {media_file.id for media_file in media_files})
     for media_file in media_files:
         _remove_generated(media_file, request)
     session.delete(library)  # cascades DB rows: series, episodes, media files, tasks

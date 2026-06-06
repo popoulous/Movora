@@ -238,6 +238,7 @@ class Task(Base):
     status: Mapped[JobStatus] = mapped_column(default=JobStatus.PENDING)
     progress: Mapped[int] = mapped_column(default=0)  # 0-100
     attempts: Mapped[int] = mapped_column(default=0)  # for bounded auto-retry
+    pid: Mapped[int | None] = mapped_column(default=None)  # ffmpeg pid while running
     eta_seconds: Mapped[int | None] = mapped_column(default=None)
     message: Mapped[str | None] = mapped_column(default=None)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())

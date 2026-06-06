@@ -14,7 +14,9 @@ to a data dir outside the library, is ffprobe-verified, and recorded on the file
 from __future__ import annotations
 
 import contextlib
+import os
 import shutil
+import signal
 import subprocess
 import threading
 from collections.abc import Callable
@@ -56,23 +58,44 @@ _active_lock = threading.Lock()
 _active: tuple[int, subprocess.Popen[str]] | None = None
 
 
-def cancel_media_files(media_file_ids: set[int]) -> None:
-    """Terminate the running transcode if it is for one of these media files.
+def cancel_media_files(session: Session, media_file_ids: set[int]) -> None:
+    """Stop the running transcode(s) for these media files.
 
-    Waits for ffmpeg to exit so it releases the output file handle before the
-    caller deletes it (Windows locks files held by a live process).
+    Terminates the in-process ffmpeg if it is one of ours, and also kills by the
+    pid recorded on the running task — so cancellation works even when the worker
+    runs in a different process than the request handler (e.g. uvicorn --reload on
+    Windows spawns the app in a subprocess).
     """
     with _active_lock:
         proc = _active[1] if _active is not None and _active[0] in media_file_ids else None
-    if proc is None:
-        return
-    proc.terminate()
+    if proc is not None:
+        _terminate(proc)
+    running = session.scalars(
+        select(Task).where(
+            Task.type == TaskType.NORMALIZE,
+            Task.status == JobStatus.RUNNING,
+            Task.media_file_id.in_(media_file_ids),
+            Task.pid.is_not(None),
+        )
+    )
+    for task in running:
+        if task.pid is not None:
+            _kill_pid(task.pid)
+
+
+def _terminate(proc: subprocess.Popen[str]) -> None:
+    proc.terminate()  # Windows: TerminateProcess (forced); POSIX: SIGTERM
     try:
         proc.wait(timeout=5)
     except subprocess.TimeoutExpired:
         proc.kill()
         with contextlib.suppress(subprocess.TimeoutExpired):
             proc.wait(timeout=5)
+
+
+def _kill_pid(pid: int) -> None:
+    with contextlib.suppress(OSError):
+        os.kill(pid, signal.SIGTERM)  # Windows: TerminateProcess; POSIX: SIGTERM
 
 
 # --- normalization primitive -------------------------------------------------
@@ -86,6 +109,7 @@ def normalize_media_file(
     output_dir: Path,
     ffmpeg_path: str | None = None,
     on_progress: ProgressCallback | None = None,
+    on_start: Callable[[int], None] | None = None,
 ) -> Path:
     """Transcode/remux a media file to a web Direct-Play mp4 and record it."""
     ffmpeg = ffmpeg_path or shutil.which("ffmpeg")
@@ -115,6 +139,8 @@ def normalize_media_file(
     global _active
     with _active_lock:
         _active = (media_file.id, proc)
+    if on_start is not None:
+        on_start(proc.pid)  # record the pid so another process can cancel it
     try:
         _track_progress(proc, duration, on_progress)
         stderr = proc.stderr.read() if proc.stderr is not None else ""
@@ -406,11 +432,15 @@ def _run_normalize_task(session: Session, task: Task, output_dir: Path) -> None:
         task.eta_seconds = eta
         session.commit()
 
+    def on_start(pid: int) -> None:  # record the ffmpeg pid so delete can cancel it
+        task.pid = pid
+        session.commit()
+
     encoder = detect_h264_encoder()
     try:
         normalize_media_file(
             session, media_file, RemuxFirstPlanner(encoder),
-            output_dir=output_dir, on_progress=on_progress,
+            output_dir=output_dir, on_progress=on_progress, on_start=on_start,
         )
     except RuntimeError:
         if encoder == "libx264":
@@ -420,7 +450,7 @@ def _run_normalize_task(session: Session, task: Task, output_dir: Path) -> None:
         session.commit()
         normalize_media_file(
             session, media_file, RemuxFirstPlanner("libx264"),
-            output_dir=output_dir, on_progress=on_progress,
+            output_dir=output_dir, on_progress=on_progress, on_start=on_start,
         )
     if settings_store.get_bool(session, settings_store.DELETE_ORIGINAL):
         _delete_original(session, media_file, output_dir.parent / "assets" / str(media_file.id))
@@ -469,6 +499,7 @@ def _start(session: Session, task: Task) -> None:
     task.status = JobStatus.RUNNING
     task.message = None
     task.progress = 0
+    task.pid = None
     session.commit()
 
 
@@ -488,5 +519,6 @@ def _finish(session: Session, task: Task, *, message: str | None = None) -> None
     task.progress = 100
     task.eta_seconds = None
     task.message = message
+    task.pid = None
     task.finished_at = datetime.now(timezone.utc)
     session.commit()
