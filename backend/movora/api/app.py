@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import threading
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -11,11 +15,30 @@ from movora.api.routes import router
 from movora.config import Settings, get_settings
 from movora.db.base import create_db_engine, create_session_factory, init_db
 from movora.metadata import AniListProvider
+from movora.normalize import requeue_interrupted, run_worker
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
-    app = FastAPI(title=settings.app_name, version=__version__)
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        # A crash/reload can leave a task RUNNING with its ffmpeg killed; put those
+        # back in the queue and start the worker so it resumes on its own.
+        with app.state.session_factory() as session:
+            requeue_interrupted(session)
+        threading.Thread(
+            target=run_worker,
+            args=(
+                app.state.session_factory,
+                settings.database_path.parent / "normalized",
+                app.state.metadata_provider,
+            ),
+            daemon=True,
+        ).start()
+        yield
+
+    app = FastAPI(title=settings.app_name, version=__version__, lifespan=lifespan)
 
     # Alembic owns schema migrations; init_db just ensures the tables exist so a
     # fresh dev/test database works without a manual migration step.

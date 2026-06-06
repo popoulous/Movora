@@ -156,28 +156,52 @@ def enqueue_metadata(session: Session, library_id: int) -> None:
 
 
 def enqueue_normalize(session: Session, media_file_ids: list[int]) -> int:
-    """Queue normalize Tasks, skipping duplicates and already-optimized files."""
-    active = set(
-        session.scalars(
-            select(Task.media_file_id).where(
-                Task.type == TaskType.NORMALIZE, Task.status.in_(_ACTIVE)
-            )
-        )
-    )
+    """Queue normalize Tasks, skipping active/already-optimized files and retrying failed.
+
+    A file that already has a queued/running task is skipped; a previously FAILED task
+    is reset to PENDING (a retry) rather than duplicated.
+    """
     queued = 0
     for media_file_id in media_file_ids:
-        if media_file_id in active:
-            continue
         media_file = session.get(MediaFile, media_file_id)
         if media_file is None:
             continue
         if media_file.normalized_path and Path(media_file.normalized_path).is_file():
             continue
-        session.add(Task(type=TaskType.NORMALIZE, media_file_id=media_file_id))
-        active.add(media_file_id)
+        existing = list(
+            session.scalars(
+                select(Task).where(
+                    Task.type == TaskType.NORMALIZE, Task.media_file_id == media_file_id
+                )
+            )
+        )
+        if any(task.status in _ACTIVE for task in existing):
+            continue  # already queued or running
+        failed = [task for task in existing if task.status == JobStatus.FAILED]
+        if failed:
+            _reset(failed[-1])  # retry the latest failed attempt in place
+        else:
+            session.add(Task(type=TaskType.NORMALIZE, media_file_id=media_file_id))
         queued += 1
     session.commit()
     return queued
+
+
+def requeue_interrupted(session: Session) -> int:
+    """Reset tasks left RUNNING by a crash/restart back to the queue."""
+    interrupted = list(session.scalars(select(Task).where(Task.status == JobStatus.RUNNING)))
+    for task in interrupted:
+        _reset(task)
+    session.commit()
+    return len(interrupted)
+
+
+def _reset(task: Task) -> None:
+    task.status = JobStatus.PENDING
+    task.progress = 0
+    task.eta_seconds = None
+    task.message = None
+    task.finished_at = None
 
 
 def _has_active_library_task(session: Session, library_id: int, task_type: TaskType) -> bool:
@@ -253,10 +277,22 @@ def _run_normalize_task(session: Session, task: Task, output_dir: Path) -> None:
         task.eta_seconds = eta
         session.commit()
 
-    normalize_media_file(
-        session, media_file, RemuxFirstPlanner(detect_h264_encoder()),
-        output_dir=output_dir, on_progress=on_progress,
-    )
+    encoder = detect_h264_encoder()
+    try:
+        normalize_media_file(
+            session, media_file, RemuxFirstPlanner(encoder),
+            output_dir=output_dir, on_progress=on_progress,
+        )
+    except RuntimeError:
+        if encoder == "libx264":
+            raise  # software already; nothing more reliable to fall back to
+        # A hardware encoder can choke on specific content — retry in software.
+        task.progress = 0
+        session.commit()
+        normalize_media_file(
+            session, media_file, RemuxFirstPlanner("libx264"),
+            output_dir=output_dir, on_progress=on_progress,
+        )
     if settings_store.get_bool(session, settings_store.DELETE_ORIGINAL):
         _delete_original(session, media_file, output_dir.parent / "assets" / str(media_file.id))
     _finish(session, task)
