@@ -15,7 +15,12 @@ from movora.subtitles.labels import (
     release_group,
 )
 from movora.subtitles.resolver import SoftAssOrSrtResolver
-from movora.subtitles.srt import ass_to_srt, render_srt
+from movora.subtitles.srt import ass_to_srt, render_srt, srt_to_vtt
+from movora.subtitles.tracks import (
+    SubtitleTrackInfo,
+    discover_tracks,
+    load_subtitle,
+)
 
 __all__ = [
     "CleanResult",
@@ -25,10 +30,14 @@ __all__ = [
     "LayeredLabelStore",
     "SoftAssOrSrtResolver",
     "SubtitleLabelStore",
+    "SubtitleTrackInfo",
     "ass_to_srt",
     "clean_ass_file",
     "clean_ass_text",
     "default_label_store",
+    "discover_tracks",
+    "load_subtitle",
     "release_group",
     "render_srt",
+    "srt_to_vtt",
 ]

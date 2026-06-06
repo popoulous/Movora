@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
@@ -23,6 +24,7 @@ from movora.api.schemas import (
     ScanResult,
     SeriesDetail,
     SeriesRead,
+    SubtitleTrackRead,
 )
 from movora.db.models import Episode, Job, JobStatus, Library, MediaFile, Season, Series
 from movora.domain import CapabilityProfile
@@ -30,6 +32,7 @@ from movora.enrich import enrich_library
 from movora.filesystem import list_directories
 from movora.scanner import scan_library
 from movora.streaming import DirectPlayStrategy
+from movora.subtitles import SoftAssOrSrtResolver, discover_tracks, load_subtitle, srt_to_vtt
 
 router = APIRouter(prefix="/api")
 
@@ -124,7 +127,7 @@ def episode_playback(episode_id: int, session: SessionDep) -> PlaybackInfo:
         stream_url=f"/api/episodes/{episode_id}/stream",
         media_type=stream.media_type,
         direct_play=stream.direct_play,
-        subtitle_tracks=[],
+        subtitle_tracks=_subtitle_tracks(episode_id, Path(media_file.path)),
     )
 
 
@@ -137,6 +140,35 @@ def stream_episode(episode_id: int, session: SessionDep) -> FileResponse:
     # FileResponse honours the Range header (HTTP 206) so the player can seek.
     stream = DirectPlayStrategy().open_stream(str(path), CapabilityProfile())
     return FileResponse(path, media_type=stream.media_type)
+
+
+@router.get("/episodes/{episode_id}/subtitles")
+def episode_subtitle(episode_id: int, track: str, session: SessionDep) -> Response:
+    media_file = _episode_media_file(session, episode_id)
+    try:
+        content, fmt = load_subtitle(Path(media_file.path), track)
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail="subtitle track not found") from exc
+    except RuntimeError as exc:  # ffmpeg missing -> embedded tracks unextractable
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    if fmt == "ass":
+        # A capable client (our JASSUB player) gets the soft ASS untouched.
+        rendering = SoftAssOrSrtResolver().resolve(content, CapabilityProfile(supports_ass=True))
+        return Response(rendering.content, media_type="text/plain; charset=utf-8")
+    return Response(srt_to_vtt(content), media_type="text/vtt; charset=utf-8")
+
+
+def _subtitle_tracks(episode_id: int, media_path: Path) -> list[SubtitleTrackRead]:
+    return [
+        SubtitleTrackRead(
+            id=track.id,
+            label=track.label,
+            language=track.language,
+            format="ass" if track.fmt == "ass" else "vtt",
+            url=f"/api/episodes/{episode_id}/subtitles?track={quote(track.id)}",
+        )
+        for track in discover_tracks(media_path)
+    ]
 
 
 def _episode_media_file(session: Session, episode_id: int) -> MediaFile:

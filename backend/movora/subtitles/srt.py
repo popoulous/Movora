@@ -7,8 +7,12 @@ re-muxing the media.
 
 from __future__ import annotations
 
+import re
+
 from movora.subtitles.ass_model import Decision
 from movora.subtitles.clean_ass import DialogueCue, clean_ass_text
+
+_SRT_TIMESTAMP = re.compile(r"(\d\d:\d\d:\d\d),(\d\d\d)")
 
 
 def _format_timestamp(seconds: float) -> str:
@@ -32,3 +36,12 @@ def render_srt(cues: list[DialogueCue]) -> str:
 def ass_to_srt(raw: bytes, overrides: dict[str, Decision] | None = None) -> str:
     """Normalise, parse, classify and render an .ass file's dialogue as SRT text."""
     return render_srt(clean_ass_text(raw, overrides).cues)
+
+
+def srt_to_vtt(srt_text: str) -> str:
+    """Convert SubRip text to WebVTT for a native <video> <track>.
+
+    The only changes needed: VTT requires a header and uses '.' (not ',') in cue
+    timestamps. SubRip cue numbers are valid VTT cue identifiers, so they stay.
+    """
+    return "WEBVTT\n\n" + _SRT_TIMESTAMP.sub(r"\1.\2", srt_text.strip()) + "\n"
