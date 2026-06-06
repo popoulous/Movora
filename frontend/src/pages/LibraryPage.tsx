@@ -7,6 +7,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useActivity } from "../ActivityContext";
 import { api, type SeriesSummary, type WatchStatus } from "../api";
 import { LibrarySettings } from "../components/LibrarySettings";
+import { SeriesCard, SeriesRow } from "../components/SeriesCard";
 import { useLibraries } from "../LibrariesContext";
 
 type Filter = "all" | WatchStatus;
@@ -379,7 +380,7 @@ function Grid({
     return (
       <div className="space-y-2">
         {items.map((s) => (
-          <SeriesRow key={s.id} summary={s} onClick={() => onOpen(s)} t={t} />
+          <SeriesRow key={s.id} series={s} onClick={() => onOpen(s)} t={t} />
         ))}
       </div>
     );
@@ -387,126 +388,8 @@ function Grid({
   return (
     <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
       {items.map((s) => (
-        <SeriesCard key={s.id} summary={s} onClick={() => onOpen(s)} t={t} />
+        <SeriesCard key={s.id} series={s} onClick={() => onOpen(s)} t={t} />
       ))}
     </div>
-  );
-}
-
-function ScoreBadge({ score }: { score: number }): JSX.Element {
-  return (
-    <span className="inline-flex items-center gap-0.5 rounded-md bg-black/60 px-1.5 py-0.5 text-xs font-medium text-amber-300 backdrop-blur">
-      <Star className="h-3 w-3 fill-current" />
-      {(score / 10).toFixed(1)}
-    </span>
-  );
-}
-
-function Poster({ summary }: { summary: SeriesSummary }): JSX.Element {
-  const title = seriesTitle(summary);
-  if (summary.cover_image_url !== null) {
-    return (
-      <img
-        src={summary.cover_image_url}
-        alt={title}
-        className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
-      />
-    );
-  }
-  return (
-    <div className="flex h-full items-center justify-center bg-gradient-to-br from-violet-900/40 to-fuchsia-900/30 p-3 text-center text-sm text-neutral-300">
-      {title}
-    </div>
-  );
-}
-
-function ProgressBar({ percent }: { percent: number }): JSX.Element {
-  return (
-    <div className="absolute inset-x-0 bottom-0 h-1 bg-black/40">
-      <div
-        className="h-full bg-gradient-to-r from-[#7A4DFF] to-[#EC4899]"
-        style={{ width: `${percent}%` }}
-      />
-    </div>
-  );
-}
-
-function SeriesCard({
-  summary,
-  onClick,
-  t,
-}: {
-  summary: SeriesSummary;
-  onClick: () => void;
-  t: TFunction;
-}): JSX.Element {
-  const title = seriesTitle(summary);
-  return (
-    <button onClick={onClick} className="group text-left">
-      <div className="relative aspect-[2/3] overflow-hidden rounded-xl bg-white/5 ring-1 ring-white/10 transition group-hover:ring-violet-400/40">
-        <Poster summary={summary} />
-        {summary.score !== null && (
-          <span className="absolute top-1.5 right-1.5">
-            <ScoreBadge score={summary.score} />
-          </span>
-        )}
-        {/* Hover overlay */}
-        <div className="absolute inset-0 flex flex-col justify-end bg-gradient-to-t from-black/90 via-black/30 to-transparent p-3 opacity-0 transition group-hover:opacity-100">
-          <div className="line-clamp-2 text-sm font-semibold text-white">{title}</div>
-          <div className="mt-1 text-xs text-neutral-300">
-            {t("library.episodesShort", { count: summary.episode_count })}
-          </div>
-          {summary.watch_percent > 0 && (
-            <div className="text-xs font-medium text-violet-300">
-              {t("library.watchedPercent", { percent: summary.watch_percent })}
-            </div>
-          )}
-        </div>
-        {summary.watch_percent > 0 && <ProgressBar percent={summary.watch_percent} />}
-      </div>
-      <div className="mt-2 truncate text-sm font-medium">{title}</div>
-      {summary.year !== null && <div className="text-xs text-neutral-500">{summary.year}</div>}
-    </button>
-  );
-}
-
-function SeriesRow({
-  summary,
-  onClick,
-  t,
-}: {
-  summary: SeriesSummary;
-  onClick: () => void;
-  t: TFunction;
-}): JSX.Element {
-  const title = seriesTitle(summary);
-  return (
-    <button
-      onClick={onClick}
-      className="group flex w-full items-center gap-4 rounded-xl bg-white/[0.02] p-2.5 text-left ring-1 ring-white/[0.06] transition hover:bg-white/[0.05]"
-    >
-      <div className="relative h-[84px] w-14 shrink-0 overflow-hidden rounded-lg bg-white/5">
-        <Poster summary={summary} />
-        {summary.watch_percent > 0 && <ProgressBar percent={summary.watch_percent} />}
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="truncate font-medium text-neutral-100">{title}</div>
-        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-neutral-400">
-          {summary.year !== null && <span>{summary.year}</span>}
-          <span>{t("library.episodesShort", { count: summary.episode_count })}</span>
-          {summary.score !== null && (
-            <span className="inline-flex items-center gap-0.5 text-amber-300">
-              <Star className="h-3 w-3 fill-current" />
-              {(summary.score / 10).toFixed(1)}
-            </span>
-          )}
-          {summary.watch_percent > 0 && (
-            <span className="text-violet-300">
-              {t("library.watchedPercent", { percent: summary.watch_percent })}
-            </span>
-          )}
-        </div>
-      </div>
-    </button>
   );
 }

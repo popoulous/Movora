@@ -71,6 +71,43 @@ export interface SeriesDetail {
   watch: SeriesWatch | null;
 }
 
+export interface HomeSeries {
+  id: number;
+  title: string;
+  display_title: string | null;
+  year: number | null;
+  score: number | null;
+  cover_image_url: string | null;
+  banner_image_url: string | null;
+  genres: string | null;
+  episode_count: number;
+  watch_status: WatchStatus;
+  watch_percent: number;
+  continue_episode_id: number | null;
+}
+
+export interface Collection {
+  genre: string;
+  count: number;
+}
+
+export interface HomeStats {
+  series_count: number;
+  episode_count: number;
+  episodes_watched: number;
+  days_watched: number;
+}
+
+export interface HomeData {
+  hero: HomeSeries | null;
+  continue_watching: HomeSeries[];
+  recently_added: HomeSeries[];
+  recently_finished: HomeSeries[];
+  recommendation: HomeSeries | null;
+  collections: Collection[];
+  stats: HomeStats;
+}
+
 export interface SubtitleTrack {
   id: string;
   label: string;
@@ -167,6 +204,7 @@ export const api = {
     fetch(`/api/libraries/${libraryId}/series`).then(asJson<SeriesSummary[]>),
   getSeries: (id: number): Promise<SeriesDetail> =>
     fetch(`/api/series/${id}`).then(asJson<SeriesDetail>),
+  getHome: (): Promise<HomeData> => fetch("/api/home").then(asJson<HomeData>),
   getPlayback: (episodeId: number): Promise<PlaybackInfo> =>
     fetch(`/api/episodes/${episodeId}/playback`).then(asJson<PlaybackInfo>),
   recordWatch: (
