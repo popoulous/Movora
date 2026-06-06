@@ -42,20 +42,28 @@ def probe_media(path: Path) -> dict[str, object] | None:
         return None
     try:
         result = subprocess.run(
-            [ffprobe, "-v", "quiet", "-print_format", "json", "-show_streams", str(path)],
+            [ffprobe, "-v", "quiet", "-print_format", "json",
+             "-show_streams", "-show_format", str(path)],
             capture_output=True,
             text=True,
             encoding="utf-8",
             timeout=30,
         )
-        streams = json.loads(result.stdout).get("streams", [])
+        data = json.loads(result.stdout)
     except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
         return None
+    streams = data.get("streams", [])
+    duration_raw = data.get("format", {}).get("duration")
+    try:
+        duration = float(duration_raw) if duration_raw is not None else None
+    except (TypeError, ValueError):
+        duration = None
     info: dict[str, object] = {
         "video_codec": None,
         "video_pix_fmt": None,
         "audio_codec": None,
         "audio_channels": None,
+        "duration": duration,  # seconds, for transcode progress
     }
     for stream in streams:
         kind = stream.get("codec_type")
