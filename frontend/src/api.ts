@@ -141,6 +141,7 @@ export interface ServerSettings {
   auto_normalize: boolean;
   auto_normalize_existing: boolean;
   delete_original: boolean;
+  tmdb_language: string;
 }
 
 export type TaskStatus = "pending" | "running" | "done" | "failed";

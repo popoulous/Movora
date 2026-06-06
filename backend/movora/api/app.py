@@ -47,8 +47,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # The library kind picks the provider: anime -> AniList, film/series -> TMDB.
     app.state.metadata_provider = MetadataRegistry(
         anime=AniListProvider(),
-        movie=TmdbProvider("movie", settings.tmdb_api_key, settings.tmdb_language),
-        series=TmdbProvider("tv", settings.tmdb_api_key, settings.tmdb_language),
+        movie=TmdbProvider("movie", settings.tmdb_api_key),
+        series=TmdbProvider("tv", settings.tmdb_api_key),
     )
     app.state.settings = settings
 

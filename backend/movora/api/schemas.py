@@ -163,12 +163,14 @@ class SettingsRead(BaseModel):
     auto_normalize: bool
     auto_normalize_existing: bool
     delete_original: bool
+    tmdb_language: str
 
 
 class SettingsUpdate(BaseModel):
     auto_normalize: bool | None = None
     auto_normalize_existing: bool | None = None
     delete_original: bool | None = None
+    tmdb_language: str | None = None
 
 
 class TaskRead(BaseModel):

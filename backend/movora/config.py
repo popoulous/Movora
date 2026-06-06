@@ -18,7 +18,6 @@ class Settings(BaseSettings):
     secret_key: str = "dev-insecure-change-me"  # set MOVORA_SECRET_KEY in production
     session_ttl_seconds: int = 60 * 60 * 24 * 14  # 14 days
     tmdb_api_key: str | None = None  # free v3 key for film/series metadata (MOVORA_TMDB_API_KEY)
-    tmdb_language: str = "en-US"  # TMDB result language + match (e.g. hu-HU for Hungarian titles)
 
 
 def get_settings() -> Settings:

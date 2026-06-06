@@ -599,6 +599,8 @@ def update_settings(
             _run_worker(request, background)
     if payload.delete_original is not None:
         settings_store.set_bool(session, settings_store.DELETE_ORIGINAL, payload.delete_original)
+    if payload.tmdb_language is not None:
+        settings_store.set_str(session, settings_store.TMDB_LANGUAGE, payload.tmdb_language)
     return _read_settings(session)
 
 
@@ -609,4 +611,5 @@ def _read_settings(session: Session) -> SettingsRead:
             session, settings_store.AUTO_NORMALIZE_EXISTING
         ),
         delete_original=settings_store.get_bool(session, settings_store.DELETE_ORIGINAL),
+        tmdb_language=settings_store.get_str(session, settings_store.TMDB_LANGUAGE),
     )

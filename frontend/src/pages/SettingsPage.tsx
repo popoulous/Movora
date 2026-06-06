@@ -4,6 +4,16 @@ import { useTranslation } from "react-i18next";
 import { useActivity } from "../ActivityContext";
 import { api, type ServerSettings } from "../api";
 
+const LANGUAGES: [string, string][] = [
+  ["en-US", "English"],
+  ["hu-HU", "Magyar"],
+  ["de-DE", "Deutsch"],
+  ["fr-FR", "Français"],
+  ["es-ES", "Español"],
+  ["it-IT", "Italiano"],
+  ["ja-JP", "日本語"],
+];
+
 function Toggle({
   label,
   description,
@@ -38,16 +48,27 @@ function Toggle({
 }
 
 export function SettingsPage(): JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { refreshSoon } = useActivity();
   const [settings, setSettings] = useState<ServerSettings | null>(null);
   const [sweeping, setSweeping] = useState(false);
 
   useEffect(() => {
-    api.getSettings().then(setSettings).catch(() => undefined);
-  }, []);
+    api
+      .getSettings()
+      .then((loaded) => {
+        // First time only: default the metadata language to the UI language.
+        if (loaded.tmdb_language === "") {
+          const ui = i18n.language.startsWith("hu") ? "hu-HU" : "en-US";
+          api.updateSettings({ tmdb_language: ui }).then(setSettings).catch(() => setSettings(loaded));
+        } else {
+          setSettings(loaded);
+        }
+      })
+      .catch(() => undefined);
+  }, [i18n.language]);
 
-  const toggle = (key: keyof ServerSettings): void => {
+  const toggle = (key: "auto_normalize" | "auto_normalize_existing" | "delete_original"): void => {
     if (settings === null) return;
     const next = { ...settings, [key]: !settings[key] };
     setSettings(next);
@@ -55,6 +76,12 @@ export function SettingsPage(): JSX.Element {
       .updateSettings({ [key]: next[key] })
       .then(setSettings)
       .catch(() => undefined);
+  };
+
+  const setLanguage = (value: string): void => {
+    if (settings === null) return;
+    setSettings({ ...settings, tmdb_language: value });
+    api.updateSettings({ tmdb_language: value }).then(setSettings).catch(() => undefined);
   };
 
   const normalizeAll = (): void => {
@@ -101,6 +128,35 @@ export function SettingsPage(): JSX.Element {
           >
             {sweeping ? t("settings.normalizeAllStarted") : t("settings.normalizeAll")}
           </button>
+        </section>
+      )}
+
+      {settings !== null && (
+        <section className="space-y-3">
+          <h2 className="text-xs font-semibold tracking-wide text-neutral-500 uppercase">
+            {t("settings.metadataTitle")}
+          </h2>
+          <div className="flex items-center justify-between gap-4 rounded-xl bg-white/[0.03] p-4 ring-1 ring-white/10">
+            <span className="min-w-0">
+              <span className="block text-sm font-medium text-white">
+                {t("settings.metadataLanguage")}
+              </span>
+              <span className="mt-0.5 block text-xs leading-relaxed text-neutral-400">
+                {t("settings.metadataLanguageDesc")}
+              </span>
+            </span>
+            <select
+              value={settings.tmdb_language || "en-US"}
+              onChange={(event) => setLanguage(event.target.value)}
+              className="shrink-0 rounded-lg bg-white/[0.06] px-3 py-2 text-sm text-neutral-100 ring-1 ring-white/10 focus:ring-violet-400/40 focus:outline-none"
+            >
+              {LANGUAGES.map(([code, name]) => (
+                <option key={code} value={code} className="bg-[#120e1d]">
+                  {name}
+                </option>
+              ))}
+            </select>
+          </div>
         </section>
       )}
     </div>

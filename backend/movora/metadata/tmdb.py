@@ -41,6 +41,10 @@ class TmdbProvider:
         self._transport = transport or _httpx_transport
         self._genres: dict[int, str] | None = None
 
+    def with_language(self, language: str) -> TmdbProvider:
+        """A copy that fetches in `language` (the metadata task applies the user's setting)."""
+        return TmdbProvider(self._media_type, self._api_key, language, self._transport)
+
     def fetch(self, parsed: ParsedFields) -> SeriesMetadata | None:
         if not self._api_key or not parsed.title:
             return None

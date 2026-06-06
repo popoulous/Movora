@@ -45,6 +45,10 @@ const en = {
   settings: {
     title: "Settings",
     subtitle: "Server-wide options. More (account, language) will live here.",
+    metadataTitle: "Metadata",
+    metadataLanguage: "Metadata language",
+    metadataLanguageDesc:
+      "Language for film/series titles and descriptions (TMDB). Helps match localised titles.",
     playbackTitle: "Playback optimization",
     autoNormalize: "Optimize everything for Direct Play",
     autoNormalizeDesc:
@@ -201,6 +205,10 @@ const hu: typeof en = {
   settings: {
     title: "Beállítások",
     subtitle: "Szerverszintű opciók. Ide jön még a fiók és a nyelv is.",
+    metadataTitle: "Metaadat",
+    metadataLanguage: "Metaadat nyelve",
+    metadataLanguageDesc:
+      "A film/sorozat címek és leírások nyelve (TMDB). A lokalizált címek matchelését segíti.",
     playbackTitle: "Lejátszás-optimalizálás",
     autoNormalize: "Minden optimalizálása Direct Play-re",
     autoNormalizeDesc:

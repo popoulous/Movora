@@ -34,7 +34,7 @@ from movora.encoders import detect_h264_encoder
 from movora.enrich import enrich_library
 from movora.ffprobe import probe_media
 from movora.interfaces import NormalizationPlanner
-from movora.metadata import MetadataRegistry
+from movora.metadata import MetadataRegistry, TmdbProvider
 from movora.normalization import WEB_TARGET, RemuxFirstPlanner, needs_normalization
 from movora.scanner import scan_library
 from movora.streaming import DirectPlayStrategy
@@ -525,6 +525,9 @@ def _run_metadata_task(session: Session, task: Task, registry: MetadataRegistry)
         return
     _start(session, task)
     provider = registry.for_kind(library.kind)  # anime -> AniList, film/series -> TMDB
+    if isinstance(provider, TmdbProvider):  # apply the user's metadata language
+        language = settings_store.get_str(session, settings_store.TMDB_LANGUAGE) or "en-US"
+        provider = provider.with_language(language)
     updated = enrich_library(session, library, provider, on_progress=_counter(session, task))
     _finish(session, task, message=f"{updated} updated")
 
