@@ -6,6 +6,10 @@ import { defineConfig } from "vite";
 // In production the backend serves the built static files (frontend/dist).
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  // JASSUB instantiates its libass worker via `new Worker(new URL(...), {type:"module"})`.
+  // That worker code-splits (wasm glue + renderers), so it must be emitted as ES modules;
+  // the default "iife" worker format can't handle code-splitting.
+  worker: { format: "es" },
   server: {
     proxy: {
       "/health": "http://localhost:8000",

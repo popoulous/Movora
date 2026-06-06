@@ -72,6 +72,14 @@ const en = {
     scan: "Scan",
     enrich: "Metadata",
   },
+  player: {
+    back: "Back",
+    loading: "Loading…",
+    subtitles: "Subtitles",
+    subtitlesOff: "Off",
+    notPlayable:
+      "This file isn't web-playable yet — ingest-normalization (v1) will convert it. mp4/webm files play now.",
+  },
 };
 
 const hu: typeof en = {
@@ -145,6 +153,14 @@ const hu: typeof en = {
     empty: "Nincs friss tevékenység",
     scan: "Szkennelés",
     enrich: "Metaadat",
+  },
+  player: {
+    back: "Vissza",
+    loading: "Betöltés…",
+    subtitles: "Feliratok",
+    subtitlesOff: "Ki",
+    notPlayable:
+      "Ez a fájl böngészőben még nem játszható — az ingest-normalizálás (v1) átalakítja. Az mp4/webm fájlok már most mennek.",
   },
 };
 

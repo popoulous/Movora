@@ -49,6 +49,15 @@ export function SeriesDetailPage(): JSX.Element {
 
   const genres = series.genres?.split(", ").filter(Boolean) ?? [];
   const episodeCount = series.seasons.reduce((total, season) => total + season.episodes.length, 0);
+  const orderedEpisodes = [...series.seasons]
+    .sort((a, b) => a.number - b.number)
+    .flatMap((season) => [...season.episodes].sort((a, b) => a.number - b.number));
+  const firstEpisode = orderedEpisodes.length > 0 ? orderedEpisodes[0] : undefined;
+  const playFirst = (): void => {
+    if (firstEpisode !== undefined) {
+      navigate(`/watch/${firstEpisode.id}`);
+    }
+  };
   const score = series.score !== null ? (series.score / 10).toFixed(1) : null;
   const synopsis = series.description !== null ? stripHtml(series.description) : null;
   const aired =
@@ -102,9 +111,9 @@ export function SeriesDetailPage(): JSX.Element {
                 </div>
               </div>
               <button
-                disabled
-                title="Playback comes with the streaming layer"
-                className="absolute bottom-4 left-4 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-[#7A4DFF] to-[#EC4899] text-white shadow-[0_0_40px_rgba(168,85,247,0.6)] transition hover:brightness-110"
+                onClick={playFirst}
+                disabled={firstEpisode === undefined}
+                className="absolute bottom-4 left-4 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-[#7A4DFF] to-[#EC4899] text-white shadow-[0_0_40px_rgba(168,85,247,0.6)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Play className="h-5 w-5 fill-current" />
               </button>
@@ -159,9 +168,9 @@ export function SeriesDetailPage(): JSX.Element {
               )}
 
               <button
-                disabled
-                title="Playback comes with the streaming layer"
-                className="mt-auto inline-flex cursor-not-allowed items-center gap-2 self-start rounded-2xl bg-gradient-to-br from-[#7A4DFF] via-[#A855F7] to-[#EC4899] px-6 py-3 text-sm font-semibold text-white shadow-[0_8px_40px_rgba(168,85,247,0.4)]"
+                onClick={playFirst}
+                disabled={firstEpisode === undefined}
+                className="mt-auto inline-flex items-center gap-2 self-start rounded-2xl bg-gradient-to-br from-[#7A4DFF] via-[#A855F7] to-[#EC4899] px-6 py-3 text-sm font-semibold text-white shadow-[0_8px_40px_rgba(168,85,247,0.4)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Play className="h-4 w-4 fill-current" /> {t("series.play")}
               </button>
@@ -199,9 +208,8 @@ export function SeriesDetailPage(): JSX.Element {
                       className="flex items-center gap-4 px-5 py-3.5 text-sm transition hover:bg-[#7A4DFF]/[0.06]"
                     >
                       <button
-                        disabled
-                        title="Playback comes with the streaming layer"
-                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/5 text-neutral-300 ring-1 ring-white/10"
+                        onClick={() => navigate(`/watch/${episode.id}`)}
+                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/5 text-neutral-300 ring-1 ring-white/10 transition hover:bg-[#7A4DFF]/30 hover:text-white"
                       >
                         <Play className="h-3 w-3 fill-current" />
                       </button>

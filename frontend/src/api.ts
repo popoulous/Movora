@@ -45,6 +45,22 @@ export interface SeriesDetail {
   seasons: Season[];
 }
 
+export interface SubtitleTrack {
+  id: string;
+  label: string;
+  language: string | null;
+  format: "ass" | "vtt";
+  url: string;
+}
+
+export interface PlaybackInfo {
+  media_file_id: number;
+  stream_url: string;
+  media_type: string;
+  direct_play: boolean;
+  subtitle_tracks: SubtitleTrack[];
+}
+
 export interface ScanResult {
   added: number;
 }
@@ -111,6 +127,8 @@ export const api = {
     fetch(`/api/libraries/${libraryId}/series`).then(asJson<SeriesSummary[]>),
   getSeries: (id: number): Promise<SeriesDetail> =>
     fetch(`/api/series/${id}`).then(asJson<SeriesDetail>),
+  getPlayback: (episodeId: number): Promise<PlaybackInfo> =>
+    fetch(`/api/episodes/${episodeId}/playback`).then(asJson<PlaybackInfo>),
   browseFs: (path?: string): Promise<FsListing> => {
     const query = path !== undefined ? `?path=${encodeURIComponent(path)}` : "";
     return fetch(`/api/fs${query}`).then(asJson<FsListing>);
