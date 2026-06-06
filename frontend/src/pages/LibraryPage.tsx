@@ -1,17 +1,34 @@
-import { LayoutGrid, List, Play, Search, Settings, Sparkles, Star } from "lucide-react";
+import {
+  Film,
+  LayoutGrid,
+  List,
+  type LucideIcon,
+  Play,
+  Search,
+  Settings,
+  Sparkles,
+  Star,
+  Tv,
+} from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { type TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { useActivity } from "../ActivityContext";
-import { api, type SeriesSummary, type WatchStatus } from "../api";
+import { api, type LibraryKind, type SeriesSummary, type WatchStatus } from "../api";
 import { LibrarySettings } from "../components/LibrarySettings";
 import { SeriesCard, SeriesRow } from "../components/SeriesCard";
 import { useLibraries } from "../LibrariesContext";
 
 type Filter = "all" | WatchStatus;
 type View = "grid" | "list";
+
+const KIND_ICON: Record<LibraryKind, LucideIcon> = {
+  anime: Sparkles,
+  movie: Film,
+  series: Tv,
+};
 
 const seriesTitle = (s: SeriesSummary): string => s.display_title ?? s.title;
 
@@ -99,7 +116,10 @@ export function LibraryPage(): JSX.Element {
 
       {/* Header */}
       <div className="flex flex-wrap items-center gap-3">
-        <Sparkles className="h-5 w-5 text-violet-300" />
+        {(() => {
+          const KindIcon = library !== null ? KIND_ICON[library.kind] : Sparkles;
+          return <KindIcon className="h-5 w-5 text-violet-300" />;
+        })()}
         <h1 className="text-2xl font-bold tracking-tight">
           {library?.name ?? t("library.defaultName")}
         </h1>

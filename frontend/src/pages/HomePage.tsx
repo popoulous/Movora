@@ -1,6 +1,6 @@
 import { type TFunction } from "i18next";
-import { CheckCircle2, Play, Sparkles, Star } from "lucide-react";
-import { type ReactNode, useEffect, useState } from "react";
+import { CheckCircle2, ChevronLeft, ChevronRight, Play, Sparkles, Star } from "lucide-react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 
@@ -185,10 +185,27 @@ function Row({
   onOpen: (s: HomeSeries) => void;
   t: TFunction;
 }): JSX.Element {
+  const track = useRef<HTMLDivElement>(null);
+  const scrollByPage = (direction: number): void => {
+    const el = track.current;
+    if (el !== null) el.scrollBy({ left: direction * el.clientWidth * 0.85, behavior: "smooth" });
+  };
   return (
     <section>
-      <SectionTitle>{rowTitle}</SectionTitle>
-      <div className="-mx-1 flex gap-4 overflow-x-auto px-1 pb-2">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-sm font-semibold tracking-wide text-neutral-300 uppercase">
+          {rowTitle}
+        </h2>
+        <div className="flex gap-1.5">
+          <CarouselArrow onClick={() => scrollByPage(-1)}>
+            <ChevronLeft className="h-4 w-4" />
+          </CarouselArrow>
+          <CarouselArrow onClick={() => scrollByPage(1)}>
+            <ChevronRight className="h-4 w-4" />
+          </CarouselArrow>
+        </div>
+      </div>
+      <div ref={track} className="no-scrollbar flex gap-4 overflow-x-auto pb-1">
         {items.map((s) => (
           <SeriesCard
             key={s.id}
@@ -200,6 +217,23 @@ function Row({
         ))}
       </div>
     </section>
+  );
+}
+
+function CarouselArrow({
+  onClick,
+  children,
+}: {
+  onClick: () => void;
+  children: ReactNode;
+}): JSX.Element {
+  return (
+    <button
+      onClick={onClick}
+      className="flex h-7 w-7 items-center justify-center rounded-full bg-white/5 text-neutral-300 ring-1 ring-white/10 transition hover:bg-white/10 hover:text-white"
+    >
+      {children}
+    </button>
   );
 }
 

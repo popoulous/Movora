@@ -10,11 +10,14 @@ body {
   margin: 0;
   color: #ffffff;
   background-color: #05060b;
-  background-image:
-    radial-gradient(circle at 30% 20%, rgba(122, 77, 255, 0.15), transparent 40%),
-    radial-gradient(circle at 80% 70%, rgba(236, 72, 153, 0.08), transparent 50%),
-    linear-gradient(180deg, #05060b 0%, #070b17 50%, #05060b 100%);
-  background-attachment: fixed;
+}
+
+/* Hide the scrollbar on horizontal carousels (still scrollable / draggable). */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }
 
 /* Rounded gradient border with a fully transparent center (mask compositing). */
