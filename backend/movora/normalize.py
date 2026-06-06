@@ -276,6 +276,18 @@ def _reset(task: Task) -> None:
     task.finished_at = None
 
 
+def clean_partials(output_dir: Path) -> int:
+    """Remove orphaned .part.mp4 files left by an interrupted/killed transcode."""
+    if not output_dir.is_dir():
+        return 0
+    removed = 0
+    for partial in output_dir.glob("*.part.mp4"):
+        with contextlib.suppress(OSError):
+            partial.unlink()
+            removed += 1
+    return removed
+
+
 def _has_active_library_task(session: Session, library_id: int, task_type: TaskType) -> bool:
     return (
         session.scalar(

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -13,7 +15,12 @@ from movora.db.models import (
     Task,
     TaskType,
 )
-from movora.normalize import dedupe_tasks, enqueue_normalize, requeue_interrupted
+from movora.normalize import (
+    clean_partials,
+    dedupe_tasks,
+    enqueue_normalize,
+    requeue_interrupted,
+)
 
 
 def _media_file(session: Session) -> int:
@@ -102,6 +109,15 @@ def test_requeue_retries_failed_under_cap() -> None:
         task = session.scalar(select(Task))
         assert task is not None
         assert task.status == JobStatus.PENDING
+
+
+def test_clean_partials_removes_only_part_files(tmp_path: Path) -> None:
+    (tmp_path / "9.part.mp4").write_bytes(b"x")  # orphaned partial
+    (tmp_path / "9.mp4").write_bytes(b"y")  # finished output — kept
+
+    assert clean_partials(tmp_path) == 1
+    assert not (tmp_path / "9.part.mp4").exists()
+    assert (tmp_path / "9.mp4").exists()
 
 
 def test_dedupe_keeps_one_best_per_file() -> None:

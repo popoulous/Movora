@@ -14,7 +14,12 @@ from movora.api.routes import router
 from movora.config import Settings, get_settings
 from movora.db.base import create_db_engine, create_session_factory, init_db
 from movora.metadata import AniListProvider
-from movora.normalize import dedupe_tasks, requeue_interrupted, start_workers
+from movora.normalize import (
+    clean_partials,
+    dedupe_tasks,
+    requeue_interrupted,
+    start_workers,
+)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -24,14 +29,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # A crash/reload can leave a task RUNNING with its ffmpeg killed; put those
         # back in the queue and start the worker so it resumes on its own.
+        normalized_dir = settings.database_path.parent / "normalized"
+        clean_partials(normalized_dir)  # drop orphaned .part.mp4 from a killed transcode
         with app.state.session_factory() as session:
             dedupe_tasks(session)  # clean up any duplicate tasks first
             requeue_interrupted(session)
-        start_workers(
-            app.state.session_factory,
-            settings.database_path.parent / "normalized",
-            app.state.metadata_provider,
-        )
+        start_workers(app.state.session_factory, normalized_dir, app.state.metadata_provider)
         yield
 
     app = FastAPI(title=settings.app_name, version=__version__, lifespan=lifespan)
