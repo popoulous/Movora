@@ -10,10 +10,13 @@ def _client(tmp_path: Path) -> TestClient:
     return TestClient(create_app(Settings(database_path=tmp_path / "t.db")))
 
 
-def test_auto_normalize_defaults_on(tmp_path: Path) -> None:
-    # Automation-first: the server optimizes for Direct Play out of the box.
+def test_default_settings(tmp_path: Path) -> None:
+    # Automation-first: optimize for Direct Play out of the box, but don't bulk-
+    # process the existing library until asked.
     client = _client(tmp_path)
-    assert client.get("/api/settings").json()["auto_normalize"] is True
+    body = client.get("/api/settings").json()
+    assert body["auto_normalize"] is True
+    assert body["auto_normalize_existing"] is False
 
 
 def test_settings_persist(tmp_path: Path) -> None:

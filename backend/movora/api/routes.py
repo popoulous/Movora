@@ -33,7 +33,7 @@ from movora.db.models import Episode, Job, JobStatus, Library, MediaFile, Season
 from movora.domain import CapabilityProfile
 from movora.enrich import enrich_library
 from movora.filesystem import list_directories
-from movora.normalize import run_normalize_job
+from movora.normalize import normalize_pending, run_normalize_job
 from movora.scanner import scan_library
 from movora.streaming import DirectPlayStrategy
 from movora.subtitles import SoftAssOrSrtResolver, discover_tracks, load_subtitle, srt_to_vtt
@@ -81,13 +81,23 @@ def delete_library(library_id: int, session: SessionDep) -> None:
 
 
 @router.post("/libraries/{library_id}/scan", response_model=ScanResult)
-def scan(library_id: int, session: SessionDep) -> ScanResult:
+def scan(
+    library_id: int, session: SessionDep, request: Request, background: BackgroundTasks
+) -> ScanResult:
     library = session.get(Library, library_id)
     if library is None:
         raise HTTPException(status_code=404, detail="library not found")
-    added = scan_library(session, library)
-    _log_job(session, "scan", library_id, f"{added} added")
-    return ScanResult(added=added)
+    new_ids = scan_library(session, library)
+    _log_job(session, "scan", library_id, f"{len(new_ids)} added")
+    # Automation-first: optimize newly-found files for Direct Play without intervention.
+    if new_ids and settings_store.get_bool(session, settings_store.AUTO_NORMALIZE):
+        background.add_task(
+            normalize_pending,
+            request.app.state.session_factory,
+            _normalized_dir(request),
+            media_file_ids=new_ids,
+        )
+    return ScanResult(added=len(new_ids))
 
 
 @router.post("/libraries/{library_id}/enrich", response_model=EnrichResult)
@@ -155,15 +165,27 @@ def normalize_episode(
     session.add(job)
     session.commit()
     session.refresh(job)
-    output_dir = request.app.state.settings.database_path.parent / "normalized"
     background.add_task(
         run_normalize_job,
         request.app.state.session_factory,
         media_file.id,
         job.id,
-        output_dir,
+        _normalized_dir(request),
     )
     return job
+
+
+@router.post("/normalize/all", status_code=202)
+def normalize_all(request: Request, background: BackgroundTasks) -> dict[str, str]:
+    """Sweep the whole library, normalizing every file that needs it (background)."""
+    background.add_task(
+        normalize_pending, request.app.state.session_factory, _normalized_dir(request)
+    )
+    return {"status": "started"}
+
+
+def _normalized_dir(request: Request) -> Path:
+    return Path(request.app.state.settings.database_path.parent) / "normalized"
 
 
 def _playback_source(media_file: MediaFile) -> tuple[Path, str, bool]:
@@ -239,17 +261,33 @@ def list_jobs(session: SessionDep) -> list[Job]:
 
 @router.get("/settings", response_model=SettingsRead)
 def get_settings(session: SessionDep) -> SettingsRead:
-    return SettingsRead(
-        auto_normalize=settings_store.get_bool(session, settings_store.AUTO_NORMALIZE)
-    )
+    return _read_settings(session)
 
 
 @router.patch("/settings", response_model=SettingsRead)
-def update_settings(payload: SettingsUpdate, session: SessionDep) -> SettingsRead:
+def update_settings(
+    payload: SettingsUpdate, session: SessionDep, request: Request, background: BackgroundTasks
+) -> SettingsRead:
     if payload.auto_normalize is not None:
         settings_store.set_bool(session, settings_store.AUTO_NORMALIZE, payload.auto_normalize)
+    if payload.auto_normalize_existing is not None:
+        settings_store.set_bool(
+            session, settings_store.AUTO_NORMALIZE_EXISTING, payload.auto_normalize_existing
+        )
+        # Turning on "include existing" sweeps the whole library right away.
+        if payload.auto_normalize_existing:
+            background.add_task(
+                normalize_pending, request.app.state.session_factory, _normalized_dir(request)
+            )
+    return _read_settings(session)
+
+
+def _read_settings(session: Session) -> SettingsRead:
     return SettingsRead(
-        auto_normalize=settings_store.get_bool(session, settings_store.AUTO_NORMALIZE)
+        auto_normalize=settings_store.get_bool(session, settings_store.AUTO_NORMALIZE),
+        auto_normalize_existing=settings_store.get_bool(
+            session, settings_store.AUTO_NORMALIZE_EXISTING
+        ),
     )
 
 

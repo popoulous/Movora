@@ -19,13 +19,15 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from movora.db.models import Job, JobStatus, MediaFile
 from movora.encoders import detect_h264_encoder
 from movora.ffprobe import probe_media
 from movora.interfaces import NormalizationPlanner
-from movora.normalization import WEB_TARGET, RemuxFirstPlanner
+from movora.normalization import WEB_TARGET, RemuxFirstPlanner, needs_normalization
+from movora.streaming import DirectPlayStrategy
 
 ProgressCallback = Callable[[int], None]
 
@@ -107,33 +109,88 @@ def _as_float(value: object) -> float | None:
         return None
 
 
+def should_normalize(media_file: MediaFile) -> bool:
+    """Decide from media-info whether a file needs optimizing for the web target."""
+    if media_file.normalized_path is not None and Path(media_file.normalized_path).is_file():
+        return False
+    source = Path(media_file.path)
+    if not source.is_file():
+        return False
+    probe = probe_media(source)
+    if probe is None or probe.get("video_codec") is None:
+        return False  # unreadable or no video stream -> nothing to optimize
+    container_ok = DirectPlayStrategy().open_stream(str(source), WEB_TARGET).direct_play
+    return not (container_ok and not needs_normalization(probe))
+
+
+def _do_normalize(
+    session: Session, media_file: MediaFile, job: Job, output_dir: Path, label: str
+) -> None:
+    def on_progress(pct: int) -> None:
+        job.message = f"{label} — {pct}%"
+        session.commit()
+
+    try:
+        planner = RemuxFirstPlanner(detect_h264_encoder())
+        normalize_media_file(
+            session, media_file, planner, output_dir=output_dir, on_progress=on_progress
+        )
+        job.status = JobStatus.DONE
+        job.message = f"{label} — done"
+    except Exception as exc:  # record any failure on the activity job, don't crash
+        job.status = JobStatus.FAILED
+        job.message = str(exc)[:200]
+    job.finished_at = datetime.now(timezone.utc)
+    session.commit()
+
+
 def run_normalize_job(
     session_factory: sessionmaker[Session],
     media_file_id: int,
     job_id: int,
     output_dir: Path,
 ) -> None:
-    """Background entry point: normalize one file and update its activity job."""
+    """Background entry point: normalize one file and update its existing activity job."""
     with session_factory() as session:
         job = session.get(Job, job_id)
         media_file = session.get(MediaFile, media_file_id)
         if job is None or media_file is None:
             return
-        name = Path(media_file.path).name
+        _do_normalize(session, media_file, job, output_dir, Path(media_file.path).name)
 
-        def on_progress(pct: int) -> None:
-            job.message = f"{name} — {pct}%"
+
+def normalize_pending(
+    session_factory: sessionmaker[Session],
+    output_dir: Path,
+    *,
+    media_file_ids: list[int] | None = None,
+) -> None:
+    """Normalize every file that needs it, one at a time, with i/total progress.
+
+    ``media_file_ids`` scopes the sweep (e.g. just-scanned files); None means the
+    whole library. Files already compatible or normalized are skipped.
+    """
+    with session_factory() as session:
+        if media_file_ids is None:
+            candidate_ids = list(session.scalars(select(MediaFile.id)))
+        else:
+            candidate_ids = list(media_file_ids)
+        pending = [
+            media_file.id
+            for candidate_id in candidate_ids
+            if (media_file := session.get(MediaFile, candidate_id)) is not None
+            and should_normalize(media_file)
+        ]
+
+    total = len(pending)
+    for index, media_file_id in enumerate(pending, start=1):
+        with session_factory() as session:
+            media_file = session.get(MediaFile, media_file_id)
+            if media_file is None:
+                continue
+            label = f"{index}/{total} — {Path(media_file.path).name}"
+            job = Job(kind="normalize", status=JobStatus.RUNNING, message=label)
+            session.add(job)
             session.commit()
-
-        try:
-            planner = RemuxFirstPlanner(detect_h264_encoder())
-            normalize_media_file(
-                session, media_file, planner, output_dir=output_dir, on_progress=on_progress
-            )
-            job.status = JobStatus.DONE
-            job.message = f"{name} — normalized"
-        except Exception as exc:  # record any failure on the activity job, don't crash
-            job.status = JobStatus.FAILED
-            job.message = str(exc)[:200]
-        job.finished_at = datetime.now(timezone.utc)
-        session.commit()
+            session.refresh(job)
+            _do_normalize(session, media_file, job, output_dir, label)

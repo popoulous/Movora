@@ -23,11 +23,11 @@ TitleProber = Callable[[Path], str | None]
 
 def scan_library(
     session: Session, library: Library, title_prober: TitleProber | None = None
-) -> int:
-    """Index new media files under the library. Returns the number of files added."""
+) -> list[int]:
+    """Index new media files under the library. Returns the ids of the files added."""
     prober = title_prober or probe_container_title
     parser = parser_for(library.kind)
-    added = 0
+    new_files: list[MediaFile] = []
     for path in sorted(Path(library.path).rglob("*")):
         if not path.is_file() or path.suffix.lower() not in MEDIA_EXTENSIONS:
             continue
@@ -37,10 +37,11 @@ def scan_library(
         series = _get_or_create_series(session, library, fields.title or path.stem)
         season = _get_or_create_season(session, series, fields.season or 1)
         episode = _get_or_create_episode(session, season, fields.episode or 1, prober(path))
-        session.add(MediaFile(episode=episode, path=str(path)))
-        added += 1
+        media_file = MediaFile(episode=episode, path=str(path))
+        session.add(media_file)
+        new_files.append(media_file)
     session.commit()
-    return added
+    return [media_file.id for media_file in new_files]
 
 
 def _media_file_exists(session: Session, path: str) -> bool:

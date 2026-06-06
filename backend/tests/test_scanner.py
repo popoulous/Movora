@@ -28,7 +28,7 @@ def test_scan_populates_hierarchy_and_is_idempotent(tmp_path: Path) -> None:
         session.add(library)
         session.commit()
 
-        assert scan_library(session, library, title_prober=lambda path: None) == 2
+        assert len(scan_library(session, library, title_prober=lambda path: None)) == 2
 
         series = list(session.scalars(select(Series)))
         assert len(series) == 1
@@ -38,7 +38,7 @@ def test_scan_populates_hierarchy_and_is_idempotent(tmp_path: Path) -> None:
         assert len(list(session.scalars(select(MediaFile)))) == 2
 
         # Re-scanning adds nothing.
-        assert scan_library(session, library, title_prober=lambda path: None) == 0
+        assert scan_library(session, library, title_prober=lambda path: None) == []
 
 
 def test_scan_sets_episode_titles_from_prober(tmp_path: Path) -> None:

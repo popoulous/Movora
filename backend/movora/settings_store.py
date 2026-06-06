@@ -12,7 +12,11 @@ from sqlalchemy.orm import Session
 from movora.db.models import Setting
 
 AUTO_NORMALIZE = "auto_normalize"
-_DEFAULTS: dict[str, bool] = {AUTO_NORMALIZE: True}
+# Whether to also sweep the EXISTING library (off by default, so enabling auto
+# normalization never kicks off a surprise multi-hour job over the whole library;
+# new files are still optimized on scan, and "Normalize all" triggers a sweep).
+AUTO_NORMALIZE_EXISTING = "auto_normalize_existing"
+_DEFAULTS: dict[str, bool] = {AUTO_NORMALIZE: True, AUTO_NORMALIZE_EXISTING: False}
 
 
 def get_bool(session: Session, key: str) -> bool:

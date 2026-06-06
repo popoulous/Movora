@@ -93,10 +93,12 @@ class PlaybackInfo(BaseModel):
 
 class SettingsRead(BaseModel):
     auto_normalize: bool
+    auto_normalize_existing: bool
 
 
 class SettingsUpdate(BaseModel):
     auto_normalize: bool | None = None
+    auto_normalize_existing: bool | None = None
 
 
 class ScanResult(BaseModel):
