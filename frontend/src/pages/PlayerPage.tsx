@@ -33,6 +33,26 @@ function subtitleLabel(track: SubtitleTrack): string {
   return track.label;
 }
 
+// 2- and 3-letter codes that count as the same language, so we can match the UI locale.
+const LANG_ALIASES: Record<string, string[]> = {
+  hu: ["hu", "hun"],
+  en: ["en", "eng"],
+  ja: ["ja", "jpn", "jp"],
+  de: ["de", "ger", "deu"],
+  fr: ["fr", "fre", "fra"],
+};
+
+// Pick the subtitle in the user's language (UI locale, which defaults from the device);
+// fall back to the first track so something always shows.
+function pickDefaultTrack(tracks: SubtitleTrack[], uiLang: string): SubtitleTrack | null {
+  const code = uiLang.slice(0, 2).toLowerCase();
+  const codes = LANG_ALIASES[code] ?? [code];
+  const preferred = tracks.find(
+    (track) => track.language !== null && codes.includes(track.language.toLowerCase()),
+  );
+  return preferred ?? tracks[0] ?? null;
+}
+
 function seasonOrder(number: number): number {
   return number === 0 ? Number.MAX_SAFE_INTEGER : number;
 }
@@ -52,7 +72,7 @@ function chipClass(active: boolean): string {
 }
 
 export function PlayerPage(): JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { refreshSoon } = useActivity();
   const { episodeId } = useParams();
   const id = Number(episodeId);
@@ -80,7 +100,8 @@ export function PlayerPage(): JSX.Element {
       .getPlayback(id)
       .then((info) => {
         setPlayback(info);
-        setTrackId(info.subtitle_tracks[0]?.id ?? null); // show a subtitle by default
+        // Show a subtitle by default, preferring the user's language (UI locale / device).
+        setTrackId(pickDefaultTrack(info.subtitle_tracks, i18n.language)?.id ?? null);
       })
       .catch((reason: unknown) => setError(String(reason)));
   }, [id]);
