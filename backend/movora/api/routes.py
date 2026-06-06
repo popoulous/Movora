@@ -33,7 +33,7 @@ from movora.api.schemas import (
     TaskRead,
     WatchStateUpdate,
 )
-from movora.db.models import Episode, Library, MediaFile, Season, Series, Task
+from movora.db.models import Episode, Library, MediaFile, Season, Series, Task, WatchState
 from movora.domain import CapabilityProfile
 from movora.filesystem import list_directories
 from movora.normalize import (
@@ -162,8 +162,47 @@ def enrich(
 
 
 @router.get("/libraries/{library_id}/series", response_model=list[SeriesRead])
-def list_series(library_id: int, session: SessionDep) -> list[Series]:
-    return list(session.scalars(select(Series).where(Series.library_id == library_id)))
+def list_series(library_id: int, session: SessionDep) -> list[SeriesRead]:
+    series_list = list(
+        session.scalars(
+            select(Series)
+            .where(Series.library_id == library_id)
+            .options(selectinload(Series.seasons).selectinload(Season.episodes))
+        )
+    )
+    user = current_user(session)
+    watched = set(
+        session.scalars(
+            select(WatchState.episode_id).where(
+                WatchState.user_id == user.id, WatchState.watched.is_(True)
+            )
+        )
+    )
+    return [_series_summary(series, watched) for series in series_list]
+
+
+def _series_summary(series: Series, watched: set[int]) -> SeriesRead:
+    episode_ids = [episode.id for season in series.seasons for episode in season.episodes]
+    total = len(episode_ids)
+    seen = sum(1 for episode_id in episode_ids if episode_id in watched)
+    if seen == 0:
+        status = "not_started"
+    elif seen >= total:
+        status = "completed"
+    else:
+        status = "watching"
+    return SeriesRead(
+        id=series.id,
+        title=series.title,
+        display_title=series.display_title,
+        year=series.year,
+        score=series.score,
+        cover_image_url=series.cover_image_url,
+        banner_image_url=series.banner_image_url,
+        episode_count=total,
+        watch_status=status,
+        watch_percent=round(seen * 100 / total) if total else 0,
+    )
 
 
 @router.get("/series/{series_id}", response_model=SeriesDetail)

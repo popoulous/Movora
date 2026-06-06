@@ -55,6 +55,10 @@ class SeriesRead(BaseModel):
     year: int | None = None
     score: int | None = None
     cover_image_url: str | None = None
+    banner_image_url: str | None = None
+    episode_count: int = 0
+    watch_status: str = "not_started"  # not_started | watching | completed
+    watch_percent: int = 0
 
 
 class RecommendationRead(BaseModel):

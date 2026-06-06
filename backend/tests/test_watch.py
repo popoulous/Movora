@@ -69,6 +69,24 @@ def test_resume_position_until_watched() -> None:
         assert resume_position(session, user, episodes[0].id) == 0.0  # finished -> no resume
 
 
+def test_series_list_reports_episode_count_and_watch(tmp_path: Path) -> None:
+    app = create_app(Settings(database_path=tmp_path / "t.db"))
+    client = TestClient(app)
+    with app.state.session_factory() as session:
+        series, episodes = _series_with_episodes(session, 4)
+        library_id, first_episode_id = series.library_id, episodes[0].id
+
+    listed = client.get(f"/api/libraries/{library_id}/series").json()
+    assert listed[0]["episode_count"] == 4
+    assert listed[0]["watch_status"] == "not_started"
+    assert listed[0]["watch_percent"] == 0
+
+    client.patch(f"/api/episodes/{first_episode_id}/watch-state", json={"watched": True})
+    listed = client.get(f"/api/libraries/{library_id}/series").json()
+    assert listed[0]["watch_status"] == "watching"
+    assert listed[0]["watch_percent"] == 25
+
+
 def test_watch_state_endpoint_updates_series_detail(tmp_path: Path) -> None:
     app = create_app(Settings(database_path=tmp_path / "t.db"))
     client = TestClient(app)
