@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
 
+import { useActivity } from "../ActivityContext";
 import { api, type PlaybackInfo } from "../api";
 
 function chipClass(active: boolean): string {
@@ -15,6 +16,7 @@ function chipClass(active: boolean): string {
 
 export function PlayerPage(): JSX.Element {
   const { t } = useTranslation();
+  const { refreshSoon } = useActivity();
   const { episodeId } = useParams();
   const id = Number(episodeId);
   const navigate = useNavigate();
@@ -38,6 +40,7 @@ export function PlayerPage(): JSX.Element {
   const normalize = (): void => {
     setNormalizing(true);
     api.normalizeEpisode(id).catch(() => undefined);
+    refreshSoon(); // surface the spinner next to the bell immediately
   };
 
   // While optimizing, poll until the normalized mp4 is ready, then swap it in.

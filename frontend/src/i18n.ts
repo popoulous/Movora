@@ -81,6 +81,7 @@ const en = {
     scan: "Scan",
     enrich: "Metadata",
     normalize: "Optimize",
+    working: "Working…",
   },
   player: {
     back: "Back",
@@ -175,6 +176,7 @@ const hu: typeof en = {
     scan: "Szkennelés",
     enrich: "Metaadat",
     normalize: "Optimalizálás",
+    working: "Folyamatban…",
   },
   player: {
     back: "Vissza",

@@ -1,8 +1,9 @@
-import { Bell } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Bell, Loader2 } from "lucide-react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { api, type Job } from "../api";
+import { useActivity } from "../ActivityContext";
+import type { Job } from "../api";
 
 function timeAgo(iso: string): string {
   const seconds = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
@@ -22,32 +23,8 @@ function statusDot(status: string): string {
 
 export function ActivityBell(): JSX.Element {
   const { t } = useTranslation();
+  const { jobs, running } = useActivity();
   const [open, setOpen] = useState(false);
-  const [jobs, setJobs] = useState<Job[]>([]);
-
-  useEffect(() => {
-    let active = true;
-    let timer: ReturnType<typeof setTimeout>;
-    const tick = (): void => {
-      api
-        .listJobs()
-        .then((next) => {
-          if (!active) return;
-          setJobs(next);
-          // Poll faster while something is running so progress feels live.
-          const running = next.some((job) => job.status === "running");
-          timer = setTimeout(tick, running ? 2000 : 8000);
-        })
-        .catch(() => {
-          if (active) timer = setTimeout(tick, 8000);
-        });
-    };
-    tick();
-    return () => {
-      active = false;
-      clearTimeout(timer);
-    };
-  }, []);
 
   const kindLabel = (kind: string): string =>
     kind === "enrich"
@@ -56,15 +33,31 @@ export function ActivityBell(): JSX.Element {
         ? t("activity.normalize")
         : t("activity.scan");
 
+  const current: Job | undefined = jobs.find((job) => job.status === "running");
+  const toggle = (): void => setOpen((value) => !value);
+
   return (
-    <div className="relative">
+    <div className="relative flex items-center gap-2">
+      {/* Always-visible progress indicator: no need to open the panel to see it. */}
+      {running && (
+        <button
+          onClick={toggle}
+          className="flex items-center gap-2 rounded-lg bg-white/5 px-2.5 py-1.5 text-xs text-neutral-200 ring-1 ring-white/10 transition hover:bg-white/10"
+        >
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-violet-300" />
+          <span className="max-w-[220px] truncate">
+            {current ? `${kindLabel(current.kind)} — ${current.message}` : t("activity.working")}
+          </span>
+        </button>
+      )}
+
       <button
-        onClick={() => setOpen((value) => !value)}
+        onClick={toggle}
         title={t("topbar.activity")}
         className="relative rounded-lg bg-white/5 p-2 text-neutral-300 ring-1 ring-white/10 transition hover:bg-white/10"
       >
         <Bell className="h-4 w-4" />
-        {jobs.length > 0 && (
+        {running && (
           <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-violet-400" />
         )}
       </button>
@@ -81,10 +74,7 @@ export function ActivityBell(): JSX.Element {
             ) : (
               <ul className="max-h-80 overflow-auto">
                 {jobs.map((job) => (
-                  <li
-                    key={job.id}
-                    className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm"
-                  >
+                  <li key={job.id} className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm">
                     <span className={statusDot(job.status)} />
                     <span className="min-w-0 flex-1 truncate">
                       <span className="font-medium">{kindLabel(job.kind)}</span>{" "}

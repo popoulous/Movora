@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { useActivity } from "../ActivityContext";
 import { api, type ServerSettings } from "../api";
 
 function Toggle({
@@ -38,6 +39,7 @@ function Toggle({
 
 export function SettingsPage(): JSX.Element {
   const { t } = useTranslation();
+  const { refreshSoon } = useActivity();
   const [settings, setSettings] = useState<ServerSettings | null>(null);
   const [sweeping, setSweeping] = useState(false);
 
@@ -58,6 +60,7 @@ export function SettingsPage(): JSX.Element {
   const normalizeAll = (): void => {
     setSweeping(true);
     api.normalizeAll().catch(() => undefined);
+    refreshSoon(); // show the spinner next to the bell right away
     window.setTimeout(() => setSweeping(false), 2000);
   };
 

@@ -175,20 +175,15 @@ def normalize_pending(
             candidate_ids = list(session.scalars(select(MediaFile.id)))
         else:
             candidate_ids = list(media_file_ids)
-        pending = [
-            media_file.id
-            for candidate_id in candidate_ids
-            if (media_file := session.get(MediaFile, candidate_id)) is not None
-            and should_normalize(media_file)
-        ]
 
-    total = len(pending)
-    for index, media_file_id in enumerate(pending, start=1):
+    # Process incrementally (no upfront probe of the whole library) so the first
+    # job — and thus visible activity — shows up within a second or two.
+    for candidate_id in candidate_ids:
         with session_factory() as session:
-            media_file = session.get(MediaFile, media_file_id)
-            if media_file is None:
+            media_file = session.get(MediaFile, candidate_id)
+            if media_file is None or not should_normalize(media_file):
                 continue
-            label = f"{index}/{total} — {Path(media_file.path).name}"
+            label = Path(media_file.path).name
             job = Job(kind="normalize", status=JobStatus.RUNNING, message=label)
             session.add(job)
             session.commit()
