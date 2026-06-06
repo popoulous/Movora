@@ -14,6 +14,10 @@ export interface SeriesSummary {
   year: number | null;
   score: number | null;
   cover_image_url: string | null;
+  banner_image_url: string | null;
+  episode_count: number;
+  watch_status: WatchStatus;
+  watch_percent: number;
 }
 
 export interface Episode {
