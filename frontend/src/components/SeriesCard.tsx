@@ -63,7 +63,7 @@ function Poster({ series }: { series: CardSeries }): JSX.Element {
 
 function ProgressBar({ percent }: { percent: number }): JSX.Element {
   return (
-    <div className="absolute inset-x-0 bottom-0 h-1 bg-black/40">
+    <div className="absolute inset-x-0 bottom-0 h-1.5 bg-black/50">
       <div
         className="h-full bg-gradient-to-r from-[#7A4DFF] to-[#EC4899]"
         style={{ width: `${percent}%` }}

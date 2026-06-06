@@ -229,6 +229,10 @@ def _series_summary(series: Series, states: dict[int, WatchState]) -> SeriesRead
         else 0.0
     )
     ep_seconds = (series.episode_duration or 0) * 60  # metadata gives an avg episode length
+    # Overall progress = finished episodes + how far into the current one, over the total.
+    partial = min(1.0, position / ep_seconds) if ep_seconds > 0 else 0.0
+    raw_percent = (seen + partial) * 100 / total if total else 0.0
+    overall_percent = max(1, round(raw_percent)) if raw_percent > 0 else 0
     return SeriesRead(
         id=series.id,
         title=series.title,
@@ -239,7 +243,7 @@ def _series_summary(series: Series, states: dict[int, WatchState]) -> SeriesRead
         banner_image_url=series.banner_image_url,
         episode_count=total,
         watch_status=status,
-        watch_percent=round(seen * 100 / total) if total else 0,
+        watch_percent=overall_percent,
         normalized=len(media_files) > 0 and all(mf.is_normalized for mf in media_files),
         continue_episode_id=continue_ep.id if continue_ep is not None else None,
         continue_episode_number=continue_ep.number if continue_ep is not None else None,

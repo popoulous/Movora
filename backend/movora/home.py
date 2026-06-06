@@ -113,13 +113,22 @@ def _overview(series: Series, states: dict[int, WatchState]) -> SeriesOverview:
     times = [states[ep.id].updated_at for ep in ordered if ep.id in states]
     last_watched_at = max(times) if times else None
     media_files = [mf for ep in ordered for mf in ep.media_files]
+    continue_ep = next((ep for ep in ordered if ep.id not in watched_ids), None)
+    position = (
+        states[continue_ep.id].position_seconds
+        if continue_ep is not None and continue_ep.id in states
+        else 0.0
+    )
+    ep_seconds = (series.episode_duration or 0) * 60
+    partial = min(1.0, position / ep_seconds) if ep_seconds > 0 else 0.0
+    raw_percent = (watched + partial) * 100 / total if total else 0.0
     return SeriesOverview(
         series=series,
         episode_count=total,
         watched_episodes=watched,
         watch_status=status,
-        watch_percent=round(watched * 100 / total) if total else 0,
-        continue_episode_id=next((ep.id for ep in ordered if ep.id not in watched_ids), None),
+        watch_percent=max(1, round(raw_percent)) if raw_percent > 0 else 0,
+        continue_episode_id=continue_ep.id if continue_ep is not None else None,
         last_watched_at=last_watched_at,
         finished_at=last_watched_at if status == "completed" else None,
         normalized=len(media_files) > 0 and all(mf.is_normalized for mf in media_files),
