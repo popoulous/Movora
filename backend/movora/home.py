@@ -103,9 +103,10 @@ def _overview(series: Series, states: dict[int, WatchState]) -> SeriesOverview:
     watched_ids = {ep.id for ep in ordered if ep.id in states and states[ep.id].watched}
     total = len(ordered)
     watched = len(watched_ids)
-    if watched == 0:
+    started = any(ep.id in states for ep in ordered)  # any progress counts, not just finished
+    if not started:
         status = "not_started"
-    elif watched >= total:
+    elif total > 0 and watched >= total:
         status = "completed"
     else:
         status = "watching"
