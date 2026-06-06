@@ -104,6 +104,43 @@ class SeriesDetail(BaseModel):
     watch: SeriesWatchRead | None = None
 
 
+class HomeSeries(BaseModel):
+    id: int
+    title: str
+    display_title: str | None = None
+    year: int | None = None
+    score: int | None = None
+    cover_image_url: str | None = None
+    banner_image_url: str | None = None
+    genres: str | None = None
+    episode_count: int = 0
+    watch_status: str = "not_started"
+    watch_percent: int = 0
+    continue_episode_id: int | None = None
+
+
+class CollectionRead(BaseModel):
+    genre: str
+    count: int
+
+
+class HomeStats(BaseModel):
+    series_count: int
+    episode_count: int
+    episodes_watched: int
+    days_watched: float
+
+
+class HomeData(BaseModel):
+    hero: HomeSeries | None = None
+    continue_watching: list[HomeSeries] = []
+    recently_added: list[HomeSeries] = []
+    recently_finished: list[HomeSeries] = []
+    recommendation: HomeSeries | None = None
+    collections: list[CollectionRead] = []
+    stats: HomeStats
+
+
 class SubtitleTrackRead(BaseModel):
     id: str  # opaque handle the subtitle endpoint can resolve back to a track
     label: str

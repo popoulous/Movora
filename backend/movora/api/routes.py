@@ -15,9 +15,13 @@ from sqlalchemy.orm import Session, selectinload
 from movora import settings_store
 from movora.api.deps import SessionDep
 from movora.api.schemas import (
+    CollectionRead,
     EpisodeRead,
     FsEntry,
     FsListing,
+    HomeData,
+    HomeSeries,
+    HomeStats,
     LibraryCreate,
     LibraryRead,
     LibraryUpdate,
@@ -36,6 +40,7 @@ from movora.api.schemas import (
 from movora.db.models import Episode, Library, MediaFile, Season, Series, Task, WatchState
 from movora.domain import CapabilityProfile
 from movora.filesystem import list_directories
+from movora.home import SeriesOverview, home_overview
 from movora.normalize import (
     cancel_transcodes,
     enqueue_metadata,
@@ -202,6 +207,47 @@ def _series_summary(series: Series, watched: set[int]) -> SeriesRead:
         episode_count=total,
         watch_status=status,
         watch_percent=round(seen * 100 / total) if total else 0,
+    )
+
+
+@router.get("/home", response_model=HomeData)
+def home(session: SessionDep) -> HomeData:
+    overview = home_overview(session, current_user(session))
+    return HomeData(
+        hero=_home_series(overview.hero) if overview.hero else None,
+        continue_watching=[_home_series(o) for o in overview.continue_watching],
+        recently_added=[_home_series(o) for o in overview.recently_added],
+        recently_finished=[_home_series(o) for o in overview.recently_finished],
+        recommendation=(
+            _home_series(overview.recommendation) if overview.recommendation else None
+        ),
+        collections=[
+            CollectionRead(genre=genre, count=count) for genre, count in overview.collections
+        ],
+        stats=HomeStats(
+            series_count=overview.series_count,
+            episode_count=overview.episode_count,
+            episodes_watched=overview.episodes_watched,
+            days_watched=overview.days_watched,
+        ),
+    )
+
+
+def _home_series(overview: SeriesOverview) -> HomeSeries:
+    series = overview.series
+    return HomeSeries(
+        id=series.id,
+        title=series.title,
+        display_title=series.display_title,
+        year=series.year,
+        score=series.score,
+        cover_image_url=series.cover_image_url,
+        banner_image_url=series.banner_image_url,
+        genres=series.genres,
+        episode_count=overview.episode_count,
+        watch_status=overview.watch_status,
+        watch_percent=overview.watch_percent,
+        continue_episode_id=overview.continue_episode_id,
     )
 
 
