@@ -101,6 +101,22 @@ class SettingsUpdate(BaseModel):
     auto_normalize_existing: bool | None = None
 
 
+class TaskRead(BaseModel):
+    id: int
+    type: str
+    status: str  # pending | running | done | failed
+    progress: int
+    eta_seconds: int | None = None
+    message: str | None = None
+    library_kind: str | None = None  # "movie" has no season/episode levels in the tree
+    series_id: int | None = None
+    series_title: str | None = None
+    season_number: int | None = None
+    episode_id: int | None = None
+    episode_number: int | None = None
+    episode_title: str | None = None
+
+
 class ScanResult(BaseModel):
     added: int
 

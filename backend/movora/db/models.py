@@ -207,6 +207,32 @@ class Setting(Base):
     value: Mapped[str]
 
 
+class TaskType(str, enum.Enum):
+    NORMALIZE = "normalize"
+    # v2: INTRO = "intro", OUTRO = "outro" — the task center already groups by type.
+
+
+class Task(Base):
+    """A queued background task per media file (the Tasks/queue view).
+
+    Reuses JobStatus: PENDING = queued, RUNNING = in progress, DONE/FAILED.
+    """
+
+    __tablename__ = "task"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    type: Mapped[TaskType]
+    media_file_id: Mapped[int] = mapped_column(ForeignKey("media_file.id"))
+    status: Mapped[JobStatus] = mapped_column(default=JobStatus.PENDING)
+    progress: Mapped[int] = mapped_column(default=0)  # 0-100
+    eta_seconds: Mapped[int | None] = mapped_column(default=None)
+    message: Mapped[str | None] = mapped_column(default=None)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column(default=None)
+
+    media_file: Mapped[MediaFile] = relationship()
+
+
 class Job(Base):
     """An activity record (scan / metadata fetch) surfaced in the activity bell."""
 

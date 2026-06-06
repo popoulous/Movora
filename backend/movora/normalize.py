@@ -1,20 +1,18 @@
-"""Run a normalization plan with ffmpeg and record the Direct-Play output.
+"""Normalize media to a web Direct-Play mp4, draining a per-file task queue.
 
-Non-destructive: the original file is kept untouched; the normalized mp4 is
-written to a data directory *outside* the library (so a re-scan never indexes it),
-verified with ffprobe, and recorded on the MediaFile. Playback then serves the
-normalized file. The dedicated worker-process + idempotency-by-hash come later
-(IMPLEMENTATION_PLAN §3.9); this runner is what that worker will call.
-
-Progress: ffmpeg is driven with ``-progress`` so the caller gets a percentage it
-can surface in the activity log (the owner asked that jobs always show where they
-are, IMPLEMENTATION_PLAN §3.9).
+Non-destructive: the original is kept; the normalized mp4 goes to a data dir
+outside the library, is ffprobe-verified, and recorded on the MediaFile. Work is
+modelled as Task rows (queued -> running -> done/failed) drained by a single
+serial worker, so the Tasks view can show progress, ETA and what is queued
+(IMPLEMENTATION_PLAN §3.9). The dedicated worker-process + idempotency-by-hash
+come later; this in-process worker is what that will replace.
 """
 
 from __future__ import annotations
 
 import shutil
 import subprocess
+import threading
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
@@ -22,14 +20,17 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
-from movora.db.models import Job, JobStatus, MediaFile
+from movora.db.models import JobStatus, MediaFile, Task, TaskType
 from movora.encoders import detect_h264_encoder
 from movora.ffprobe import probe_media
 from movora.interfaces import NormalizationPlanner
 from movora.normalization import WEB_TARGET, RemuxFirstPlanner, needs_normalization
 from movora.streaming import DirectPlayStrategy
 
-ProgressCallback = Callable[[int], None]
+# (percent, eta_seconds) -> None
+ProgressCallback = Callable[[int, int | None], None]
+
+_worker_lock = threading.Lock()
 
 
 def normalize_media_file(
@@ -87,19 +88,24 @@ def normalize_media_file(
 def _track_progress(
     proc: subprocess.Popen[str], duration: float | None, on_progress: ProgressCallback | None
 ) -> None:
-    if proc.stdout is None:
+    if proc.stdout is None or on_progress is None:
         return
-    last = -1
-    for line in proc.stdout:
-        if on_progress is None or not duration or not line.startswith("out_time_us="):
-            continue
-        value = line.strip().split("=", 1)[1]
-        if not value.isdigit():
-            continue
-        pct = min(99, int(int(value) / 1_000_000 / duration * 100))
-        if pct > last:
-            last = pct
-            on_progress(pct)
+    last_pct = -1
+    speed: float | None = None
+    for raw_line in proc.stdout:
+        line = raw_line.strip()
+        if line.startswith("speed="):
+            speed = _as_float(line.split("=", 1)[1].rstrip("x"))
+        elif line.startswith("out_time_us=") and duration:
+            value = line.split("=", 1)[1]
+            if not value.isdigit():
+                continue
+            seconds = int(value) / 1_000_000
+            pct = min(99, int(seconds / duration * 100))
+            eta = int((duration - seconds) / speed) if speed and speed > 0 else None
+            if pct > last_pct:
+                last_pct = pct
+                on_progress(pct, eta)
 
 
 def _as_float(value: object) -> float | None:
@@ -123,69 +129,87 @@ def should_normalize(media_file: MediaFile) -> bool:
     return not (container_ok and not needs_normalization(probe))
 
 
-def _do_normalize(
-    session: Session, media_file: MediaFile, job: Job, output_dir: Path, label: str
+def enqueue_tasks(session: Session, media_file_ids: list[int]) -> int:
+    """Queue normalize Tasks for the given files, skipping duplicates and done ones.
+
+    Cheap (no probing): the worker decides per task whether work is actually needed,
+    so queued items show up instantly.
+    """
+    active = set(
+        session.scalars(
+            select(Task.media_file_id).where(
+                Task.status.in_([JobStatus.PENDING, JobStatus.RUNNING])
+            )
+        )
+    )
+    queued = 0
+    for media_file_id in media_file_ids:
+        if media_file_id in active:
+            continue
+        media_file = session.get(MediaFile, media_file_id)
+        if media_file is None:
+            continue
+        if media_file.normalized_path and Path(media_file.normalized_path).is_file():
+            continue
+        session.add(Task(type=TaskType.NORMALIZE, media_file_id=media_file_id))
+        active.add(media_file_id)
+        queued += 1
+    session.commit()
+    return queued
+
+
+def run_worker(session_factory: sessionmaker[Session], output_dir: Path) -> None:
+    """Drain the pending task queue serially. Only one worker runs at a time."""
+    if not _worker_lock.acquire(blocking=False):
+        return  # another worker is already draining the queue
+    try:
+        while True:
+            with session_factory() as session:
+                task = session.scalars(
+                    select(Task).where(Task.status == JobStatus.PENDING).order_by(Task.id)
+                ).first()
+                if task is None:
+                    return
+                task_id, media_file_id = task.id, task.media_file_id
+            _process_task(session_factory, task_id, media_file_id, output_dir)
+    finally:
+        _worker_lock.release()
+
+
+def _process_task(
+    session_factory: sessionmaker[Session], task_id: int, media_file_id: int, output_dir: Path
 ) -> None:
-    def on_progress(pct: int) -> None:
-        job.message = f"{label} — {pct}%"
+    with session_factory() as session:
+        task = session.get(Task, task_id)
+        media_file = session.get(MediaFile, media_file_id)
+        if task is None:
+            return
+        if media_file is None or not should_normalize(media_file):
+            task.status = JobStatus.DONE
+            task.progress = 100
+            task.message = "already optimized"
+            task.finished_at = datetime.now(timezone.utc)
+            session.commit()
+            return
+
+        task.status = JobStatus.RUNNING
         session.commit()
 
-    try:
-        planner = RemuxFirstPlanner(detect_h264_encoder())
-        normalize_media_file(
-            session, media_file, planner, output_dir=output_dir, on_progress=on_progress
-        )
-        job.status = JobStatus.DONE
-        job.message = f"{label} — done"
-    except Exception as exc:  # record any failure on the activity job, don't crash
-        job.status = JobStatus.FAILED
-        job.message = str(exc)[:200]
-    job.finished_at = datetime.now(timezone.utc)
-    session.commit()
-
-
-def run_normalize_job(
-    session_factory: sessionmaker[Session],
-    media_file_id: int,
-    job_id: int,
-    output_dir: Path,
-) -> None:
-    """Background entry point: normalize one file and update its existing activity job."""
-    with session_factory() as session:
-        job = session.get(Job, job_id)
-        media_file = session.get(MediaFile, media_file_id)
-        if job is None or media_file is None:
-            return
-        _do_normalize(session, media_file, job, output_dir, Path(media_file.path).name)
-
-
-def normalize_pending(
-    session_factory: sessionmaker[Session],
-    output_dir: Path,
-    *,
-    media_file_ids: list[int] | None = None,
-) -> None:
-    """Normalize every file that needs it, one at a time, with i/total progress.
-
-    ``media_file_ids`` scopes the sweep (e.g. just-scanned files); None means the
-    whole library. Files already compatible or normalized are skipped.
-    """
-    with session_factory() as session:
-        if media_file_ids is None:
-            candidate_ids = list(session.scalars(select(MediaFile.id)))
-        else:
-            candidate_ids = list(media_file_ids)
-
-    # Process incrementally (no upfront probe of the whole library) so the first
-    # job — and thus visible activity — shows up within a second or two.
-    for candidate_id in candidate_ids:
-        with session_factory() as session:
-            media_file = session.get(MediaFile, candidate_id)
-            if media_file is None or not should_normalize(media_file):
-                continue
-            label = Path(media_file.path).name
-            job = Job(kind="normalize", status=JobStatus.RUNNING, message=label)
-            session.add(job)
+        def on_progress(pct: int, eta: int | None) -> None:
+            task.progress = pct
+            task.eta_seconds = eta
             session.commit()
-            session.refresh(job)
-            _do_normalize(session, media_file, job, output_dir, label)
+
+        try:
+            planner = RemuxFirstPlanner(detect_h264_encoder())
+            normalize_media_file(
+                session, media_file, planner, output_dir=output_dir, on_progress=on_progress
+            )
+            task.status = JobStatus.DONE
+            task.progress = 100
+            task.eta_seconds = None
+        except Exception as exc:  # record any failure on the task, don't crash the worker
+            task.status = JobStatus.FAILED
+            task.message = str(exc)[:200]
+        task.finished_at = datetime.now(timezone.utc)
+        session.commit()

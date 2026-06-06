@@ -28,12 +28,13 @@ from movora.api.schemas import (
     SettingsRead,
     SettingsUpdate,
     SubtitleTrackRead,
+    TaskRead,
 )
-from movora.db.models import Episode, Job, JobStatus, Library, MediaFile, Season, Series
+from movora.db.models import Episode, Job, JobStatus, Library, MediaFile, Season, Series, Task
 from movora.domain import CapabilityProfile
 from movora.enrich import enrich_library
 from movora.filesystem import list_directories
-from movora.normalize import normalize_pending, run_normalize_job
+from movora.normalize import enqueue_tasks, run_worker
 from movora.scanner import scan_library
 from movora.streaming import DirectPlayStrategy
 from movora.subtitles import SoftAssOrSrtResolver, discover_tracks, load_subtitle, srt_to_vtt
@@ -89,14 +90,10 @@ def scan(
         raise HTTPException(status_code=404, detail="library not found")
     new_ids = scan_library(session, library)
     _log_job(session, "scan", library_id, f"{len(new_ids)} added")
-    # Automation-first: optimize newly-found files for Direct Play without intervention.
+    # Automation-first: queue newly-found files for Direct-Play optimization.
     if new_ids and settings_store.get_bool(session, settings_store.AUTO_NORMALIZE):
-        background.add_task(
-            normalize_pending,
-            request.app.state.session_factory,
-            _normalized_dir(request),
-            media_file_ids=new_ids,
-        )
+        enqueue_tasks(session, new_ids)
+        background.add_task(run_worker, request.app.state.session_factory, _normalized_dir(request))
     return ScanResult(added=len(new_ids))
 
 
@@ -156,32 +153,24 @@ def stream_episode(episode_id: int, session: SessionDep) -> FileResponse:
     return FileResponse(path, media_type=media_type)
 
 
-@router.post("/episodes/{episode_id}/normalize", response_model=JobRead, status_code=202)
+@router.post("/episodes/{episode_id}/normalize", status_code=202)
 def normalize_episode(
     episode_id: int, session: SessionDep, request: Request, background: BackgroundTasks
-) -> Job:
+) -> dict[str, str]:
     media_file = _episode_media_file(session, episode_id)
-    job = Job(kind="normalize", status=JobStatus.RUNNING, message=f"episode {episode_id}")
-    session.add(job)
-    session.commit()
-    session.refresh(job)
-    background.add_task(
-        run_normalize_job,
-        request.app.state.session_factory,
-        media_file.id,
-        job.id,
-        _normalized_dir(request),
-    )
-    return job
+    enqueue_tasks(session, [media_file.id])
+    background.add_task(run_worker, request.app.state.session_factory, _normalized_dir(request))
+    return {"status": "queued"}
 
 
 @router.post("/normalize/all", status_code=202)
-def normalize_all(request: Request, background: BackgroundTasks) -> dict[str, str]:
-    """Sweep the whole library, normalizing every file that needs it (background)."""
-    background.add_task(
-        normalize_pending, request.app.state.session_factory, _normalized_dir(request)
-    )
-    return {"status": "started"}
+def normalize_all(
+    session: SessionDep, request: Request, background: BackgroundTasks
+) -> dict[str, str]:
+    """Queue every file in the library that still needs optimizing (background)."""
+    enqueue_tasks(session, list(session.scalars(select(MediaFile.id))))
+    background.add_task(run_worker, request.app.state.session_factory, _normalized_dir(request))
+    return {"status": "queued"}
 
 
 def _normalized_dir(request: Request) -> Path:
@@ -259,6 +248,45 @@ def list_jobs(session: SessionDep) -> list[Job]:
     )
 
 
+@router.get("/tasks", response_model=list[TaskRead])
+def list_tasks(session: SessionDep) -> list[TaskRead]:
+    tasks = session.scalars(
+        select(Task)
+        .order_by(Task.id.desc())
+        .limit(2000)
+        .options(
+            selectinload(Task.media_file)
+            .selectinload(MediaFile.episode)
+            .selectinload(Episode.season)
+            .selectinload(Season.series)
+            .selectinload(Series.library)
+        )
+    )
+    return [_task_read(task) for task in tasks]
+
+
+def _task_read(task: Task) -> TaskRead:
+    episode = task.media_file.episode
+    season = episode.season
+    series = season.series
+    library = series.library
+    return TaskRead(
+        id=task.id,
+        type=task.type.value,
+        status=task.status.value,
+        progress=task.progress,
+        eta_seconds=task.eta_seconds,
+        message=task.message,
+        library_kind=library.kind.value,
+        series_id=series.id,
+        series_title=series.display_title or series.title,
+        season_number=season.number,
+        episode_id=episode.id,
+        episode_number=episode.number,
+        episode_title=episode.title,
+    )
+
+
 @router.get("/settings", response_model=SettingsRead)
 def get_settings(session: SessionDep) -> SettingsRead:
     return _read_settings(session)
@@ -274,10 +302,11 @@ def update_settings(
         settings_store.set_bool(
             session, settings_store.AUTO_NORMALIZE_EXISTING, payload.auto_normalize_existing
         )
-        # Turning on "include existing" sweeps the whole library right away.
+        # Turning on "include existing" queues the whole library right away.
         if payload.auto_normalize_existing:
+            enqueue_tasks(session, list(session.scalars(select(MediaFile.id))))
             background.add_task(
-                normalize_pending, request.app.state.session_factory, _normalized_dir(request)
+                run_worker, request.app.state.session_factory, _normalized_dir(request)
             )
     return _read_settings(session)
 
