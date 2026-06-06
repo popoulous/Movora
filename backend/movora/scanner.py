@@ -61,7 +61,7 @@ def scan_library(
             continue
         fields = parser.parse(path.name)
         series = _get_or_create_series(session, library, _series_title(path, root, fields))
-        season = _get_or_create_season(session, series, fields.season or 1)
+        season = _get_or_create_season(session, series, _season_number(path, root, fields))
         episode = _get_or_create_episode(session, season, fields.episode or 1, prober(path))
         media_file = MediaFile(episode=episode, path=str(path))
         session.add(media_file)
@@ -71,8 +71,12 @@ def scan_library(
 
 
 def _is_extra(path: Path, root: Path) -> bool:
-    folders = [part.lower() for part in path.relative_to(root).parts[:-1]]
-    return any(folder in EXTRA_DIRS for folder in folders)
+    for folder in path.relative_to(root).parts[:-1]:
+        # tolerate ordering prefixes like "00. Extrák"
+        normalized = re.sub(r"^\d+[\s.\-_]*", "", folder).strip().lower()
+        if normalized in EXTRA_DIRS:
+            return True
+    return False
 
 
 def _series_title(path: Path, root: Path, fields: ParsedFields) -> str:
@@ -83,12 +87,25 @@ def _series_title(path: Path, root: Path, fields: ParsedFields) -> str:
     return fields.title or path.stem
 
 
+def _season_number(path: Path, root: Path, fields: ParsedFields) -> int:
+    """Season from the file name; else from a season sub-folder (S01, Season 2)."""
+    if fields.season is not None:
+        return fields.season
+    folders = path.relative_to(root).parts[:-1]
+    for folder in reversed(folders[1:]):  # nearest sub-folder first; skip the show folder
+        match = _SEASON_FOLDER.search(folder)
+        if match:
+            return int(match.group(1))
+    return 1
+
+
 _RELEASE_TAIL = re.compile(
     r"\b(bd\s?box|bdbox|bdremux|bdrip|bluray|blu-ray|bd|web-?dl|webrip|hdtv|"
     r"1080p|720p|2160p|x264|x265|hevc|avc|flac|aac|10\s?bit|dual\s?audio)\b.*$",
     re.IGNORECASE,
 )
 _SEASON_RANGE = re.compile(r"\bS\d{1,2}(\s*-\s*S?\d{1,2})?\b.*$", re.IGNORECASE)
+_SEASON_FOLDER = re.compile(r"\bS(?:eason)?\s*0*(\d{1,2})\b", re.IGNORECASE)
 
 
 def _clean_folder_title(folder: str) -> str:
