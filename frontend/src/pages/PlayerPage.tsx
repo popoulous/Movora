@@ -78,7 +78,10 @@ export function PlayerPage(): JSX.Element {
     lastSaved.current = 0;
     api
       .getPlayback(id)
-      .then(setPlayback)
+      .then((info) => {
+        setPlayback(info);
+        setTrackId(info.subtitle_tracks[0]?.id ?? null); // show a subtitle by default
+      })
       .catch((reason: unknown) => setError(String(reason)));
   }, [id]);
 
