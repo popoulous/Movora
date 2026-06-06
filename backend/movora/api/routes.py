@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from fastapi.responses import FileResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
@@ -30,6 +30,7 @@ from movora.db.models import Episode, Job, JobStatus, Library, MediaFile, Season
 from movora.domain import CapabilityProfile
 from movora.enrich import enrich_library
 from movora.filesystem import list_directories
+from movora.normalize import run_normalize_job
 from movora.scanner import scan_library
 from movora.streaming import DirectPlayStrategy
 from movora.subtitles import SoftAssOrSrtResolver, discover_tracks, load_subtitle, srt_to_vtt
@@ -121,12 +122,13 @@ def series_detail(series_id: int, session: SessionDep) -> Series:
 @router.get("/episodes/{episode_id}/playback", response_model=PlaybackInfo)
 def episode_playback(episode_id: int, session: SessionDep) -> PlaybackInfo:
     media_file = _episode_media_file(session, episode_id)
-    stream = DirectPlayStrategy().open_stream(media_file.path, CapabilityProfile())
+    _, media_type, direct_play = _playback_source(media_file)
     return PlaybackInfo(
         media_file_id=media_file.id,
         stream_url=f"/api/episodes/{episode_id}/stream",
-        media_type=stream.media_type,
-        direct_play=stream.direct_play,
+        media_type=media_type,
+        direct_play=direct_play,
+        # Subtitles always come from the original file (embedded tracks live there).
         subtitle_tracks=_subtitle_tracks(episode_id, Path(media_file.path)),
     )
 
@@ -134,12 +136,42 @@ def episode_playback(episode_id: int, session: SessionDep) -> PlaybackInfo:
 @router.get("/episodes/{episode_id}/stream")
 def stream_episode(episode_id: int, session: SessionDep) -> FileResponse:
     media_file = _episode_media_file(session, episode_id)
-    path = Path(media_file.path)
+    path, media_type, _ = _playback_source(media_file)
     if not path.is_file():
         raise HTTPException(status_code=404, detail="media file is missing on disk")
     # FileResponse honours the Range header (HTTP 206) so the player can seek.
-    stream = DirectPlayStrategy().open_stream(str(path), CapabilityProfile())
-    return FileResponse(path, media_type=stream.media_type)
+    return FileResponse(path, media_type=media_type)
+
+
+@router.post("/episodes/{episode_id}/normalize", response_model=JobRead, status_code=202)
+def normalize_episode(
+    episode_id: int, session: SessionDep, request: Request, background: BackgroundTasks
+) -> Job:
+    media_file = _episode_media_file(session, episode_id)
+    job = Job(kind="normalize", status=JobStatus.RUNNING, message=f"episode {episode_id}")
+    session.add(job)
+    session.commit()
+    session.refresh(job)
+    output_dir = request.app.state.settings.database_path.parent / "normalized"
+    background.add_task(
+        run_normalize_job,
+        request.app.state.session_factory,
+        media_file.id,
+        job.id,
+        output_dir,
+    )
+    return job
+
+
+def _playback_source(media_file: MediaFile) -> tuple[Path, str, bool]:
+    """Prefer the normalized mp4 (always Direct Play); else the original file."""
+    if media_file.normalized_path is not None:
+        normalized = Path(media_file.normalized_path)
+        if normalized.is_file():
+            return normalized, "video/mp4", True
+    original = Path(media_file.path)
+    stream = DirectPlayStrategy().open_stream(str(original), CapabilityProfile())
+    return original, stream.media_type, stream.direct_play
 
 
 @router.get("/episodes/{episode_id}/subtitles")

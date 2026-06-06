@@ -23,6 +23,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     init_db(engine)
     app.state.session_factory = create_session_factory(engine)
     app.state.metadata_provider = AniListProvider()
+    app.state.settings = settings
 
     app.include_router(router)
 

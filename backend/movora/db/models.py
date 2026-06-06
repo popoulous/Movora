@@ -105,6 +105,7 @@ class MediaFile(Base):
     video_codec: Mapped[str | None] = mapped_column(default=None)
     audio_codec: Mapped[str | None] = mapped_column(default=None)
     is_normalized: Mapped[bool] = mapped_column(default=False)
+    normalized_path: Mapped[str | None] = mapped_column(default=None)  # web Direct Play mp4
 
     episode: Mapped[Episode] = relationship(back_populates="media_files")
     subtitles: Mapped[list[SubtitleTrack]] = relationship(
