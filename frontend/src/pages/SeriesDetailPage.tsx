@@ -442,15 +442,22 @@ function EpisodesSection({
           return (
             <li
               key={episode.id}
-              className={`flex items-center gap-4 px-5 py-3.5 text-sm transition ${
+              className={`flex items-center gap-3 px-3 py-2 text-sm transition ${
                 selected ? "bg-[#7A4DFF]/[0.08]" : "hover:bg-[#7A4DFF]/[0.06]"
               }`}
             >
               <button
                 onClick={() => navigate(`/watch/${episode.id}`)}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/5 text-neutral-300 ring-1 ring-white/10 transition hover:bg-[#7A4DFF]/30 hover:text-white"
+                className="group/thumb relative aspect-video w-24 shrink-0 overflow-hidden rounded-lg bg-white/5 ring-1 ring-white/10"
               >
-                <Play className="h-3 w-3 fill-current" />
+                {episode.thumbnail_url !== null ? (
+                  <img src={episode.thumbnail_url} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="h-full w-full bg-gradient-to-br from-violet-900/40 to-fuchsia-900/30" />
+                )}
+                <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 transition group-hover/thumb:opacity-100">
+                  <Play className="h-4 w-4 fill-white text-white" />
+                </div>
               </button>
               <span className="w-10 text-right tabular-nums text-neutral-500">{label}</span>
               <span className={`min-w-0 flex-1 truncate ${episode.watched ? "text-neutral-400" : "text-neutral-100"}`}>

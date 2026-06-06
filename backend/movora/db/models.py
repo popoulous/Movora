@@ -111,6 +111,7 @@ class Episode(Base):
     end_number: Mapped[int | None] = mapped_column(default=None)  # multi-ep file: E01-E02 -> 2
     absolute_number: Mapped[int | None] = mapped_column(default=None)
     title: Mapped[str | None] = mapped_column(default=None)
+    thumbnail_path: Mapped[str | None] = mapped_column(default=None)  # extracted frame (jpg)
 
     season: Mapped[Season] = relationship(back_populates="episodes")
     media_files: Mapped[list[MediaFile]] = relationship(
@@ -238,6 +239,7 @@ class TaskType(str, enum.Enum):
     SCAN = "scan"
     METADATA = "metadata"
     NORMALIZE = "normalize"
+    THUMBNAIL = "thumbnail"  # extract a representative frame per episode
     # v2: INTRO = "intro", OUTRO = "outro" — the task center already groups by type.
 
 

@@ -23,6 +23,7 @@ export interface SeriesSummary {
   continue_episode_number: number | null;
   continue_percent: number;
   continue_position_seconds: number;
+  continue_thumbnail_url: string | null;
   last_watched_at: string | null;
 }
 
@@ -34,6 +35,7 @@ export interface Episode {
   watched: boolean;
   normalized: boolean;
   normalizing: boolean;
+  thumbnail_url: string | null;
 }
 
 export interface Season {

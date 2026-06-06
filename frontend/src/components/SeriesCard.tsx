@@ -117,6 +117,7 @@ export interface ContinueSeries extends CardSeries {
   continue_episode_number: number | null;
   continue_percent: number;
   continue_position_seconds: number;
+  continue_thumbnail_url: string | null;
 }
 
 export function ContinueCard({
@@ -133,7 +134,15 @@ export function ContinueCard({
   return (
     <button onClick={onClick} className={`group text-left ${className}`}>
       <div className="relative aspect-[2/3] overflow-hidden rounded-xl bg-white/5 ring-1 ring-white/10 transition group-hover:ring-violet-400/40">
-        <Poster series={series} />
+        {series.continue_thumbnail_url !== null ? (
+          <img
+            src={series.continue_thumbnail_url}
+            alt={cardTitle(series)}
+            className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+          />
+        ) : (
+          <Poster series={series} />
+        )}
         <div className="absolute inset-0 flex items-center justify-center bg-black/25 opacity-0 transition group-hover:opacity-100">
           <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white/15 ring-1 ring-white/25 backdrop-blur">
             <Play className="h-5 w-5 fill-white text-white" />

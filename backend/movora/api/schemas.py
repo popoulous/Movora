@@ -39,6 +39,7 @@ class EpisodeRead(BaseModel):
     watched: bool = False
     normalized: bool = False  # media file is Direct-Play ready (optimized or already fine)
     normalizing: bool = False  # an optimize task is queued/running for it
+    thumbnail_url: str | None = None  # extracted frame, if any
 
 
 class SeasonRead(BaseModel):
@@ -67,6 +68,7 @@ class SeriesRead(BaseModel):
     continue_episode_number: int | None = None  # its number, for the continue card
     continue_percent: int = 0  # progress *within* that episode (0-100)
     continue_position_seconds: float = 0.0  # resume position in that episode
+    continue_thumbnail_url: str | None = None  # the continue episode's frame, for the card
     last_watched_at: datetime | None = None  # for ordering the continue-watching row
 
 

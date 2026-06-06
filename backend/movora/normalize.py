@@ -25,11 +25,11 @@ from pathlib import Path
 
 from send2trash import send2trash
 from sqlalchemy import select
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session, selectinload, sessionmaker
 from sqlalchemy.orm.exc import StaleDataError
 
 from movora import settings_store
-from movora.db.models import JobStatus, MediaFile, Task, TaskType
+from movora.db.models import Episode, JobStatus, MediaFile, Season, Series, Task, TaskType
 from movora.encoders import detect_h264_encoder
 from movora.enrich import enrich_library
 from movora.ffprobe import probe_media
@@ -39,6 +39,7 @@ from movora.normalization import WEB_TARGET, RemuxFirstPlanner, needs_normalizat
 from movora.scanner import scan_library
 from movora.streaming import DirectPlayStrategy
 from movora.subtitles import preserve_embedded_assets
+from movora.thumbnails import extract_thumbnail
 
 # (percent, eta_seconds) -> None
 ProgressCallback = Callable[[int, int | None], None]
@@ -51,7 +52,7 @@ _MAX_ATTEMPTS = 3  # bounded auto-retry before a task is marked failed
 _normalize_lock = threading.Lock()
 _light_lock = threading.Lock()
 _NORMALIZE_TYPES = (TaskType.NORMALIZE,)
-_LIGHT_TYPES = (TaskType.SCAN, TaskType.METADATA)
+_LIGHT_TYPES = (TaskType.SCAN, TaskType.METADATA, TaskType.THUMBNAIL)
 # Production runs the workers in threads; tests set this False to run them inline.
 _run_in_thread = True
 
@@ -232,6 +233,12 @@ def enqueue_scan(session: Session, library_id: int) -> None:
 def enqueue_metadata(session: Session, library_id: int) -> None:
     if not _has_active_library_task(session, library_id, TaskType.METADATA):
         session.add(Task(type=TaskType.METADATA, library_id=library_id))
+        session.commit()
+
+
+def enqueue_thumbnail(session: Session, library_id: int) -> None:
+    if not _has_active_library_task(session, library_id, TaskType.THUMBNAIL):
+        session.add(Task(type=TaskType.THUMBNAIL, library_id=library_id))
         session.commit()
 
 
@@ -417,6 +424,8 @@ def _process_task(
                 _run_scan_task(session, task)
             elif task.type == TaskType.METADATA:
                 _run_metadata_task(session, task, registry)
+            elif task.type == TaskType.THUMBNAIL:
+                _run_thumbnail_task(session, task, output_dir)
         except _Cancelled:
             session.rollback()  # the task was deleted mid-run (library removed) — stop
         except Exception as exc:  # keep the worker alive; retry a few times then fail
@@ -518,8 +527,9 @@ def _run_scan_task(session: Session, task: Task) -> None:
         return
     _start(session, task)
     new_ids = scan_library(session, library, on_progress=_counter(session, task))
-    # Chain: always refresh metadata; normalize new files when auto-normalize is on.
+    # Chain: refresh metadata, extract missing thumbnails, normalize new files (if auto-on).
     enqueue_metadata(session, library.id)
+    enqueue_thumbnail(session, library.id)
     if new_ids and settings_store.get_bool(session, settings_store.AUTO_NORMALIZE):
         enqueue_normalize(session, new_ids)
     _finish(session, task, message=f"{len(new_ids)} added")
@@ -537,6 +547,41 @@ def _run_metadata_task(session: Session, task: Task, registry: MetadataRegistry)
         provider = provider.with_language(language)
     updated = enrich_library(session, library, provider, on_progress=_counter(session, task))
     _finish(session, task, message=f"{updated} updated")
+
+
+def _run_thumbnail_task(session: Session, task: Task, output_dir: Path) -> None:
+    library = task.library
+    if library is None:
+        _finish(session, task, message="library gone")
+        return
+    _start(session, task)
+    thumbs_dir = output_dir.parent / "thumbnails"
+    episodes = list(
+        session.scalars(
+            select(Episode)
+            .join(Episode.season)
+            .join(Season.series)
+            .where(Series.library_id == library.id)
+            .options(selectinload(Episode.media_files))
+        )
+    )
+    pending = [
+        episode
+        for episode in episodes
+        if episode.media_files
+        and not (episode.thumbnail_path and Path(episode.thumbnail_path).is_file())
+    ]
+    progress = _counter(session, task)
+    made = 0
+    for index, episode in enumerate(pending, start=1):
+        progress(index, len(pending))
+        media_file = episode.media_files[0]
+        out = thumbs_dir / f"{media_file.id}.jpg"
+        if extract_thumbnail(Path(media_file.path), out):
+            episode.thumbnail_path = str(out)
+            made += 1
+            session.commit()
+    _finish(session, task, message=f"{made} thumbnails")
 
 
 def _start(session: Session, task: Task) -> None:

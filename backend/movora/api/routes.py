@@ -144,6 +144,7 @@ def _remove_generated(media_file: MediaFile, request: Request) -> None:
     normalized_dir = _normalized_dir(request)
     _unlink_quiet(normalized_dir / f"{media_file.id}.mp4")
     _unlink_quiet(normalized_dir / f"{media_file.id}.part.mp4")
+    _unlink_quiet(_thumbnails_dir(request) / f"{media_file.id}.jpg")
     assets = _assets_dir(request, media_file.id)
     if assets.is_dir():
         shutil.rmtree(assets, ignore_errors=True)
@@ -249,6 +250,11 @@ def _series_summary(series: Series, states: dict[int, WatchState]) -> SeriesRead
         continue_episode_number=continue_ep.number if continue_ep is not None else None,
         continue_percent=min(100, round(position * 100 / ep_seconds)) if ep_seconds > 0 else 0,
         continue_position_seconds=position,
+        continue_thumbnail_url=(
+            f"/api/episodes/{continue_ep.id}/thumbnail"
+            if continue_ep is not None and continue_ep.thumbnail_path
+            else None
+        ),
         last_watched_at=max(times) if times else None,
     )
 
@@ -356,6 +362,11 @@ def _series_detail(session: Session, series: Series) -> SeriesDetail:
                     watched=episode.id in watched,
                     normalized=normalized_by_ep[episode.id],
                     normalizing=normalizing_by_ep[episode.id],
+                    thumbnail_url=(
+                        f"/api/episodes/{episode.id}/thumbnail"
+                        if episode.thumbnail_path
+                        else None
+                    ),
                 )
                 for episode in sorted(season.episodes, key=lambda e: e.number)
             ],
@@ -464,6 +475,17 @@ def stream_episode(episode_id: int, session: SessionDep) -> FileResponse:
     return FileResponse(path, media_type=media_type)
 
 
+@router.get("/episodes/{episode_id}/thumbnail")
+def episode_thumbnail(episode_id: int, session: SessionDep) -> FileResponse:
+    episode = session.get(Episode, episode_id)
+    if episode is None or episode.thumbnail_path is None:
+        raise HTTPException(status_code=404, detail="no thumbnail")
+    path = Path(episode.thumbnail_path)
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="thumbnail missing on disk")
+    return FileResponse(path, media_type="image/jpeg")
+
+
 @router.post("/episodes/{episode_id}/normalize", status_code=202)
 def normalize_episode(
     episode_id: int, session: SessionDep, request: Request, background: BackgroundTasks
@@ -515,6 +537,10 @@ def _run_worker(request: Request, background: BackgroundTasks) -> None:
 
 def _normalized_dir(request: Request) -> Path:
     return Path(request.app.state.settings.database_path.parent) / "normalized"
+
+
+def _thumbnails_dir(request: Request) -> Path:
+    return Path(request.app.state.settings.database_path.parent) / "thumbnails"
 
 
 def _playback_source(media_file: MediaFile) -> tuple[Path, str, bool]:
