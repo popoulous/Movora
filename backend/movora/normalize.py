@@ -33,7 +33,8 @@ from movora.db.models import JobStatus, MediaFile, Task, TaskType
 from movora.encoders import detect_h264_encoder
 from movora.enrich import enrich_library
 from movora.ffprobe import probe_media
-from movora.interfaces import MetadataProvider, NormalizationPlanner
+from movora.interfaces import NormalizationPlanner
+from movora.metadata import MetadataRegistry
 from movora.normalization import WEB_TARGET, RemuxFirstPlanner, needs_normalization
 from movora.scanner import scan_library
 from movora.streaming import DirectPlayStrategy
@@ -343,25 +344,25 @@ def _has_active_library_task(session: Session, library_id: int, task_type: TaskT
 
 
 def start_workers(
-    session_factory: sessionmaker[Session], output_dir: Path, provider: MetadataProvider
+    session_factory: sessionmaker[Session], output_dir: Path, registry: MetadataRegistry
 ) -> None:
     """Start both workers: transcoding (serial) and scan/metadata (concurrent)."""
-    _spawn(run_light_worker, session_factory, output_dir, provider)
-    _spawn(run_worker, session_factory, output_dir, provider)
+    _spawn(run_light_worker, session_factory, output_dir, registry)
+    _spawn(run_worker, session_factory, output_dir, registry)
 
 
 def run_worker(
-    session_factory: sessionmaker[Session], output_dir: Path, provider: MetadataProvider
+    session_factory: sessionmaker[Session], output_dir: Path, registry: MetadataRegistry
 ) -> None:
     """Drain normalize tasks serially — one transcode at a time."""
-    _drain(session_factory, output_dir, provider, _NORMALIZE_TYPES, _normalize_lock)
+    _drain(session_factory, output_dir, registry, _NORMALIZE_TYPES, _normalize_lock)
 
 
 def run_light_worker(
-    session_factory: sessionmaker[Session], output_dir: Path, provider: MetadataProvider
+    session_factory: sessionmaker[Session], output_dir: Path, registry: MetadataRegistry
 ) -> None:
     """Drain scan/metadata tasks, concurrently with transcoding."""
-    _drain(session_factory, output_dir, provider, _LIGHT_TYPES, _light_lock)
+    _drain(session_factory, output_dir, registry, _LIGHT_TYPES, _light_lock)
 
 
 def _spawn(target: Callable[..., None], *args: object) -> None:
@@ -374,7 +375,7 @@ def _spawn(target: Callable[..., None], *args: object) -> None:
 def _drain(
     session_factory: sessionmaker[Session],
     output_dir: Path,
-    provider: MetadataProvider,
+    registry: MetadataRegistry,
     types: tuple[TaskType, ...],
     lock: threading.Lock,
 ) -> None:
@@ -391,10 +392,10 @@ def _drain(
                 if task is None:
                     return
                 task_id = task.id
-            _process_task(session_factory, task_id, output_dir, provider)
+            _process_task(session_factory, task_id, output_dir, registry)
             if TaskType.NORMALIZE not in types:
                 # a scan may have queued transcodes — make sure that worker runs
-                _spawn(run_worker, session_factory, output_dir, provider)
+                _spawn(run_worker, session_factory, output_dir, registry)
     finally:
         lock.release()
 
@@ -403,7 +404,7 @@ def _process_task(
     session_factory: sessionmaker[Session],
     task_id: int,
     output_dir: Path,
-    provider: MetadataProvider,
+    registry: MetadataRegistry,
 ) -> None:
     with session_factory() as session:
         task = session.get(Task, task_id)
@@ -415,7 +416,7 @@ def _process_task(
             elif task.type == TaskType.SCAN:
                 _run_scan_task(session, task)
             elif task.type == TaskType.METADATA:
-                _run_metadata_task(session, task, provider)
+                _run_metadata_task(session, task, registry)
         except _Cancelled:
             session.rollback()  # the task was deleted mid-run (library removed) — stop
         except Exception as exc:  # keep the worker alive; retry a few times then fail
@@ -517,12 +518,13 @@ def _run_scan_task(session: Session, task: Task) -> None:
     _finish(session, task, message=f"{len(new_ids)} added")
 
 
-def _run_metadata_task(session: Session, task: Task, provider: MetadataProvider) -> None:
+def _run_metadata_task(session: Session, task: Task, registry: MetadataRegistry) -> None:
     library = task.library
     if library is None:
         _finish(session, task, message="library gone")
         return
     _start(session, task)
+    provider = registry.for_kind(library.kind)  # anime -> AniList, film/series -> TMDB
     updated = enrich_library(session, library, provider, on_progress=_counter(session, task))
     _finish(session, task, message=f"{updated} updated")
 

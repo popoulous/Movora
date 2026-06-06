@@ -10,6 +10,7 @@ from movora.db.models import Library, LibraryKind, Recommendation, Series
 from movora.domain import ParsedFields, SeriesMetadata
 from movora.domain import Recommendation as RecommendationMeta
 from movora.enrich import enrich_library
+from movora.metadata import MetadataRegistry
 
 
 class _StubProvider:
@@ -118,7 +119,8 @@ def test_enrich_endpoint_sets_cover_and_year(tmp_path: Path) -> None:
     (media / "To Aru Kagaku no Railgun - S01E01.mkv").write_bytes(b"")
 
     app = create_app(Settings(database_path=tmp_path / "t.db"))
-    app.state.metadata_provider = _StubProvider()  # the metadata task uses this
+    stub = _StubProvider()
+    app.state.metadata_provider = MetadataRegistry(anime=stub, movie=stub, series=stub)
     client = TestClient(app)
 
     # Adding the library auto-scans then fetches metadata (a METADATA task), so the
