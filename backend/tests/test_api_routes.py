@@ -70,6 +70,27 @@ def test_update_and_delete_library(tmp_path: Path) -> None:
     assert client.delete(f"/api/libraries/{library_id}").status_code == 404
 
 
+def test_delete_library_removes_generated_files(tmp_path: Path) -> None:
+    client, media = _make_client(tmp_path)
+    library = client.post(
+        "/api/libraries", json={"path": str(media), "name": "A", "kind": "anime"}
+    ).json()
+    series = client.get(f"/api/libraries/{library['id']}/series").json()
+    detail = client.get(f"/api/series/{series[0]['id']}").json()
+    episode_id = detail["seasons"][0]["episodes"][0]["id"]
+    media_file_id = client.get(f"/api/episodes/{episode_id}/playback").json()["media_file_id"]
+
+    # Simulate a generated normalized output for this media file.
+    normalized = tmp_path / "normalized"
+    normalized.mkdir()
+    generated = normalized / f"{media_file_id}.mp4"
+    generated.write_bytes(b"x")
+
+    assert client.delete(f"/api/libraries/{library['id']}").status_code == 204
+    assert not generated.exists()  # generated file cleaned up
+    assert client.get("/api/libraries").json() == []
+
+
 def test_scan_creates_a_task(tmp_path: Path) -> None:
     client, media = _make_client(tmp_path)
     # Adding a library queues a SCAN task (which the worker drains in the TestClient).

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 from urllib.parse import quote
 
@@ -79,12 +80,31 @@ def update_library(library_id: int, payload: LibraryUpdate, session: SessionDep)
 
 
 @router.delete("/libraries/{library_id}", status_code=204)
-def delete_library(library_id: int, session: SessionDep) -> None:
+def delete_library(library_id: int, session: SessionDep, request: Request) -> None:
     library = session.get(Library, library_id)
     if library is None:
         raise HTTPException(status_code=404, detail="library not found")
-    session.delete(library)  # cascades to series and tasks
+    # Remove generated files (normalized mp4 + preserved assets); originals are untouched.
+    media_files = session.scalars(
+        select(MediaFile)
+        .join(Episode)
+        .join(Season)
+        .join(Series)
+        .where(Series.library_id == library_id)
+    )
+    for media_file in media_files:
+        _remove_generated(media_file, request)
+    session.delete(library)  # cascades DB rows: series, episodes, media files, tasks
     session.commit()
+
+
+def _remove_generated(media_file: MediaFile, request: Request) -> None:
+    normalized_dir = _normalized_dir(request)
+    (normalized_dir / f"{media_file.id}.mp4").unlink(missing_ok=True)
+    (normalized_dir / f"{media_file.id}.part.mp4").unlink(missing_ok=True)
+    assets = _assets_dir(request, media_file.id)
+    if assets.is_dir():
+        shutil.rmtree(assets, ignore_errors=True)
 
 
 @router.post("/libraries/{library_id}/scan", status_code=202)
