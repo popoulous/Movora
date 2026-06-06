@@ -20,6 +20,9 @@ function statusDot(status: TaskStatus): string {
 }
 
 function taskLabel(task: Task, t: TFunction): string {
+  if (task.series_title !== null && task.episode_number !== null) {
+    return `${task.series_title} · ${t("tasks.episode", { number: task.episode_number })}`;
+  }
   const kind = t(`tasks.type_${task.type}`);
   const subject = task.series_title ?? task.library_name ?? "";
   return subject ? `${kind} — ${subject}` : kind;
@@ -35,6 +38,14 @@ export function ActivityBell(): JSX.Element {
   const indicator = runningTask
     ? `${taskLabel(runningTask, t)} ${runningTask.progress}%` + (queued > 0 ? ` (+${queued})` : "")
     : t("activity.working");
+
+  // A window around "now": the last 5 finished, what's running, and the next 5 queued.
+  const finished = tasks
+    .filter((task) => task.status === "done" || task.status === "failed")
+    .sort((a, b) => a.id - b.id);
+  const runningTasks = tasks.filter((task) => task.status === "running").sort((a, b) => a.id - b.id);
+  const upcoming = tasks.filter((task) => task.status === "pending").sort((a, b) => a.id - b.id);
+  const shown = [...finished.slice(-5), ...runningTasks, ...upcoming.slice(0, 5)];
 
   return (
     <div className="relative flex items-center gap-2">
@@ -71,7 +82,7 @@ export function ActivityBell(): JSX.Element {
               <p className="px-2 py-3 text-sm text-neutral-500">{t("activity.empty")}</p>
             ) : (
               <ul className="max-h-80 overflow-auto">
-                {tasks.slice(0, 15).map((task) => (
+                {shown.map((task) => (
                   <li key={task.id} className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm">
                     <span className={statusDot(task.status)} />
                     <span className="min-w-0 flex-1 truncate text-neutral-300">
