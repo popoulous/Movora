@@ -26,16 +26,35 @@ export function ActivityBell(): JSX.Element {
   const [jobs, setJobs] = useState<Job[]>([]);
 
   useEffect(() => {
-    const load = (): void => {
-      api.listJobs().then(setJobs).catch(() => undefined);
+    let active = true;
+    let timer: ReturnType<typeof setTimeout>;
+    const tick = (): void => {
+      api
+        .listJobs()
+        .then((next) => {
+          if (!active) return;
+          setJobs(next);
+          // Poll faster while something is running so progress feels live.
+          const running = next.some((job) => job.status === "running");
+          timer = setTimeout(tick, running ? 2000 : 8000);
+        })
+        .catch(() => {
+          if (active) timer = setTimeout(tick, 8000);
+        });
     };
-    load();
-    const timer = setInterval(load, 8000);
-    return () => clearInterval(timer);
+    tick();
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
   }, []);
 
   const kindLabel = (kind: string): string =>
-    kind === "enrich" ? t("activity.enrich") : t("activity.scan");
+    kind === "enrich"
+      ? t("activity.enrich")
+      : kind === "normalize"
+        ? t("activity.normalize")
+        : t("activity.scan");
 
   return (
     <div className="relative">

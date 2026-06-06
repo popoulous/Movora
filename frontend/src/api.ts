@@ -90,6 +90,11 @@ export interface Job {
   finished_at: string | null;
 }
 
+export interface ServerSettings {
+  auto_normalize: boolean;
+  auto_normalize_existing: boolean;
+}
+
 async function asJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
     throw new Error(`${response.status} ${response.statusText}`);
@@ -129,6 +134,22 @@ export const api = {
     fetch(`/api/series/${id}`).then(asJson<SeriesDetail>),
   getPlayback: (episodeId: number): Promise<PlaybackInfo> =>
     fetch(`/api/episodes/${episodeId}/playback`).then(asJson<PlaybackInfo>),
+  normalizeEpisode: (episodeId: number): Promise<Job> =>
+    fetch(`/api/episodes/${episodeId}/normalize`, { method: "POST" }).then(asJson<Job>),
+  normalizeAll: (): Promise<void> =>
+    fetch("/api/normalize/all", { method: "POST" }).then((response) => {
+      if (!response.ok) {
+        throw new Error(`${response.status} ${response.statusText}`);
+      }
+    }),
+  getSettings: (): Promise<ServerSettings> =>
+    fetch("/api/settings").then(asJson<ServerSettings>),
+  updateSettings: (body: Partial<ServerSettings>): Promise<ServerSettings> =>
+    fetch("/api/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(asJson<ServerSettings>),
   browseFs: (path?: string): Promise<FsListing> => {
     const query = path !== undefined ? `?path=${encodeURIComponent(path)}` : "";
     return fetch(`/api/fs${query}`).then(asJson<FsListing>);

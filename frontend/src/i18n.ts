@@ -16,7 +16,16 @@ const en = {
   },
   settings: {
     title: "Settings",
-    subtitle: "Language, account and server settings will live here.",
+    subtitle: "Server-wide options. More (account, language) will live here.",
+    playbackTitle: "Playback optimization",
+    autoNormalize: "Optimize everything for Direct Play",
+    autoNormalizeDesc:
+      "Automatically convert new media to a browser-playable format (H.264/AAC mp4). Originals are kept untouched.",
+    autoNormalizeExisting: "Include the existing library",
+    autoNormalizeExistingDesc:
+      "Also optimize files already in your libraries — a large one-time background job.",
+    normalizeAll: "Normalize everything now",
+    normalizeAllStarted: "Started — watch the activity bell",
   },
   library: {
     defaultName: "Library",
@@ -71,6 +80,7 @@ const en = {
     empty: "No recent activity",
     scan: "Scan",
     enrich: "Metadata",
+    normalize: "Optimize",
   },
   player: {
     back: "Back",
@@ -78,7 +88,9 @@ const en = {
     subtitles: "Subtitles",
     subtitlesOff: "Off",
     notPlayable:
-      "This file isn't web-playable yet — ingest-normalization (v1) will convert it. mp4/webm files play now.",
+      "This file isn't web-playable yet (e.g. HEVC/10-bit). Optimize it for Direct Play — the original is kept.",
+    normalizeNow: "Optimize for playback",
+    normalizing: "Optimizing… watch the activity bell",
   },
 };
 
@@ -98,7 +110,16 @@ const hu: typeof en = {
   },
   settings: {
     title: "Beállítások",
-    subtitle: "Itt lesznek a nyelvi, fiók- és szerverbeállítások.",
+    subtitle: "Szerverszintű opciók. Ide jön még a fiók és a nyelv is.",
+    playbackTitle: "Lejátszás-optimalizálás",
+    autoNormalize: "Minden optimalizálása Direct Play-re",
+    autoNormalizeDesc:
+      "Az új médiát automatikusan böngészőben lejátszható formátumra (H.264/AAC mp4) alakítja. Az eredetik érintetlenek maradnak.",
+    autoNormalizeExisting: "A meglévő könyvtár is",
+    autoNormalizeExistingDesc:
+      "A könyvtáraidban már meglévő fájlokat is optimalizálja — egyszeri, nagy háttérmunka.",
+    normalizeAll: "Mindet normalizáld most",
+    normalizeAllStarted: "Elindítva — nézd az aktivitás-harangot",
   },
   library: {
     defaultName: "Könyvtár",
@@ -153,6 +174,7 @@ const hu: typeof en = {
     empty: "Nincs friss tevékenység",
     scan: "Szkennelés",
     enrich: "Metaadat",
+    normalize: "Optimalizálás",
   },
   player: {
     back: "Vissza",
@@ -160,7 +182,9 @@ const hu: typeof en = {
     subtitles: "Feliratok",
     subtitlesOff: "Ki",
     notPlayable:
-      "Ez a fájl böngészőben még nem játszható — az ingest-normalizálás (v1) átalakítja. Az mp4/webm fájlok már most mennek.",
+      "Ez a fájl böngészőben még nem játszható (pl. HEVC/10-bit). Optimalizáld Direct Play-re — az eredeti megmarad.",
+    normalizeNow: "Optimalizálás lejátszáshoz",
+    normalizing: "Optimalizálás… nézd az aktivitás-harangot",
   },
 };
 

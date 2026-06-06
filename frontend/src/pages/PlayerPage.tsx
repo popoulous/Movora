@@ -22,16 +22,40 @@ export function PlayerPage(): JSX.Element {
   const [playback, setPlayback] = useState<PlaybackInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [trackId, setTrackId] = useState<string | null>(null);
+  const [normalizing, setNormalizing] = useState(false);
 
   useEffect(() => {
     setPlayback(null);
     setError(null);
     setTrackId(null);
+    setNormalizing(false);
     api
       .getPlayback(id)
       .then(setPlayback)
       .catch((reason: unknown) => setError(String(reason)));
   }, [id]);
+
+  const normalize = (): void => {
+    setNormalizing(true);
+    api.normalizeEpisode(id).catch(() => undefined);
+  };
+
+  // While optimizing, poll until the normalized mp4 is ready, then swap it in.
+  useEffect(() => {
+    if (!normalizing) return;
+    const timer = setInterval(() => {
+      api
+        .getPlayback(id)
+        .then((info) => {
+          if (info.direct_play) {
+            setPlayback(info);
+            setNormalizing(false);
+          }
+        })
+        .catch(() => undefined);
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [normalizing, id]);
 
   // Soft ASS is rendered by JASSUB as a canvas overlay; the instance is recreated
   // on track change and destroyed on cleanup. VTT tracks use a native <track>.
@@ -86,13 +110,21 @@ export function PlayerPage(): JSX.Element {
       </button>
 
       {!playback.direct_play && (
-        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-          {t("player.notPlayable")}
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+          <span className="min-w-0 flex-1">{t("player.notPlayable")}</span>
+          <button
+            onClick={normalize}
+            disabled={normalizing}
+            className="shrink-0 rounded-lg bg-amber-400/20 px-3 py-1.5 font-medium text-amber-100 ring-1 ring-amber-400/30 transition hover:bg-amber-400/30 disabled:opacity-60"
+          >
+            {normalizing ? t("player.normalizing") : t("player.normalizeNow")}
+          </button>
         </div>
       )}
 
       <div className="overflow-hidden rounded-2xl bg-black ring-1 ring-white/10">
         <video
+          key={String(playback.direct_play)}
           ref={videoRef}
           src={playback.stream_url}
           controls
