@@ -3,8 +3,9 @@ from pathlib import Path
 from sqlalchemy import select
 
 from movora.db.base import create_db_engine, create_session_factory, init_db
-from movora.db.models import Episode, Library, LibraryKind, MediaFile, Season, Series
+from movora.db.models import Episode, Library, LibraryKind, MediaFile, Season, Series, WatchState
 from movora.scanner import scan_library
+from movora.watch import current_user, record_watch
 
 
 def _library_with_files(tmp_path: Path) -> Path:
@@ -162,6 +163,49 @@ def test_rescan_reconciles_seasons_and_keeps_media_file_id(tmp_path: Path) -> No
         assert fixed is not None  # same id -> normalized output stays linked
         assert fixed.episode.season.number == 2
         assert {season.number for season in session.scalars(select(Season))} == {1, 2}
+
+
+def test_rescan_migrates_watch_state_to_new_episode(tmp_path: Path) -> None:
+    # When a re-scan re-maps a file to a different episode, the watch progress follows it
+    # instead of being stranded on the old (then pruned) episode.
+    show = tmp_path / "Show"
+    (show / "Railgun").mkdir(parents=True)
+    (show / "Railgun" / "[g] Railgun - 01.mkv").write_bytes(b"")
+    (show / "Railgun S").mkdir()
+    (show / "Railgun S" / "[g] Railgun S - 01.mkv").write_bytes(b"")
+
+    engine = create_db_engine(":memory:")
+    init_db(engine)
+    factory = create_session_factory(engine)
+    with factory() as session:
+        library = Library(path=str(tmp_path), name="A", kind=LibraryKind.ANIME)
+        session.add(library)
+        session.commit()
+
+        scan_library(session, library, title_prober=lambda path: None)
+        s_file = session.scalar(select(MediaFile).where(MediaFile.path.like("%Railgun S%")))
+        assert s_file is not None and s_file.episode.season.number == 2
+
+        # Strand the season-2 file on a throwaway episode and record progress there.
+        season_one = session.scalar(select(Season).where(Season.number == 1))
+        assert season_one is not None
+        stray = Episode(season=season_one, number=99)
+        session.add(stray)
+        session.flush()
+        s_file.episode = stray
+        session.commit()
+        user = current_user(session)
+        record_watch(session, user, stray.id, position_seconds=123.0)
+
+        # A re-scan reconciles the file back to season 2; the progress comes along and the
+        # now-empty stray episode is pruned.
+        scan_library(session, library, title_prober=lambda path: None)
+        states = list(session.scalars(select(WatchState)))
+        assert len(states) == 1
+        assert states[0].position_seconds == 123.0
+        migrated_ep = session.get(Episode, states[0].episode_id)
+        assert migrated_ep is not None and migrated_ep.season.number == 2
+        assert session.scalar(select(Episode).where(Episode.number == 99)) is None
 
 
 def test_scan_movie_title_cleaned_by_guessit(tmp_path: Path) -> None:

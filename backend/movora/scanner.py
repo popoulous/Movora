@@ -13,7 +13,15 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from movora.db.models import Episode, Library, LibraryKind, MediaFile, Season, Series
+from movora.db.models import (
+    Episode,
+    Library,
+    LibraryKind,
+    MediaFile,
+    Season,
+    Series,
+    WatchState,
+)
 from movora.domain import ParsedFields
 from movora.ffprobe import probe_container_title
 from movora.interfaces import ParserStrategy
@@ -80,6 +88,7 @@ def scan_library(
                 session, season, number, existing.episode.title, end_number
             )
             if existing.episode_id != episode.id:
+                _migrate_watch_state(session, existing.episode_id, episode.id)
                 existing.episode = episode
             continue
         episode = _get_or_create_episode(session, season, number, prober(path), end_number)
@@ -90,6 +99,27 @@ def scan_library(
     _prune_empty(session, library.id)
     session.commit()
     return [media_file.id for media_file in new_files]
+
+
+def _migrate_watch_state(session: Session, old_episode_id: int, new_episode_id: int) -> None:
+    """Move watch progress when a re-scan re-maps a file to a different episode, so a
+    partly-watched episode's progress isn't stranded on the soon-to-be-pruned old episode."""
+    for state in session.scalars(
+        select(WatchState).where(WatchState.episode_id == old_episode_id)
+    ):
+        target = session.scalar(
+            select(WatchState).where(
+                WatchState.user_id == state.user_id,
+                WatchState.episode_id == new_episode_id,
+            )
+        )
+        if target is None:
+            state.episode_id = new_episode_id  # no row on the new episode -> just re-point
+        else:  # both exist (unique user+episode): keep the furthest progress, drop the dup
+            target.position_seconds = max(target.position_seconds, state.position_seconds)
+            target.watched = target.watched or state.watched
+            session.delete(state)
+    session.flush()
 
 
 def _prune_empty(session: Session, library_id: int) -> None:
