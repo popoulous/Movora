@@ -5,12 +5,18 @@ import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { useActivity } from "../ActivityContext";
-import { api, type Recommendation, type SeriesDetail, type SeriesWatch } from "../api";
+import {
+  api,
+  type Character,
+  type Recommendation,
+  type SeriesDetail,
+  type SeriesWatch,
+} from "../api";
 
-type Tab = "episodes" | "overview";
+type Tab = "episodes" | "overview" | "characters";
 type NormalizeStatus = "optimize" | "optimizing" | "optimized";
 
-const COMING_SOON = ["tabCharacters", "tabReviews", "tabStats"] as const;
+const COMING_SOON = ["tabReviews", "tabStats"] as const;
 
 function stripHtml(text: string): string {
   return text
@@ -169,12 +175,14 @@ export function SeriesDetailPage(): JSX.Element {
             t={t}
           />
 
-          <Tabs tab={tab} setTab={setTab} t={t} />
+          <Tabs tab={tab} setTab={setTab} hasCharacters={series.characters.length > 0} t={t} />
 
           {tab === "overview" ? (
             <p className="max-w-3xl text-[15px] leading-[1.9] text-white/75">
               {synopsis ?? t("series.noSynopsis")}
             </p>
+          ) : tab === "characters" ? (
+            <CharactersSection characters={series.characters} t={t} />
           ) : (
             <EpisodesSection
               series={series}
@@ -356,10 +364,12 @@ function SeriesOptimizeButton({
 function Tabs({
   tab,
   setTab,
+  hasCharacters,
   t,
 }: {
   tab: Tab;
   setTab: (tab: Tab) => void;
+  hasCharacters: boolean;
   t: TFunction;
 }): JSX.Element {
   const cls = (active: boolean): string =>
@@ -374,6 +384,11 @@ function Tabs({
       <button className={cls(tab === "overview")} onClick={() => setTab("overview")}>
         {t("series.tabOverview")}
       </button>
+      {hasCharacters && (
+        <button className={cls(tab === "characters")} onClick={() => setTab("characters")}>
+          {t("series.tabCharacters")}
+        </button>
+      )}
       {COMING_SOON.map((label) => (
         <span
           key={label}
@@ -597,6 +612,45 @@ function RecommendationsPanel({
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function CharactersSection({
+  characters,
+  t,
+}: {
+  characters: Character[];
+  t: TFunction;
+}): JSX.Element {
+  const roleLabel = (role: string | null): string | null => {
+    if (role === "MAIN") return t("series.roleMain");
+    if (role === "SUPPORTING") return t("series.roleSupporting");
+    return role;
+  };
+  return (
+    <div className="grid max-w-3xl grid-cols-3 gap-4 sm:grid-cols-4 lg:grid-cols-6">
+      {characters.map((character, index) => (
+        <div key={index}>
+          <div className="relative aspect-[3/4] overflow-hidden rounded-xl bg-white/5 ring-1 ring-white/10">
+            {character.image_url !== null ? (
+              <img
+                src={character.image_url}
+                alt={character.name}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center bg-gradient-to-br from-violet-900/40 to-fuchsia-900/30 p-2 text-center text-xs text-neutral-300">
+                {character.name}
+              </div>
+            )}
+          </div>
+          <div className="mt-2 truncate text-sm font-medium text-neutral-100">{character.name}</div>
+          {roleLabel(character.role) !== null && (
+            <div className="text-xs text-neutral-500">{roleLabel(character.role)}</div>
+          )}
+        </div>
+      ))}
     </div>
   );
 }

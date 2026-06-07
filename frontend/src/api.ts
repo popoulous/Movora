@@ -51,6 +51,12 @@ export interface Recommendation {
   target_series_id: number | null;
 }
 
+export interface Character {
+  name: string;
+  image_url: string | null;
+  role: string | null; // MAIN | SUPPORTING
+}
+
 export type WatchStatus = "not_started" | "watching" | "completed";
 
 export interface SeriesWatch {
@@ -79,6 +85,7 @@ export interface SeriesDetail {
   genres: string | null;
   seasons: Season[];
   recommendations: Recommendation[];
+  characters: Character[];
   watch: SeriesWatch | null;
 }
 
