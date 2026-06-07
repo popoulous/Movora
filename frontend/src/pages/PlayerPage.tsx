@@ -5,7 +5,14 @@ import fallbackFontExtUrl from "@fontsource/noto-sans/files/noto-sans-latin-ext-
 import { type TFunction } from "i18next";
 import JASSUB from "jassub";
 import { Check, ChevronLeft, Play, SkipForward, Type } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
 
@@ -608,6 +615,36 @@ function EpisodeBrowser({
   const season = ordered.find((entry) => entry.number === selected) ?? ordered[0];
   const episodes = season ? [...season.episodes].sort((a, b) => a.number - b.number) : [];
 
+  // Click-and-drag horizontal scrolling for mouse users (touch uses native scroll).
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const drag = useRef({ active: false, startX: 0, startScroll: 0, moved: false });
+  const onPointerDown = (event: ReactPointerEvent): void => {
+    if (event.pointerType !== "mouse" || scrollRef.current === null) return;
+    drag.current = {
+      active: true,
+      startX: event.clientX,
+      startScroll: scrollRef.current.scrollLeft,
+      moved: false,
+    };
+  };
+  const onPointerMove = (event: ReactPointerEvent): void => {
+    if (!drag.current.active || scrollRef.current === null) return;
+    const dx = event.clientX - drag.current.startX;
+    if (Math.abs(dx) > 4) drag.current.moved = true;
+    scrollRef.current.scrollLeft = drag.current.startScroll - dx;
+  };
+  const endDrag = (): void => {
+    drag.current.active = false;
+  };
+  // Swallow the click that ends a drag so it doesn't navigate to an episode.
+  const onClickCapture = (event: ReactMouseEvent): void => {
+    if (drag.current.moved) {
+      event.preventDefault();
+      event.stopPropagation();
+      drag.current.moved = false;
+    }
+  };
+
   return (
     <section>
       <div className="mb-3 flex flex-wrap items-center gap-3">
@@ -630,7 +667,15 @@ function EpisodeBrowser({
           </div>
         )}
       </div>
-      <div className="no-scrollbar flex gap-3 overflow-x-auto pb-2">
+      <div
+        ref={scrollRef}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerLeave={endDrag}
+        onClickCapture={onClickCapture}
+        className="no-scrollbar -mx-1 flex cursor-grab gap-3 overflow-x-auto px-1 py-1 select-none active:cursor-grabbing"
+      >
         {episodes.map((episode) => {
           const current = episode.id === currentId;
           return (
