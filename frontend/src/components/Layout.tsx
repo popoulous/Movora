@@ -2,6 +2,7 @@ import {
   Film,
   Home,
   ListChecks,
+  LogOut,
   type LucideIcon,
   Plus,
   Settings,
@@ -13,6 +14,7 @@ import { useTranslation } from "react-i18next";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 
 import { ActivityContext } from "../ActivityContext";
+import { useAuth } from "../AuthContext";
 import { api, type Library, type LibraryKind, type Task } from "../api";
 import { LibrariesContext } from "../LibrariesContext";
 import { ActivityBell } from "./ActivityBell";
@@ -34,6 +36,7 @@ const navClass = ({ isActive }: { isActive: boolean }): string =>
 
 export function Layout(): JSX.Element {
   const { t } = useTranslation();
+  const { user, logout } = useAuth();
   const [libraries, setLibraries] = useState<Library[]>([]);
   const [picking, setPicking] = useState(false);
   const navigate = useNavigate();
@@ -158,6 +161,16 @@ export function Layout(): JSX.Element {
               <Settings className="h-4 w-4 shrink-0" />
               {t("nav.settings")}
             </NavLink>
+            {user !== null && (
+              <button
+                onClick={() => void logout()}
+                title={t("nav.logout")}
+                className="flex w-full items-center gap-3 rounded-[14px] px-4 py-3 text-sm text-neutral-400 transition hover:bg-white/5 hover:text-neutral-200"
+              >
+                <LogOut className="h-4 w-4 shrink-0" />
+                <span className="min-w-0 flex-1 truncate text-left">{user.username}</span>
+              </button>
+            )}
           </nav>
         </aside>
 

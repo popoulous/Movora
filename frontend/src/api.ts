@@ -198,20 +198,62 @@ export interface Task {
   episode_title: string | null;
 }
 
-async function asJson<T>(response: Response): Promise<T> {
+// A 401 mid-session means the cookie expired; let the app drop back to the login gate.
+function checkOk(response: Response): void {
+  if (response.status === 401) {
+    window.dispatchEvent(new Event("movora:unauthorized"));
+  }
   if (!response.ok) {
     throw new Error(`${response.status} ${response.statusText}`);
   }
+}
+
+async function asJson<T>(response: Response): Promise<T> {
+  checkOk(response);
   return (await response.json()) as T;
 }
 
 function throwIfNotOk(response: Response): void {
-  if (!response.ok) {
-    throw new Error(`${response.status} ${response.statusText}`);
-  }
+  checkOk(response);
+}
+
+export interface User {
+  id: number;
+  username: string;
+  role: "admin" | "user";
+  preferred_language: string | null;
+}
+
+export interface AuthStatus {
+  authenticated: boolean;
+  needs_setup: boolean;
+  user: User | null;
 }
 
 export const api = {
+  authStatus: (): Promise<AuthStatus> => fetch("/api/auth/status").then(asJson<AuthStatus>),
+  setup: (username: string, password: string): Promise<User> =>
+    fetch("/api/auth/setup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    }).then(asJson<User>),
+  login: (username: string, password: string): Promise<User> =>
+    fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    }).then(asJson<User>),
+  logout: (): Promise<void> => fetch("/api/auth/logout", { method: "POST" }).then(throwIfNotOk),
+  listUsers: (): Promise<User[]> => fetch("/api/auth/users").then(asJson<User[]>),
+  createUser: (body: { username: string; password: string; role: "admin" | "user" }): Promise<User> =>
+    fetch("/api/auth/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(asJson<User>),
+  deleteUser: (id: number): Promise<void> =>
+    fetch(`/api/auth/users/${id}`, { method: "DELETE" }).then(throwIfNotOk),
   listLibraries: (): Promise<Library[]> => fetch("/api/libraries").then(asJson<Library[]>),
   createLibrary: (body: { path: string; name: string; kind: LibraryKind }): Promise<Library> =>
     fetch("/api/libraries", {
