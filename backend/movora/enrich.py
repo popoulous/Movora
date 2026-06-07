@@ -11,7 +11,7 @@ from collections.abc import Callable
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from movora.db.models import Library, Recommendation, Series
+from movora.db.models import Character, Library, Recommendation, Series
 from movora.domain import ParsedFields
 from movora.interfaces import MetadataProvider
 
@@ -63,6 +63,17 @@ def enrich_library(
                 rank=rank,
             )
             for rank, rec in enumerate(metadata.recommendations)
+        )
+        series.characters.clear()  # delete-orphan removes the old ones on flush
+        series.characters.extend(
+            Character(
+                external_id=char.external_id,
+                name=char.name,
+                image_url=char.image_url,
+                role=char.role,
+                rank=rank,
+            )
+            for rank, char in enumerate(metadata.characters)
         )
         # Canonical episode titles override the container-derived ones (TMDB only); a
         # multi-episode file (number=1, end_number=3) takes its start episode's title.

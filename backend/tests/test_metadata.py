@@ -77,6 +77,47 @@ def test_anilist_fetches_episode_titles_from_jikan() -> None:
     }
 
 
+def test_anilist_parses_characters() -> None:
+    media: dict[str, Any] = {
+        "data": {
+            "Page": {
+                "media": [
+                    {
+                        "id": 1,
+                        "title": {"romaji": "Show"},
+                        "characters": {
+                            "edges": [
+                                {
+                                    "role": "MAIN",
+                                    "node": {
+                                        "id": 10,
+                                        "name": {"full": "Gon Freecss"},
+                                        "image": {"large": "http://img/gon.jpg"},
+                                    },
+                                },
+                                {
+                                    "role": "SUPPORTING",
+                                    "node": {"id": 11, "name": {"full": "Killua"}, "image": {}},
+                                },
+                                {"role": "BACKGROUND", "node": {"id": None}},  # no id -> skipped
+                            ]
+                        },
+                    }
+                ]
+            }
+        }
+    }
+    provider = AniListProvider(transport=lambda query, variables: media)
+    meta = provider.fetch(ParsedFields(title="Show"))
+
+    assert meta is not None
+    assert [(c.name, c.role) for c in meta.characters] == [
+        ("Gon Freecss", "MAIN"),
+        ("Killua", "SUPPORTING"),
+    ]
+    assert meta.characters[0].image_url == "http://img/gon.jpg"
+
+
 def test_anilist_returns_none_for_no_match() -> None:
     provider = AniListProvider(transport=lambda query, variables: {"data": {"Page": {"media": []}}})
     assert provider.fetch(ParsedFields(title="zzzzzzzz")) is None

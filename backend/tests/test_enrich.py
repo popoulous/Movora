@@ -6,8 +6,16 @@ from sqlalchemy import select
 from movora.api.app import create_app
 from movora.config import Settings
 from movora.db.base import create_db_engine, create_session_factory, init_db
-from movora.db.models import Episode, Library, LibraryKind, Recommendation, Season, Series
-from movora.domain import EpisodeMetadata, ParsedFields, SeriesMetadata
+from movora.db.models import (
+    Character,
+    Episode,
+    Library,
+    LibraryKind,
+    Recommendation,
+    Season,
+    Series,
+)
+from movora.domain import CharacterMetadata, EpisodeMetadata, ParsedFields, SeriesMetadata
 from movora.domain import Recommendation as RecommendationMeta
 from movora.enrich import enrich_library
 from movora.metadata import MetadataRegistry
@@ -120,6 +128,38 @@ def test_enrich_applies_episode_titles_to_matching_episodes() -> None:
         enrich_library(session, library, _EpisodeTitleProvider())
         assert ep1.title == "Rising"  # overwrote the junk title; the range keeps its start title
         assert ep3.title == "Hide and Seek"
+
+
+class _CharacterProvider:
+    def fetch(self, parsed: ParsedFields) -> SeriesMetadata | None:
+        return SeriesMetadata(
+            provider="stub",
+            external_id="1",
+            title="Show",
+            characters=(
+                CharacterMetadata(
+                    external_id="10", name="Gon", image_url="http://i/g.jpg", role="MAIN"
+                ),
+                CharacterMetadata(external_id="11", name="Killua", role="SUPPORTING"),
+            ),
+        )
+
+
+def test_enrich_persists_characters() -> None:
+    engine = create_db_engine(":memory:")
+    init_db(engine)
+    factory = create_session_factory(engine)
+    with factory() as session:
+        library = Library(path="/a", name="A", kind=LibraryKind.ANIME)
+        session.add(library)
+        session.flush()
+        session.add(Series(title="Show", library=library))
+        session.commit()
+
+        enrich_library(session, library, _CharacterProvider())
+        characters = list(session.scalars(select(Character).order_by(Character.rank)))
+        assert [(c.name, c.role) for c in characters] == [("Gon", "MAIN"), ("Killua", "SUPPORTING")]
+        assert characters[0].image_url == "http://i/g.jpg"
 
 
 def test_series_detail_resolves_recommendation_targets(tmp_path: Path) -> None:

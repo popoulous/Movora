@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session, selectinload
 from movora import settings_store
 from movora.api.deps import SessionDep
 from movora.api.schemas import (
+    CharacterRead,
     CollectionRead,
     EpisodeRead,
     FsEntry,
@@ -390,6 +391,7 @@ def _series_detail(session: Session, series: Series) -> SeriesDetail:
         genres=series.genres,
         seasons=seasons,
         recommendations=_recommendations(session, series),
+        characters=[CharacterRead.model_validate(character) for character in series.characters],
         watch=SeriesWatchRead(
             status=summary.status,
             episodes_watched=summary.episodes_watched,

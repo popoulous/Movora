@@ -79,6 +79,14 @@ class RecommendationRead(BaseModel):
     target_series_id: int | None = None  # the matching in-library series, if we have it
 
 
+class CharacterRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    name: str
+    image_url: str | None = None
+    role: str | None = None  # MAIN | SUPPORTING
+
+
 class SeriesWatchRead(BaseModel):
     status: str  # not_started | watching | completed
     episodes_watched: int
@@ -112,6 +120,7 @@ class SeriesDetail(BaseModel):
     genres: str | None = None
     seasons: list[SeasonRead]
     recommendations: list[RecommendationRead] = []
+    characters: list[CharacterRead] = []
     watch: SeriesWatchRead | None = None
 
 

@@ -71,6 +71,9 @@ class Series(Base):
     recommendations: Mapped[list[Recommendation]] = relationship(
         back_populates="series", cascade="all, delete-orphan"
     )
+    characters: Mapped[list[Character]] = relationship(
+        back_populates="series", cascade="all, delete-orphan", order_by="Character.rank"
+    )
 
 
 class Recommendation(Base):
@@ -87,6 +90,22 @@ class Recommendation(Base):
     rank: Mapped[int] = mapped_column(default=0)
 
     series: Mapped[Series] = relationship(back_populates="recommendations")
+
+
+class Character(Base):
+    """A character / cast member from the metadata provider (cached per series)."""
+
+    __tablename__ = "character"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    series_id: Mapped[int] = mapped_column(ForeignKey("series.id"))
+    external_id: Mapped[str]  # provider id of the character
+    name: Mapped[str]
+    image_url: Mapped[str | None] = mapped_column(default=None)
+    role: Mapped[str | None] = mapped_column(default=None)  # MAIN | SUPPORTING (AniList)
+    rank: Mapped[int] = mapped_column(default=0)
+
+    series: Mapped[Series] = relationship(back_populates="characters")
 
 
 class Season(Base):

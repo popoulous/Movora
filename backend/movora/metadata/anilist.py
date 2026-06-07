@@ -11,7 +11,13 @@ from typing import Any
 
 import httpx
 
-from movora.domain import EpisodeMetadata, ParsedFields, Recommendation, SeriesMetadata
+from movora.domain import (
+    CharacterMetadata,
+    EpisodeMetadata,
+    ParsedFields,
+    Recommendation,
+    SeriesMetadata,
+)
 
 ANILIST_URL = "https://graphql.anilist.co"
 JIKAN_URL = "https://api.jikan.moe/v4"  # MyAnimeList data — AniList has no per-episode titles
@@ -40,6 +46,16 @@ query ($search: String) {
             title { romaji english }
             coverImage { large }
             averageScore
+          }
+        }
+      }
+      characters(sort: [ROLE, RELEVANCE], perPage: 12) {
+        edges {
+          role
+          node {
+            id
+            name { full }
+            image { large }
           }
         }
       }
@@ -100,7 +116,29 @@ def _to_metadata(
         end_year=(media.get("endDate") or {}).get("year"),
         recommendations=_parse_recommendations(media),
         episodes=episodes,
+        characters=_parse_characters(media),
     )
+
+
+def _parse_characters(media: dict[str, Any]) -> tuple[CharacterMetadata, ...]:
+    edges = (media.get("characters") or {}).get("edges") or []
+    characters = []
+    for edge in edges:
+        node = edge.get("node") or {}
+        if node.get("id") is None:
+            continue
+        name = (node.get("name") or {}).get("full")
+        if not name:
+            continue
+        characters.append(
+            CharacterMetadata(
+                external_id=str(node["id"]),
+                name=name,
+                image_url=(node.get("image") or {}).get("large"),
+                role=edge.get("role"),
+            )
+        )
+    return tuple(characters)
 
 
 def _parse_recommendations(media: dict[str, Any]) -> tuple[Recommendation, ...]:

@@ -47,6 +47,16 @@ class Recommendation:
 
 
 @dataclass(frozen=True)
+class CharacterMetadata:
+    """A character / cast member from a metadata provider (shown on the detail page)."""
+
+    external_id: str
+    name: str
+    image_url: str | None = None
+    role: str | None = None  # e.g. MAIN | SUPPORTING (AniList)
+
+
+@dataclass(frozen=True)
 class EpisodeMetadata:
     """One episode's canonical data from a provider, matched to a file by season+number."""
 
@@ -75,3 +85,4 @@ class SeriesMetadata:
     end_year: int | None = None
     recommendations: tuple[Recommendation, ...] = ()
     episodes: tuple[EpisodeMetadata, ...] = ()  # per-episode titles (TMDB tv only)
+    characters: tuple[CharacterMetadata, ...] = ()
