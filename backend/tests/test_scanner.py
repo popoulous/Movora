@@ -42,6 +42,34 @@ def test_scan_populates_hierarchy_and_is_idempotent(tmp_path: Path) -> None:
         assert scan_library(session, library, title_prober=lambda path: None) == []
 
 
+def test_rescan_prunes_deleted_files_but_not_when_offline(tmp_path: Path) -> None:
+    root = _library_with_files(tmp_path)
+    engine = create_db_engine(":memory:")
+    init_db(engine)
+    session_factory = create_session_factory(engine)
+    files = sorted(root.glob("*.mkv"))
+
+    with session_factory() as session:
+        library = Library(path=str(root), name="Anime", kind=LibraryKind.ANIME)
+        session.add(library)
+        session.commit()
+        scan_library(session, library, title_prober=lambda path: None)
+        assert len(list(session.scalars(select(MediaFile)))) == 2
+
+        # Deleting a file -> a rescan prunes it and the now-empty episode.
+        files[0].unlink()
+        scan_library(session, library, title_prober=lambda path: None)
+        remaining = list(session.scalars(select(MediaFile)))
+        assert [m.path for m in remaining] == [str(files[1])]
+        assert len(list(session.scalars(select(Episode)))) == 1
+
+        # Safety: when every media file is gone (the drive likely went offline), prune
+        # nothing rather than wiping the library.
+        files[1].unlink()
+        scan_library(session, library, title_prober=lambda path: None)
+        assert len(list(session.scalars(select(MediaFile)))) == 1  # kept, not wiped
+
+
 def test_scan_groups_by_folder_and_skips_extras(tmp_path: Path) -> None:
     show = tmp_path / "Hunter X Hunter 2011 (BD_1920x1080)"
     show.mkdir()

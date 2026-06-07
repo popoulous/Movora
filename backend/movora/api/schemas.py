@@ -245,6 +245,7 @@ class SettingsRead(BaseModel):
     auto_normalize: bool
     delete_original: bool
     auto_detect_intro: bool
+    auto_scan: bool
     tmdb_language: str
 
 
@@ -252,6 +253,7 @@ class SettingsUpdate(BaseModel):
     auto_normalize: bool | None = None
     delete_original: bool | None = None
     auto_detect_intro: bool | None = None
+    auto_scan: bool | None = None
     tmdb_language: str | None = None
 
 

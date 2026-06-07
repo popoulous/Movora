@@ -19,6 +19,7 @@ import shutil
 import signal
 import subprocess
 import threading
+import time
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
@@ -29,7 +30,16 @@ from sqlalchemy.orm import Session, selectinload, sessionmaker
 from sqlalchemy.orm.exc import StaleDataError
 
 from movora import settings_store
-from movora.db.models import Episode, JobStatus, MediaFile, Season, Series, Task, TaskType
+from movora.db.models import (
+    Episode,
+    JobStatus,
+    Library,
+    MediaFile,
+    Season,
+    Series,
+    Task,
+    TaskType,
+)
 from movora.encoders import detect_h264_encoder
 from movora.enrich import enrich_library
 from movora.ffprobe import probe_media
@@ -231,6 +241,14 @@ def enqueue_scan(session: Session, library_id: int) -> None:
         session.commit()
 
 
+def enqueue_scan_all(session: Session) -> int:
+    """Queue a rescan for every library; returns how many were queued."""
+    library_ids = list(session.scalars(select(Library.id)))
+    for library_id in library_ids:
+        enqueue_scan(session, library_id)
+    return len(library_ids)
+
+
 def enqueue_metadata(session: Session, library_id: int) -> None:
     if not _has_active_library_task(session, library_id, TaskType.METADATA):
         session.add(Task(type=TaskType.METADATA, library_id=library_id))
@@ -387,6 +405,30 @@ def start_workers(
     """Start both workers: transcoding (serial) and scan/metadata (concurrent)."""
     _spawn(run_light_worker, session_factory, output_dir, registry)
     _spawn(run_worker, session_factory, output_dir, registry)
+
+
+def start_rescan_timer(
+    session_factory: sessionmaker[Session],
+    output_dir: Path,
+    registry: MetadataRegistry,
+    interval_seconds: int,
+) -> None:
+    """Periodically rescan every library (picking up added/removed files) while AUTO_SCAN
+    is on. A no-op in tests (workers run inline) and when the interval is disabled."""
+    if not _run_in_thread or interval_seconds <= 0:
+        return
+
+    def loop() -> None:
+        while True:
+            time.sleep(interval_seconds)
+            with session_factory() as session:
+                if not settings_store.get_bool(session, settings_store.AUTO_SCAN):
+                    continue
+                if enqueue_scan_all(session) == 0:
+                    continue
+            start_workers(session_factory, output_dir, registry)
+
+    threading.Thread(target=loop, daemon=True).start()
 
 
 def run_worker(

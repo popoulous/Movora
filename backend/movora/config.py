@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     secret_key: str = INSECURE_SECRET_KEY  # set MOVORA_SECRET_KEY in production
     session_ttl_seconds: int = 60 * 60 * 24 * 14  # 14 days
     tmdb_api_key: str | None = None  # free v3 key for film/series metadata (MOVORA_TMDB_API_KEY)
+    rescan_interval_minutes: int = 60  # auto-rescan period (0 disables the timer)
 
 
 def get_settings() -> Settings:

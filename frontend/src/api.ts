@@ -174,6 +174,7 @@ export interface ServerSettings {
   auto_normalize: boolean;
   delete_original: boolean;
   auto_detect_intro: boolean;
+  auto_scan: boolean;
   tmdb_language: string;
 }
 

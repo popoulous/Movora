@@ -15,6 +15,9 @@ DELETE_ORIGINAL = "delete_original"
 # Detect intro/outro skip markers on scan (chapter names, else audio fingerprints).
 # Off by default — fingerprinting is CPU-heavy, so the owner opts in.
 AUTO_DETECT_INTRO = "auto_detect_intro"
+# Automatically rescan libraries (on startup and on a timer) to pick up added/removed
+# files. On by default; a rescan also prunes files that vanished from disk.
+AUTO_SCAN = "auto_scan"
 # TMDB result/match language (film/series), e.g. "hu-HU" — the UI sets it to your
 # locale, so Hungarian titles match (Troja -> Trója) and metadata comes back localised.
 TMDB_LANGUAGE = "tmdb_language"
@@ -22,6 +25,7 @@ _DEFAULTS: dict[str, bool] = {
     AUTO_NORMALIZE: False,
     DELETE_ORIGINAL: False,
     AUTO_DETECT_INTRO: False,
+    AUTO_SCAN: True,
 }
 _STRING_DEFAULTS: dict[str, str] = {
     TMDB_LANGUAGE: "",  # unset -> the UI defaults it to your locale; the task falls back to en-US

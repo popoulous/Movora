@@ -96,9 +96,34 @@ def scan_library(
         session.add(media_file)
         new_files.append(media_file)
     session.flush()
+    _prune_missing(session, library.id, root, {str(path) for path in candidates})
     _prune_empty(session, library.id)
     session.commit()
     return [media_file.id for media_file in new_files]
+
+
+def _prune_missing(
+    session: Session, library_id: int, root: Path, on_disk: set[str]
+) -> None:
+    """Drop media files that have vanished from disk (deleted/renamed) so stale entries
+    don't linger, then ``_prune_empty`` clears the emptied episodes/seasons/series.
+
+    Safety: if the library root is unreachable or no media was found at all, the drive is
+    almost certainly just offline (e.g. an unplugged external/network disk) rather than
+    every file having been deleted — never wipe the library and its watch history then.
+    """
+    if not root.exists() or not on_disk:
+        return
+    for media_file in session.scalars(
+        select(MediaFile)
+        .join(Episode)
+        .join(Season)
+        .join(Series)
+        .where(Series.library_id == library_id)
+    ):
+        if media_file.path not in on_disk and not Path(media_file.path).is_file():
+            session.delete(media_file)
+    session.flush()
 
 
 def _migrate_watch_state(session: Session, old_episode_id: int, new_episode_id: int) -> None:

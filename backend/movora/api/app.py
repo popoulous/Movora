@@ -10,7 +10,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from movora import __version__
+from movora import __version__, settings_store
 from movora.api.auth_routes import router as auth_router
 from movora.api.deps import get_current_user
 from movora.api.routes import router
@@ -20,7 +20,9 @@ from movora.metadata import AniListProvider, MetadataRegistry, TmdbProvider
 from movora.normalize import (
     clean_partials,
     dedupe_tasks,
+    enqueue_scan_all,
     requeue_interrupted,
+    start_rescan_timer,
     start_workers,
 )
 
@@ -41,7 +43,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         with app.state.session_factory() as session:
             dedupe_tasks(session)  # clean up any duplicate tasks first
             requeue_interrupted(session)
+            if settings_store.get_bool(session, settings_store.AUTO_SCAN):
+                enqueue_scan_all(session)  # catch content added/removed while we were off
         start_workers(app.state.session_factory, normalized_dir, app.state.metadata_provider)
+        start_rescan_timer(
+            app.state.session_factory,
+            normalized_dir,
+            app.state.metadata_provider,
+            settings.rescan_interval_minutes * 60,
+        )
         yield
 
     app = FastAPI(title=settings.app_name, version=__version__, lifespan=lifespan)

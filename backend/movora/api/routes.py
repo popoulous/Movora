@@ -859,6 +859,8 @@ def update_settings(
         settings_store.set_bool(
             session, settings_store.AUTO_DETECT_INTRO, payload.auto_detect_intro
         )
+    if payload.auto_scan is not None:
+        settings_store.set_bool(session, settings_store.AUTO_SCAN, payload.auto_scan)
     if payload.tmdb_language is not None:
         settings_store.set_str(session, settings_store.TMDB_LANGUAGE, payload.tmdb_language)
     return _read_settings(session)
@@ -869,5 +871,6 @@ def _read_settings(session: Session) -> SettingsRead:
         auto_normalize=settings_store.get_bool(session, settings_store.AUTO_NORMALIZE),
         delete_original=settings_store.get_bool(session, settings_store.DELETE_ORIGINAL),
         auto_detect_intro=settings_store.get_bool(session, settings_store.AUTO_DETECT_INTRO),
+        auto_scan=settings_store.get_bool(session, settings_store.AUTO_SCAN),
         tmdb_language=settings_store.get_str(session, settings_store.TMDB_LANGUAGE),
     )

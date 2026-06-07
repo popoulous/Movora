@@ -83,6 +83,10 @@ const en = {
       "Once a file is verified and optimized, move the original to the OS trash to save space. Embedded subtitles and fonts are preserved first.",
     normalizeAll: "Normalize everything now",
     normalizeAllStarted: "Started — watch the activity bell",
+    libraryTitle: "Library",
+    autoScan: "Automatic library rescan",
+    autoScanDesc:
+      "Rescan libraries on startup and hourly to pick up added files. A rescan also removes entries whose files were deleted or moved. Safe: a library that reads as empty (e.g. an offline drive) is never wiped.",
     introTitle: "Intro & outro skipping",
     autoDetectIntro: "Auto-detect intro/outro on scan",
     autoDetectIntroDesc:
@@ -311,6 +315,10 @@ const hu: typeof en = {
       "A verifikált, optimalizált fájl után az eredetit a rendszer Lomtárába mozgatja a helyspórolásért. A beágyazott feliratok és fontok előbb megőrződnek.",
     normalizeAll: "Mindet normalizáld most",
     normalizeAllStarted: "Elindítva — nézd az aktivitás-harangot",
+    libraryTitle: "Könyvtár",
+    autoScan: "Automatikus könyvtár-újraszken",
+    autoScanDesc:
+      "Indításkor és óránként újraszkenel, hogy behúzza az új fájlokat. Az újraszken kitakarítja azokat a bejegyzéseket is, amelyek fájlja törlődött vagy átkerült. Biztonságos: az üresként látszó könyvtárat (pl. offline meghajtó) soha nem üríti ki.",
     introTitle: "Intro & outro átugrása",
     autoDetectIntro: "Intro/outro automatikus felismerése szkenneléskor",
     autoDetectIntroDesc:

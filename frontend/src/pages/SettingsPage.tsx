@@ -72,7 +72,9 @@ export function SettingsPage(): JSX.Element {
       .catch(() => undefined);
   }, [i18n.language]);
 
-  const toggle = (key: "auto_normalize" | "delete_original" | "auto_detect_intro"): void => {
+  const toggle = (
+    key: "auto_normalize" | "delete_original" | "auto_detect_intro" | "auto_scan",
+  ): void => {
     if (settings === null) return;
     const next = { ...settings, [key]: !settings[key] };
     setSettings(next);
@@ -137,6 +139,20 @@ export function SettingsPage(): JSX.Element {
           >
             {sweeping ? t("settings.normalizeAllStarted") : t("settings.normalizeAll")}
           </button>
+        </section>
+      )}
+
+      {settings !== null && (
+        <section className="space-y-3">
+          <h2 className="text-xs font-semibold tracking-wide text-neutral-500 uppercase">
+            {t("settings.libraryTitle")}
+          </h2>
+          <Toggle
+            label={t("settings.autoScan")}
+            description={t("settings.autoScanDesc")}
+            on={settings.auto_scan}
+            onToggle={() => toggle("auto_scan")}
+          />
         </section>
       )}
 
