@@ -130,13 +130,65 @@ function applyAssStyle(content: string, style: SubStyle): string {
     .join("\n");
 }
 
-// Native <track> (VTT) styling, applied via a ::cue stylesheet.
-function cueCss(style: SubStyle): string {
-  const size = { s: "80%", m: "100%", l: "130%" }[style.size];
-  const bg = { none: "transparent", box: "rgba(0,0,0,0.55)", solid: "rgba(0,0,0,0.9)" }[
-    style.background
-  ];
-  return `::cue { font-size: ${size}; background-color: ${bg}; }`;
+// WebVTT/SubRip are rendered through JASSUB too (not a native <track>): converting them to a
+// minimal ASS gives libass a fixed bottom anchor — reliable, no jumping — and lets the size/
+// background controls apply uniformly.
+function parseVttTime(value: string): number {
+  const match = value.trim().match(/(?:(\d+):)?(\d{2}):(\d{2})[.,](\d{3})/);
+  if (match === null) return 0;
+  const hours = match[1] !== undefined ? Number(match[1]) : 0;
+  return hours * 3600 + Number(match[2]) * 60 + Number(match[3]) + Number(match[4]) / 1000;
+}
+
+function assTime(seconds: number): string {
+  const cs = Math.round(seconds * 100);
+  const h = Math.floor(cs / 360000);
+  const m = Math.floor((cs % 360000) / 6000);
+  const s = Math.floor((cs % 6000) / 100);
+  const c = cs % 100;
+  return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}.${String(c).padStart(2, "0")}`;
+}
+
+function assText(text: string): string {
+  return text
+    .replace(/\r/g, "")
+    .replace(/<i>/gi, "{\\i1}")
+    .replace(/<\/i>/gi, "{\\i0}")
+    .replace(/<b>/gi, "{\\b1}")
+    .replace(/<\/b>/gi, "{\\b0}")
+    .replace(/<[^>]+>/g, "")
+    .split("\n")
+    .join("\\N");
+}
+
+function vttToAss(vtt: string): string {
+  const header = `[Script Info]
+ScriptType: v4.00+
+PlayResX: 1280
+PlayResY: 720
+WrapStyle: 0
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Arial,52,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2.6,1,2,40,40,46,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+`;
+  const lines: string[] = [];
+  for (const block of vtt.replace(/\r\n/g, "\n").split(/\n\n+/)) {
+    const rows = block.split("\n").filter((row) => row.length > 0);
+    const arrow = rows.findIndex((row) => row.includes("-->"));
+    if (arrow < 0) continue;
+    const times = rows[arrow].match(/([\d:.,]+)\s*-->\s*([\d:.,]+)/);
+    const text = rows.slice(arrow + 1).join("\n");
+    if (times === null || text.length === 0) continue;
+    lines.push(
+      `Dialogue: 0,${assTime(parseVttTime(times[1]))},${assTime(parseVttTime(times[2]))},Default,,0,0,0,,${assText(text)}`,
+    );
+  }
+  return header + lines.join("\n") + "\n";
 }
 
 // 2- and 3-letter codes that count as the same language, so we can match the UI locale.
@@ -314,29 +366,30 @@ export function PlayerPage(): JSX.Element {
     return () => clearInterval(timer);
   }, [normalizing, id]);
 
-  // Soft ASS is rendered by JASSUB as a canvas overlay; the instance is recreated
-  // on track change and destroyed on cleanup. VTT tracks use a native <track>.
+  // Every subtitle (ASS and SRT/VTT alike) is rendered by JASSUB as a canvas overlay; the
+  // instance is recreated on track change and destroyed on cleanup.
   useEffect(() => {
     const video = videoRef.current;
     if (video === null || playback === null) {
       return;
     }
     const selected = playback.subtitle_tracks.find((track) => track.id === trackId);
-    if (selected === undefined || selected.format !== "ass") {
+    if (selected === undefined) {
       return;
     }
     let instance: JASSUB | null = null;
     let cancelled = false;
     void fetch(selected.url)
       .then((response) => response.text())
-      .then((subContent) => {
+      .then((raw) => {
         const current = videoRef.current;
         if (cancelled || current === null) {
           return;
         }
+        const ass = selected.format === "ass" ? raw : vttToAss(raw);
         instance = new JASSUB({
           video: current,
-          subContent: applyAssStyle(subContent, subStyle), // user size/background overrides
+          subContent: applyAssStyle(ass, subStyle), // user size/background overrides
           // Embedded mkv fonts, plus the Noto Sans latin-ext face for Hungarian glyphs.
           fonts: [...playback.fonts, fallbackFontExtUrl],
           availableFonts: { "noto sans": fallbackFontUrl },
@@ -358,11 +411,6 @@ export function PlayerPage(): JSX.Element {
   if (playback === null) {
     return <p className="text-sm text-neutral-500">{t("player.loading")}</p>;
   }
-
-  const vttTrack =
-    playback.subtitle_tracks.find(
-      (track) => track.id === trackId && track.format === "vtt",
-    ) ?? null;
 
   const seasonPart =
     playback.season_number === 0
@@ -432,18 +480,7 @@ export function PlayerPage(): JSX.Element {
               onTimeUpdate={handleTimeUpdate}
               onEnded={markWatched}
               className="aspect-video w-full"
-            >
-              {vttTrack !== null && (
-                <track
-                  key={vttTrack.id}
-                  kind="subtitles"
-                  src={vttTrack.url}
-                  srcLang={vttTrack.language ?? undefined}
-                  label={vttTrack.label}
-                  default
-                />
-              )}
-            </video>
+            />
 
             {skip !== null && !ended && (
               <button
@@ -502,7 +539,6 @@ export function PlayerPage(): JSX.Element {
                   </button>
                 ))}
                 <SubtitleStyleControl style={subStyle} onChange={setSubStyle} t={t} />
-                {vttTrack !== null && <style>{cueCss(subStyle)}</style>}
               </>
             )}
             {nextEpisode !== null && (
