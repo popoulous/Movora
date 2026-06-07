@@ -64,6 +64,15 @@ def enrich_library(
             )
             for rank, rec in enumerate(metadata.recommendations)
         )
+        # Canonical episode titles override the container-derived ones (TMDB only); a
+        # multi-episode file (number=1, end_number=3) takes its start episode's title.
+        titles = {(ep.season_number, ep.number): ep.title for ep in metadata.episodes if ep.title}
+        if titles:
+            for season in series.seasons:
+                for episode in season.episodes:
+                    title = titles.get((season.number, episode.number))
+                    if title is not None:
+                        episode.title = title
         updated += 1
     session.commit()
     return updated

@@ -6,8 +6,8 @@ from sqlalchemy import select
 from movora.api.app import create_app
 from movora.config import Settings
 from movora.db.base import create_db_engine, create_session_factory, init_db
-from movora.db.models import Library, LibraryKind, Recommendation, Series
-from movora.domain import ParsedFields, SeriesMetadata
+from movora.db.models import Episode, Library, LibraryKind, Recommendation, Season, Series
+from movora.domain import EpisodeMetadata, ParsedFields, SeriesMetadata
 from movora.domain import Recommendation as RecommendationMeta
 from movora.enrich import enrich_library
 from movora.metadata import MetadataRegistry
@@ -86,6 +86,40 @@ def test_enrich_persists_recommendations() -> None:
         assert series is not None
         ordered = sorted(series.recommendations, key=lambda rec: rec.rank)
         assert [rec.title for rec in ordered] == ["Index", "Other"]
+
+
+class _EpisodeTitleProvider:
+    def fetch(self, parsed: ParsedFields) -> SeriesMetadata | None:
+        return SeriesMetadata(
+            provider="stub",
+            external_id="42",
+            title="Stargate",
+            episodes=(
+                EpisodeMetadata(season_number=1, number=1, title="Rising"),
+                EpisodeMetadata(season_number=1, number=3, title="Hide and Seek"),
+            ),
+        )
+
+
+def test_enrich_applies_episode_titles_to_matching_episodes() -> None:
+    engine = create_db_engine(":memory:")
+    init_db(engine)
+    factory = create_session_factory(engine)
+    with factory() as session:
+        library = Library(path="/a", name="A", kind=LibraryKind.SERIES)
+        session.add(library)
+        session.flush()
+        series = Series(title="Stargate", library=library)
+        season = Season(series=series, number=1)
+        # Episode 1 spans 1-2 (a double file) and already has a junk container title to replace.
+        ep1 = Episode(season=season, number=1, end_number=2, title="junk-container-title")
+        ep3 = Episode(season=season, number=3)
+        session.add_all([series, season, ep1, ep3])
+        session.commit()
+
+        enrich_library(session, library, _EpisodeTitleProvider())
+        assert ep1.title == "Rising"  # overwrote the junk title; the range keeps its start title
+        assert ep3.title == "Hide and Seek"
 
 
 def test_series_detail_resolves_recommendation_targets(tmp_path: Path) -> None:

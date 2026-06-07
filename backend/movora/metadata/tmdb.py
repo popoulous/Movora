@@ -12,7 +12,7 @@ from typing import Any
 
 import httpx
 
-from movora.domain import ParsedFields, SeriesMetadata
+from movora.domain import EpisodeMetadata, ParsedFields, SeriesMetadata
 
 TMDB_URL = "https://api.themoviedb.org/3"
 IMAGE_URL = "https://image.tmdb.org/t/p"
@@ -61,20 +61,53 @@ class TmdbProvider:
         if not results:
             return None
         item = results[0]
-        return self._to_metadata(item, parsed.title, self._episode_duration(item.get("id")))
+        details = self._details(item.get("id"))  # one call: runtime + the season list
+        return self._to_metadata(
+            item,
+            parsed.title,
+            self._episode_duration(details),
+            self._episodes(item.get("id"), details),
+        )
 
-    def _episode_duration(self, item_id: Any) -> int | None:
-        """Episode runtime in minutes — needs a details call; search omits it. For a movie
-        this is the film's own runtime (it is modelled as a single-episode series)."""
+    def _details(self, item_id: Any) -> dict[str, Any]:
+        """The full title record (runtime, season list, …); the search results omit these."""
         if item_id is None:
-            return None
+            return {}
         params: dict[str, str | int] = {"api_key": self._api_key or "", "language": self._language}
-        details = self._transport(f"{TMDB_URL}/{self._media_type}/{item_id}", params)
+        return self._transport(f"{TMDB_URL}/{self._media_type}/{item_id}", params)
+
+    def _episode_duration(self, details: dict[str, Any]) -> int | None:
+        """Episode runtime in minutes. For a movie this is the film's own runtime
+        (it is modelled as a single-episode series)."""
         if self._media_type == "movie":
             runtime = details.get("runtime")
             return int(runtime) if runtime else None
         run_times = [int(t) for t in details.get("episode_run_time") or [] if t]
         return round(sum(run_times) / len(run_times)) if run_times else None
+
+    def _episodes(self, item_id: Any, details: dict[str, Any]) -> tuple[EpisodeMetadata, ...]:
+        """Per-episode titles — one /season/{n} call per real season (TV only, specials skipped)."""
+        if self._media_type != "tv" or item_id is None:
+            return ()
+        params: dict[str, str | int] = {"api_key": self._api_key or "", "language": self._language}
+        episodes: list[EpisodeMetadata] = []
+        for season in details.get("seasons") or []:
+            number = season.get("season_number")
+            if number is None or number == 0:  # skip specials (season 0)
+                continue
+            payload = self._transport(f"{TMDB_URL}/tv/{item_id}/season/{number}", params)
+            for ep in payload.get("episodes") or []:
+                ep_number = ep.get("episode_number")
+                if ep_number is None:
+                    continue
+                episodes.append(
+                    EpisodeMetadata(
+                        season_number=int(number),
+                        number=int(ep_number),
+                        title=ep.get("name") or None,
+                    )
+                )
+        return tuple(episodes)
 
     def _genre_map(self) -> dict[int, str]:
         if self._genres is None:
@@ -87,7 +120,11 @@ class TmdbProvider:
         return self._genres
 
     def _to_metadata(
-        self, item: dict[str, Any], fallback_title: str, episode_duration: int | None = None
+        self,
+        item: dict[str, Any],
+        fallback_title: str,
+        episode_duration: int | None = None,
+        episodes: tuple[EpisodeMetadata, ...] = (),
     ) -> SeriesMetadata:
         is_movie = self._media_type == "movie"
         date = str(item.get("release_date" if is_movie else "first_air_date") or "")
@@ -110,4 +147,5 @@ class TmdbProvider:
             description=item.get("overview") or None,
             genres=", ".join(names) if names else None,
             episode_duration=episode_duration,
+            episodes=episodes,
         )

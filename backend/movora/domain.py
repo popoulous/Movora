@@ -47,6 +47,15 @@ class Recommendation:
 
 
 @dataclass(frozen=True)
+class EpisodeMetadata:
+    """One episode's canonical data from a provider, matched to a file by season+number."""
+
+    season_number: int
+    number: int
+    title: str | None = None
+
+
+@dataclass(frozen=True)
 class SeriesMetadata:
     """Canonical series metadata resolved from a provider (AniList / TMDB)."""
 
@@ -65,3 +74,4 @@ class SeriesMetadata:
     episode_duration: int | None = None  # minutes per episode
     end_year: int | None = None
     recommendations: tuple[Recommendation, ...] = ()
+    episodes: tuple[EpisodeMetadata, ...] = ()  # per-episode titles (TMDB tv only)

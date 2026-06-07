@@ -108,6 +108,28 @@ def test_tmdb_movie_fetches_runtime_from_details() -> None:
     assert meta.episode_duration == 148
 
 
+def test_tmdb_tv_fetches_episode_titles_per_season() -> None:
+    responses = {
+        "/search/tv": {"results": [{"id": 5148, "name": "Stargate Universe"}]},
+        "/tv/5148/season/1": {
+            "episodes": [
+                {"episode_number": 1, "name": "Air (1)"},
+                {"episode_number": 2, "name": "Air (2)"},
+            ]
+        },
+        # The details call lists the seasons to walk (specials/season 0 are skipped).
+        "/tv/5148": {"seasons": [{"season_number": 0}, {"season_number": 1}]},
+    }
+    provider = TmdbProvider("tv", "KEY", transport=_transport(responses))
+    meta = provider.fetch(ParsedFields(title="Stargate Universe"))
+
+    assert meta is not None
+    assert {(e.season_number, e.number): e.title for e in meta.episodes} == {
+        (1, 1): "Air (1)",
+        (1, 2): "Air (2)",
+    }
+
+
 def test_tmdb_returns_none_without_key_or_match() -> None:
     assert TmdbProvider("movie", None, transport=_transport({})).fetch(
         ParsedFields(title="Inception")
