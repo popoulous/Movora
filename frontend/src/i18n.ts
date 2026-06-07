@@ -10,6 +10,8 @@ const en = {
     addLibrary: "Add library",
     noLibraries: "No libraries yet — add one with +",
     logout: "Sign out",
+    menu: "Menu",
+    collapse: "Collapse",
   },
   auth: {
     loginSubtitle: "Sign in to continue",
@@ -224,6 +226,8 @@ const hu: typeof en = {
     addLibrary: "Könyvtár hozzáadása",
     noLibraries: "Még nincs könyvtár — adj hozzá a + gombbal",
     logout: "Kijelentkezés",
+    menu: "Menü",
+    collapse: "Összecsukás",
   },
   auth: {
     loginSubtitle: "Jelentkezz be a folytatáshoz",
