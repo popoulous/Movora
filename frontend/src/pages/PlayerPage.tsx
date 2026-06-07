@@ -10,6 +10,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { useActivity } from "../ActivityContext";
+import { useAuth } from "../AuthContext";
 import {
   api,
   type Episode,
@@ -78,6 +79,7 @@ function chipClass(active: boolean): string {
 export function PlayerPage(): JSX.Element {
   const { t, i18n } = useTranslation();
   const { refreshSoon } = useActivity();
+  const { user } = useAuth();
   const { episodeId } = useParams();
   const id = Number(episodeId);
   const navigate = useNavigate();
@@ -106,8 +108,9 @@ export function PlayerPage(): JSX.Element {
       .getPlayback(id)
       .then((info) => {
         setPlayback(info);
-        // Show a subtitle by default, preferring the user's language (UI locale / device).
-        setTrackId(pickDefaultTrack(info.subtitle_tracks, i18n.language)?.id ?? null);
+        // Show a subtitle by default, preferring the account's language, else the UI locale.
+        const preferred = user?.preferred_language ?? i18n.language;
+        setTrackId(pickDefaultTrack(info.subtitle_tracks, preferred)?.id ?? null);
       })
       .catch((reason: unknown) => setError(String(reason)));
   }, [id]);

@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
+import { Trash2 } from "lucide-react";
+import { type FormEvent, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useActivity } from "../ActivityContext";
-import { api, type ServerSettings } from "../api";
+import { api, type ServerSettings, type User } from "../api";
+import { useAuth } from "../AuthContext";
 
 const LANGUAGES: [string, string][] = [
   ["en-US", "English"],
@@ -50,6 +52,7 @@ function Toggle({
 export function SettingsPage(): JSX.Element {
   const { t, i18n } = useTranslation();
   const { refreshSoon } = useActivity();
+  const { user, setUser } = useAuth();
   const [settings, setSettings] = useState<ServerSettings | null>(null);
   const [sweeping, setSweeping] = useState(false);
   const [detecting, setDetecting] = useState(false);
@@ -97,6 +100,10 @@ export function SettingsPage(): JSX.Element {
     api.detectIntros().catch(() => undefined);
     refreshSoon();
     window.setTimeout(() => setDetecting(false), 2000);
+  };
+
+  const setPreferredLanguage = (value: string): void => {
+    api.updatePreferences({ preferred_language: value || null }).then(setUser).catch(() => undefined);
   };
 
   return (
@@ -182,6 +189,143 @@ export function SettingsPage(): JSX.Element {
           </div>
         </section>
       )}
+
+      {user !== null && (
+        <section className="space-y-3">
+          <h2 className="text-xs font-semibold tracking-wide text-neutral-500 uppercase">
+            {t("settings.accountTitle")}
+          </h2>
+          <div className="flex items-center justify-between gap-4 rounded-xl bg-white/[0.03] p-4 ring-1 ring-white/10">
+            <span className="min-w-0">
+              <span className="block text-sm font-medium text-white">
+                {t("settings.preferredLanguage")}
+              </span>
+              <span className="mt-0.5 block text-xs leading-relaxed text-neutral-400">
+                {t("settings.preferredLanguageDesc")}
+              </span>
+            </span>
+            <select
+              value={user.preferred_language ?? ""}
+              onChange={(event) => setPreferredLanguage(event.target.value)}
+              className="shrink-0 rounded-lg bg-white/[0.06] px-3 py-2 text-sm text-neutral-100 ring-1 ring-white/10 focus:ring-violet-400/40 focus:outline-none"
+            >
+              <option value="" className="bg-[#120e1d]">
+                {t("settings.languageAuto")}
+              </option>
+              {LANGUAGES.map(([code, name]) => (
+                <option key={code} value={code.slice(0, 2)} className="bg-[#120e1d]">
+                  {name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </section>
+      )}
+
+      {user?.role === "admin" && <UsersSection currentUserId={user.id} t={t} />}
     </div>
+  );
+}
+
+function UsersSection({
+  currentUserId,
+  t,
+}: {
+  currentUserId: number;
+  t: ReturnType<typeof useTranslation>["t"];
+}): JSX.Element {
+  const [users, setUsers] = useState<User[]>([]);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState<"admin" | "user">("user");
+  const [error, setError] = useState<string | null>(null);
+
+  const reload = (): void => {
+    api.listUsers().then(setUsers).catch(() => undefined);
+  };
+  useEffect(reload, []);
+
+  const create = (event: FormEvent): void => {
+    event.preventDefault();
+    setError(null);
+    api
+      .createUser({ username, password, role })
+      .then(() => {
+        setUsername("");
+        setPassword("");
+        reload();
+      })
+      .catch(() => setError(t("settings.userExists")));
+  };
+
+  const remove = (id: number): void => {
+    api.deleteUser(id).then(reload).catch(() => undefined);
+  };
+
+  return (
+    <section className="space-y-3">
+      <h2 className="text-xs font-semibold tracking-wide text-neutral-500 uppercase">
+        {t("settings.usersTitle")}
+      </h2>
+      <div className="space-y-1.5">
+        {users.map((member) => (
+          <div
+            key={member.id}
+            className="flex items-center gap-3 rounded-xl bg-white/[0.03] px-4 py-2.5 ring-1 ring-white/10"
+          >
+            <span className="min-w-0 flex-1 truncate text-sm text-neutral-100">
+              {member.username}
+            </span>
+            <span className="shrink-0 rounded-full bg-white/10 px-2 py-0.5 text-xs text-neutral-400">
+              {t(member.role === "admin" ? "settings.roleAdmin" : "settings.roleUser")}
+            </span>
+            {member.id !== currentUserId && (
+              <button
+                onClick={() => remove(member.id)}
+                title={t("settings.deleteUser")}
+                className="shrink-0 rounded-lg p-1.5 text-neutral-500 transition hover:bg-red-500/15 hover:text-red-300"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+      <form onSubmit={create} className="flex flex-wrap items-center gap-2 pt-1">
+        <input
+          value={username}
+          onChange={(event) => setUsername(event.target.value)}
+          placeholder={t("auth.username")}
+          className="min-w-0 flex-1 rounded-lg bg-white/[0.06] px-3 py-2 text-sm text-neutral-100 ring-1 ring-white/10 focus:ring-violet-400/40 focus:outline-none"
+        />
+        <input
+          type="password"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          placeholder={t("auth.password")}
+          className="min-w-0 flex-1 rounded-lg bg-white/[0.06] px-3 py-2 text-sm text-neutral-100 ring-1 ring-white/10 focus:ring-violet-400/40 focus:outline-none"
+        />
+        <select
+          value={role}
+          onChange={(event) => setRole(event.target.value as "admin" | "user")}
+          className="rounded-lg bg-white/[0.06] px-3 py-2 text-sm text-neutral-100 ring-1 ring-white/10 focus:outline-none"
+        >
+          <option value="user" className="bg-[#120e1d]">
+            {t("settings.roleUser")}
+          </option>
+          <option value="admin" className="bg-[#120e1d]">
+            {t("settings.roleAdmin")}
+          </option>
+        </select>
+        <button
+          type="submit"
+          disabled={username === "" || password === ""}
+          className="rounded-lg bg-gradient-to-r from-[#7A4DFF] to-[#EC4899] px-4 py-2 text-sm font-semibold text-white transition hover:brightness-110 disabled:opacity-50"
+        >
+          {t("settings.addUser")}
+        </button>
+      </form>
+      {error !== null && <p className="text-sm text-red-400">{error}</p>}
+    </section>
   );
 }

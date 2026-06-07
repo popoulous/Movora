@@ -255,6 +255,12 @@ export const api = {
       body: JSON.stringify({ username, password }),
     }).then(asJson<User>),
   logout: (): Promise<void> => fetch("/api/auth/logout", { method: "POST" }).then(throwIfNotOk),
+  updatePreferences: (body: { preferred_language: string | null }): Promise<User> =>
+    fetch("/api/auth/me/preferences", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(asJson<User>),
   listUsers: (): Promise<User[]> => fetch("/api/auth/users").then(asJson<User[]>),
   createUser: (body: { username: string; password: string; role: "admin" | "user" }): Promise<User> =>
     fetch("/api/auth/users", {
