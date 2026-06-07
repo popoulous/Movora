@@ -4,7 +4,7 @@ from movora.intro import common_segment, markers_from_chapters
 
 
 def test_markers_from_named_chapters() -> None:
-    chapters = [
+    chapters: list[dict[str, object]] = [
         {"start_time": "0.0", "end_time": "80.0", "tags": {"title": "Opening"}},
         {"start_time": "80.0", "end_time": "1320.0", "tags": {"title": "Part A"}},
         {"start_time": "1320.0", "end_time": "1400.0", "tags": {"title": "Ending"}},
@@ -17,7 +17,7 @@ def test_markers_from_named_chapters() -> None:
 
 
 def test_markers_from_generic_chapters_are_empty() -> None:
-    chapters = [
+    chapters: list[dict[str, object]] = [
         {"start_time": "0.0", "end_time": "300.0", "tags": {"title": "Chapter 1"}},
         {"start_time": "300.0", "end_time": "600.0", "tags": {"title": "Chapter 2"}},
     ]
@@ -26,7 +26,10 @@ def test_markers_from_generic_chapters_are_empty() -> None:
 
 def test_common_segment_finds_shared_run() -> None:
     rng = np.random.default_rng(0)
-    noise = lambda n: rng.integers(1, 2**31, n, dtype=np.uint32)  # noqa: E731
+
+    def noise(n: int) -> np.ndarray:
+        return rng.integers(1, 2**31, n, dtype=np.uint32)
+
     shared = rng.integers(1, 2**31, size=200, dtype=np.uint32)
     a = np.concatenate([noise(30), shared, noise(30)])
     b = np.concatenate([noise(10), shared, noise(50)])

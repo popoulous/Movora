@@ -81,7 +81,7 @@ def test_tmdb_tv_search_uses_name_fields() -> None:
 def test_tmdb_tv_fetches_episode_runtime_from_details() -> None:
     # Search omits runtime, so a details call fills episode_duration (averaged over the
     # reported runtimes) — this is what drives the within-episode progress bar.
-    responses = {
+    responses: dict[str, dict[str, Any]] = {
         "/search/tv": {
             "results": [{"id": 2290, "name": "Stargate Atlantis", "first_air_date": "2004-07-16"}]
         },
@@ -95,7 +95,7 @@ def test_tmdb_tv_fetches_episode_runtime_from_details() -> None:
 
 
 def test_tmdb_movie_fetches_runtime_from_details() -> None:
-    responses = {
+    responses: dict[str, dict[str, Any]] = {
         "/search/movie": {
             "results": [{"id": 27205, "title": "Inception", "release_date": "2010-07-15"}]
         },
@@ -109,7 +109,7 @@ def test_tmdb_movie_fetches_runtime_from_details() -> None:
 
 
 def test_tmdb_tv_fetches_episode_titles_per_season() -> None:
-    responses = {
+    responses: dict[str, dict[str, Any]] = {
         "/search/tv": {"results": [{"id": 5148, "name": "Stargate Universe"}]},
         "/tv/5148/season/1": {
             "episodes": [

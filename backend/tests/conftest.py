@@ -43,7 +43,7 @@ def _bypass_auth(monkeypatch: pytest.MonkeyPatch) -> None:
 
             def _test_user() -> User:
                 with app.state.session_factory() as session:  # type: ignore[attr-defined]
-                    user = session.scalar(select(User).order_by(User.id))
+                    user: User | None = session.scalar(select(User).order_by(User.id))
                     if user is None:
                         user = User(username="tester", password_hash="", role=UserRole.ADMIN)
                         session.add(user)
