@@ -1,14 +1,25 @@
 services:
   movora:
     build: .
+    image: movora:latest
     ports:
       - "8000:8000"
     volumes:
       - movora-data:/data
+      # Mount your media read-only; inside the app add libraries pointing at /media/...
       - ${MOVORA_MEDIA:-./media}:/media:ro
     environment:
       MOVORA_DATABASE_PATH: /data/movora.db
+      # Set these in a .env file next to this compose (compose substitutes them here).
+      MOVORA_SECRET_KEY: ${MOVORA_SECRET_KEY:-}
+      MOVORA_TMDB_API_KEY: ${MOVORA_TMDB_API_KEY:-}
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     # For QSV hardware transcode (v2), pass the render device through:
     # devices:
     #   - /dev/dri:/dev/dri
