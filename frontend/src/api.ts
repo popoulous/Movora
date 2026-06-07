@@ -230,6 +230,16 @@ export interface AuthStatus {
   user: User | null;
 }
 
+export interface SearchResult {
+  id: number;
+  title: string;
+  display_title: string | null;
+  year: number | null;
+  cover_image_url: string | null;
+  library_id: number;
+  library_kind: string;
+}
+
 export const api = {
   authStatus: (): Promise<AuthStatus> => fetch("/api/auth/status").then(asJson<AuthStatus>),
   setup: (username: string, password: string): Promise<User> =>
@@ -254,6 +264,8 @@ export const api = {
     }).then(asJson<User>),
   deleteUser: (id: number): Promise<void> =>
     fetch(`/api/auth/users/${id}`, { method: "DELETE" }).then(throwIfNotOk),
+  search: (q: string): Promise<SearchResult[]> =>
+    fetch(`/api/search?q=${encodeURIComponent(q)}`).then(asJson<SearchResult[]>),
   listLibraries: (): Promise<Library[]> => fetch("/api/libraries").then(asJson<Library[]>),
   createLibrary: (body: { path: string; name: string; kind: LibraryKind }): Promise<Library> =>
     fetch("/api/libraries", {

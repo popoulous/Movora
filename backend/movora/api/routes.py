@@ -9,7 +9,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from fastapi.responses import FileResponse, Response
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from movora import settings_store
@@ -28,6 +28,7 @@ from movora.api.schemas import (
     LibraryUpdate,
     PlaybackInfo,
     RecommendationRead,
+    SearchResult,
     SeasonRead,
     SeriesDetail,
     SeriesRead,
@@ -301,6 +302,40 @@ def _home_series(overview: SeriesOverview) -> HomeSeries:
         continue_episode_id=overview.continue_episode_id,
         normalized=overview.normalized,
     )
+
+
+@router.get("/search", response_model=list[SearchResult])
+def search(q: str, session: SessionDep) -> list[SearchResult]:
+    """Find series across all libraries by any of their titles (romaji/display/native)."""
+    query = q.strip()
+    if len(query) < 2:
+        return []
+    pattern = f"%{query}%"
+    matches = session.scalars(
+        select(Series)
+        .options(selectinload(Series.library))
+        .where(
+            or_(
+                Series.title.ilike(pattern),
+                Series.display_title.ilike(pattern),
+                Series.native_title.ilike(pattern),
+            )
+        )
+        .order_by(Series.display_title, Series.title)
+        .limit(30)
+    )
+    return [
+        SearchResult(
+            id=series.id,
+            title=series.title,
+            display_title=series.display_title,
+            year=series.year,
+            cover_image_url=series.cover_image_url,
+            library_id=series.library_id,
+            library_kind=series.library.kind.value,
+        )
+        for series in matches
+    ]
 
 
 @router.get("/series/{series_id}", response_model=SeriesDetail)

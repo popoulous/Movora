@@ -22,6 +22,10 @@ const en = {
     setupError: "Could not create the account",
     rememberNote: "Stays signed in on this device for 30 days",
   },
+  search: {
+    placeholder: "Search…",
+    noResults: "Nothing found",
+  },
   tasks: {
     title: "Tasks",
     empty: "No tasks yet. Background work shows up here.",
@@ -220,6 +224,10 @@ const hu: typeof en = {
     loginError: "Hibás felhasználónév vagy jelszó",
     setupError: "A fiók létrehozása nem sikerült",
     rememberNote: "Ezen az eszközön 30 napig bejelentkezve maradsz",
+  },
+  search: {
+    placeholder: "Keresés…",
+    noResults: "Nincs találat",
   },
   tasks: {
     title: "Folyamatok",

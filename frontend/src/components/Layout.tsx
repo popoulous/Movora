@@ -19,6 +19,7 @@ import { api, type Library, type LibraryKind, type Task } from "../api";
 import { LibrariesContext } from "../LibrariesContext";
 import { ActivityBell } from "./ActivityBell";
 import { FolderPicker } from "./FolderPicker";
+import { GlobalSearch } from "./GlobalSearch";
 import { LanguageMenu } from "./LanguageMenu";
 
 const KIND_ICON: Record<LibraryKind, LucideIcon> = {
@@ -177,6 +178,7 @@ export function Layout(): JSX.Element {
         <div className="relative flex min-w-0 flex-1 flex-col">
           <header className="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-center px-6 py-3">
             <div className="pointer-events-auto ml-auto flex items-center gap-2">
+              <GlobalSearch />
               <ActivityBell />
               <LanguageMenu />
             </div>

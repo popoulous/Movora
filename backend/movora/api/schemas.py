@@ -81,6 +81,16 @@ class SeasonRead(BaseModel):
     episodes: list[EpisodeRead]
 
 
+class SearchResult(BaseModel):
+    id: int
+    title: str
+    display_title: str | None = None
+    year: int | None = None
+    cover_image_url: str | None = None
+    library_id: int
+    library_kind: str
+
+
 class SeriesRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
