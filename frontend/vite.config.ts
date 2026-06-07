@@ -1,6 +1,7 @@
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
-import { defineConfig, type Plugin } from "vite";
+import { type Plugin } from "vite";
+import { defineConfig } from "vitest/config";
 
 // Two dev-time fixes applied while Vite transforms jassub's modules (works in dev and
 // build, and survives a node_modules reinstall):
@@ -50,5 +51,11 @@ export default defineConfig({
   },
   build: {
     outDir: "dist",
+  },
+  test: {
+    environment: "jsdom",
+    setupFiles: "./src/test-setup.ts",
+    css: false,
+    exclude: ["node_modules", "dist", "e2e"],
   },
 });
