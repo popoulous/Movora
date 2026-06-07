@@ -262,14 +262,15 @@ def enqueue_thumbnail(session: Session, library_id: int) -> None:
 
 
 def enqueue_intro(session: Session, library_id: int) -> int:
-    """Queue per-episode intro/outro detection, skipping episodes already marked and files
-    that already have an active task — so the Tasks view shows one row per episode."""
+    """Queue per-episode intro/outro detection. Detection runs ONCE per episode: episodes
+    already checked (``intro_checked``) are skipped, so a rescan never re-queues them —
+    including ones where no intro was found. One row per episode in the Tasks view."""
     queued = 0
     episodes = session.scalars(
         select(Episode)
         .join(Episode.season)
         .join(Season.series)
-        .where(Series.library_id == library_id, Episode.intro_end.is_(None))
+        .where(Series.library_id == library_id, Episode.intro_checked.is_(False))
         .options(selectinload(Episode.media_files))
     )
     for episode in episodes:
@@ -283,7 +284,7 @@ def enqueue_intro(session: Session, library_id: int) -> int:
                 Task.status.in_(_ACTIVE),
             )
         ).first()
-        if active is not None:
+        if active is not None:  # already in flight — don't double-queue
             continue
         session.add(Task(type=TaskType.INTRO, media_file_id=media_file_id))
         queued += 1
@@ -687,6 +688,7 @@ def _run_intro_task(session: Session, task: Task) -> None:
     if markers.has_any():
         episode.intro_start, episode.intro_end = markers.intro_start, markers.intro_end
         episode.outro_start, episode.outro_end = markers.outro_start, markers.outro_end
+    episode.intro_checked = True  # detection ran; never re-queue, even with nothing found
     _finish(session, task, message="marked" if markers.intro_end is not None else "no intro")
 
 

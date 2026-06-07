@@ -54,21 +54,25 @@ def test_enqueue_intro_one_task_per_unmarked_episode() -> None:
         session.flush()
         series = Series(title="S", library=library)
         season = Season(series=series, number=1)
-        done = Episode(season=season, number=1, intro_end=80.0)  # already detected -> skipped
-        todo = Episode(season=season, number=2)
+        done = Episode(season=season, number=1, intro_end=80.0, intro_checked=True)  # has intro
+        # Checked, but detection found no intro: keeps intro_end NULL yet must NOT be re-queued.
+        none_found = Episode(season=season, number=2, intro_checked=True)
+        todo = Episode(season=season, number=3)  # never checked -> the only one to queue
         session.add_all(
             [
                 series,
                 season,
                 done,
+                none_found,
                 todo,
                 MediaFile(episode=done, path="/x/e1.mkv"),
-                MediaFile(episode=todo, path="/x/e2.mkv"),
+                MediaFile(episode=none_found, path="/x/e2.mkv"),
+                MediaFile(episode=todo, path="/x/e3.mkv"),
             ]
         )
         session.commit()
 
-        # One task, for the not-yet-marked episode only.
+        # One task, for the never-checked episode only.
         assert enqueue_intro(session, library.id) == 1
         tasks = list(session.scalars(select(Task).where(Task.type == TaskType.INTRO)))
         assert len(tasks) == 1 and tasks[0].media_file_id is not None

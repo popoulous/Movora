@@ -148,6 +148,9 @@ class Episode(Base):
     intro_end: Mapped[float | None] = mapped_column(default=None)
     outro_start: Mapped[float | None] = mapped_column(default=None)
     outro_end: Mapped[float | None] = mapped_column(default=None)
+    # True once intro/outro detection has run, even if it found nothing (so a rescan never
+    # re-queues it). Distinguishes "checked, no intro" from "not checked yet".
+    intro_checked: Mapped[bool] = mapped_column(default=False)
 
     season: Mapped[Season] = relationship(back_populates="episodes")
     media_files: Mapped[list[MediaFile]] = relationship(
