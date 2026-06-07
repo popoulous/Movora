@@ -21,6 +21,7 @@ from movora.normalize import (
     cancel_transcodes,
     clean_partials,
     dedupe_tasks,
+    enqueue_intro,
     enqueue_normalize,
     requeue_interrupted,
     transcode_pids,
@@ -44,6 +45,35 @@ def _session() -> Session:
     engine = create_db_engine(":memory:")
     init_db(engine)
     return create_session_factory(engine)()
+
+
+def test_enqueue_intro_one_task_per_unmarked_episode() -> None:
+    with _session() as session:
+        library = Library(path="/x", name="x", kind=LibraryKind.SERIES)
+        session.add(library)
+        session.flush()
+        series = Series(title="S", library=library)
+        season = Season(series=series, number=1)
+        done = Episode(season=season, number=1, intro_end=80.0)  # already detected -> skipped
+        todo = Episode(season=season, number=2)
+        session.add_all(
+            [
+                series,
+                season,
+                done,
+                todo,
+                MediaFile(episode=done, path="/x/e1.mkv"),
+                MediaFile(episode=todo, path="/x/e2.mkv"),
+            ]
+        )
+        session.commit()
+
+        # One task, for the not-yet-marked episode only.
+        assert enqueue_intro(session, library.id) == 1
+        tasks = list(session.scalars(select(Task).where(Task.type == TaskType.INTRO)))
+        assert len(tasks) == 1 and tasks[0].media_file_id is not None
+        # Re-running queues nothing while that task is still active.
+        assert enqueue_intro(session, library.id) == 0
 
 
 def test_requeue_interrupted_resets_running() -> None:

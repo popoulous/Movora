@@ -34,7 +34,7 @@ from movora.encoders import detect_h264_encoder
 from movora.enrich import enrich_library
 from movora.ffprobe import probe_media
 from movora.interfaces import NormalizationPlanner
-from movora.intro import detect_season
+from movora.intro import detect_episode
 from movora.metadata import MetadataRegistry, TmdbProvider
 from movora.normalization import WEB_TARGET, RemuxFirstPlanner, needs_normalization
 from movora.scanner import scan_library
@@ -243,10 +243,34 @@ def enqueue_thumbnail(session: Session, library_id: int) -> None:
         session.commit()
 
 
-def enqueue_intro(session: Session, library_id: int) -> None:
-    if not _has_active_library_task(session, library_id, TaskType.INTRO):
-        session.add(Task(type=TaskType.INTRO, library_id=library_id))
-        session.commit()
+def enqueue_intro(session: Session, library_id: int) -> int:
+    """Queue per-episode intro/outro detection, skipping episodes already marked and files
+    that already have an active task — so the Tasks view shows one row per episode."""
+    queued = 0
+    episodes = session.scalars(
+        select(Episode)
+        .join(Episode.season)
+        .join(Season.series)
+        .where(Series.library_id == library_id, Episode.intro_end.is_(None))
+        .options(selectinload(Episode.media_files))
+    )
+    for episode in episodes:
+        if not episode.media_files:
+            continue
+        media_file_id = episode.media_files[0].id
+        active = session.scalars(
+            select(Task).where(
+                Task.type == TaskType.INTRO,
+                Task.media_file_id == media_file_id,
+                Task.status.in_(_ACTIVE),
+            )
+        ).first()
+        if active is not None:
+            continue
+        session.add(Task(type=TaskType.INTRO, media_file_id=media_file_id))
+        queued += 1
+    session.commit()
+    return queued
 
 
 def enqueue_normalize(session: Session, media_file_ids: list[int]) -> int:
@@ -595,42 +619,33 @@ def _run_thumbnail_task(session: Session, task: Task, output_dir: Path) -> None:
     _finish(session, task, message=f"{made} thumbnails")
 
 
+def _intro_neighbour(session: Session, episode: Episode) -> Path | None:
+    """A sibling episode's file (nearest by number) to fingerprint against for the intro."""
+    siblings = session.scalars(
+        select(Episode)
+        .where(Episode.season_id == episode.season_id, Episode.id != episode.id)
+        .options(selectinload(Episode.media_files))
+    )
+    with_files = [sibling for sibling in siblings if sibling.media_files]
+    if not with_files:
+        return None
+    nearest = min(with_files, key=lambda sibling: abs(sibling.number - episode.number))
+    return Path(nearest.media_files[0].path)
+
+
 def _run_intro_task(session: Session, task: Task) -> None:
-    library = task.library
-    if library is None:
-        _finish(session, task, message="library gone")
+    media_file = task.media_file
+    if media_file is None:
+        _finish(session, task, message="file gone")
         return
     _start(session, task)
-    seasons = session.scalars(
-        select(Season)
-        .join(Season.series)
-        .where(Series.library_id == library.id)
-        .options(selectinload(Season.episodes).selectinload(Episode.media_files))
-    )
-    # Detect a whole season at once (neighbours feed the fingerprint match); skip seasons
-    # already fully marked so a re-scan is cheap.
-    todo = [
-        episodes
-        for season in seasons
-        if (
-            episodes := sorted(
-                (ep for ep in season.episodes if ep.media_files), key=lambda ep: ep.number
-            )
-        )
-        and any(ep.intro_end is None for ep in episodes)
-    ]
-    progress = _counter(session, task)
-    marked = 0
-    for index, episodes in enumerate(todo, start=1):
-        progress(index, len(todo))
-        paths = [Path(episode.media_files[0].path) for episode in episodes]
-        for episode, markers in zip(episodes, detect_season(paths), strict=True):
-            if markers.has_any():
-                episode.intro_start, episode.intro_end = markers.intro_start, markers.intro_end
-                episode.outro_start, episode.outro_end = markers.outro_start, markers.outro_end
-                marked += 1
-        session.commit()
-    _finish(session, task, message=f"{marked} marked")
+    episode = media_file.episode
+    neighbour = _intro_neighbour(session, episode)
+    markers = detect_episode(Path(media_file.path), neighbour)
+    if markers.has_any():
+        episode.intro_start, episode.intro_end = markers.intro_start, markers.intro_end
+        episode.outro_start, episode.outro_end = markers.outro_start, markers.outro_end
+    _finish(session, task, message="marked" if markers.intro_end is not None else "no intro")
 
 
 def _start(session: Session, task: Task) -> None:

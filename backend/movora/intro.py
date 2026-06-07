@@ -15,6 +15,7 @@ import json
 import re
 import shutil
 import subprocess
+from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -159,25 +160,36 @@ def common_segment(
     return (best_start * sec_per_hash, (best_start + best_len) * sec_per_hash)
 
 
-def detect_season(
-    paths: list[Path], *, ffmpeg: str | None = None, ffprobe: str | None = None
-) -> list[Markers]:
-    """Markers for each episode of a season: chapters first, then a fingerprint match
-    against a neighbour for any episode whose intro the chapters did not reveal."""
+# Fingerprints are cached across calls so a season's episodes, processed one task at a
+# time, don't re-fingerprint each other as neighbours. The light worker is single-threaded.
+_fp_cache: OrderedDict[str, np.ndarray] = OrderedDict()
+_FP_CACHE_MAX = 40
+
+
+def _fingerprint_cached(path: Path, ffmpeg: str | None) -> np.ndarray:
+    key = str(path)
+    cached = _fp_cache.get(key)
+    if cached is not None:
+        _fp_cache.move_to_end(key)
+        return cached
+    value = fingerprint(path, ffmpeg)
+    _fp_cache[key] = value
+    while len(_fp_cache) > _FP_CACHE_MAX:
+        _fp_cache.popitem(last=False)
+    return value
+
+
+def detect_episode(
+    path: Path, neighbour: Path | None, *, ffmpeg: str | None = None, ffprobe: str | None = None
+) -> Markers:
+    """Markers for one episode: named chapters first, then a Chromaprint match against the
+    given neighbour for the intro if the chapters didn't reveal one (outro stays chapter-only)."""
     ffmpeg = ffmpeg or shutil.which("ffmpeg")
-    markers = [chapters_markers(path, ffprobe) for path in paths]
-    needs_fp = [index for index, marker in enumerate(markers) if marker.intro_end is None]
-    if len(paths) >= 2 and needs_fp:
-        cache: dict[int, np.ndarray] = {}
-
-        def fp(index: int) -> np.ndarray:
-            if index not in cache:
-                cache[index] = fingerprint(paths[index], ffmpeg)
-            return cache[index]
-
-        for index in needs_fp:
-            neighbour = index + 1 if index + 1 < len(paths) else index - 1
-            segment = common_segment(fp(index), fp(neighbour))
-            if segment is not None:
-                markers[index].intro_start, markers[index].intro_end = segment
+    markers = chapters_markers(path, ffprobe)
+    if markers.intro_end is None and neighbour is not None:
+        segment = common_segment(
+            _fingerprint_cached(path, ffmpeg), _fingerprint_cached(neighbour, ffmpeg)
+        )
+        if segment is not None:
+            markers.intro_start, markers.intro_end = segment
     return markers

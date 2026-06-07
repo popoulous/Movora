@@ -237,7 +237,7 @@ export function TasksPage(): JSX.Element {
             defaultOpen={inProgress(typeTasks)}
             cancelIds={activeIds(typeTasks)}
           >
-            {typeTasks[0].type === "normalize" ? (
+            {typeTasks[0].type === "normalize" || typeTasks[0].type === "intro" ? (
               byQueue(groupBy(typeTasks, (task) => task.series_id ?? 0)).map((seriesTasks) => (
                 <SeriesGroup key={seriesTasks[0].series_id ?? 0} tasks={seriesTasks} />
               ))
