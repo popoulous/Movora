@@ -454,7 +454,7 @@ export function PlayerPage(): JSX.Element {
         {playback.episode_title ?? (isSeries ? t("series.episode", { number: epLabel }) : playback.series_title)}
       </h1>
 
-      <div className="mt-4 space-y-5">
+      <div className="mt-4 max-w-[1600px] space-y-5">
         <div className="space-y-4">
           {!playback.direct_play && (
             <div className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">

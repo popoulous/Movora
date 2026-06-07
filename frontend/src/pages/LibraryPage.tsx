@@ -191,7 +191,7 @@ export function LibraryPage(): JSX.Element {
         <div className="mt-6 space-y-8">
           {continueList.length > 0 && (
             <Section title={t("library.continueWatching")}>
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-4 sm:grid-cols-[repeat(auto-fill,minmax(210px,1fr))]">
                 {continueList.map((s) => (
                   <ContinueCard key={s.id} series={s} onClick={() => resume(s)} t={t} />
                 ))}
@@ -333,7 +333,7 @@ function Grid({
     );
   }
   return (
-    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+    <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-4 sm:grid-cols-[repeat(auto-fill,minmax(210px,1fr))]">
       {items.map((s) => (
         <SeriesCard key={s.id} series={s} onClick={() => onOpen(s)} t={t} />
       ))}
