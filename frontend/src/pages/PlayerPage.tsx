@@ -615,8 +615,23 @@ function EpisodeBrowser({
   const season = ordered.find((entry) => entry.number === selected) ?? ordered[0];
   const episodes = season ? [...season.episodes].sort((a, b) => a.number - b.number) : [];
 
-  // Click-and-drag horizontal scrolling for mouse users (touch uses native scroll).
+  // Center the playing episode in the strip so it never has to be hunted for.
   const scrollRef = useRef<HTMLDivElement>(null);
+  const activeRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const container = scrollRef.current;
+    if (container === null) return;
+    const card = activeRef.current;
+    if (card === null) {
+      container.scrollLeft = 0; // a season without the playing episode starts at the front
+      return;
+    }
+    const cRect = container.getBoundingClientRect();
+    const kRect = card.getBoundingClientRect();
+    container.scrollLeft += kRect.left - cRect.left - (container.clientWidth - card.clientWidth) / 2;
+  }, [currentId, selected]);
+
+  // Click-and-drag horizontal scrolling for mouse users (touch uses native scroll).
   const drag = useRef({ active: false, startX: 0, startScroll: 0, moved: false });
   const onPointerDown = (event: ReactPointerEvent): void => {
     if (event.pointerType !== "mouse" || scrollRef.current === null) return;
@@ -681,6 +696,7 @@ function EpisodeBrowser({
           return (
             <button
               key={episode.id}
+              ref={current ? activeRef : null}
               onClick={() => navigate(`/watch/${episode.id}`)}
               className="group w-44 shrink-0 text-left sm:w-48"
             >
