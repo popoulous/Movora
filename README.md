@@ -11,12 +11,15 @@ into a universally Direct-Play-able form — playback stays light. Where mainstr
 servers struggle with anime (messy file names, absolute numbering, heavily typeset
 ASS subtitles), Movora is built for it.
 
-<!-- Replace these with real captures. -->
-![Library](docs/screenshots/library.png)
+![Movora home](docs/screenshots/home.png)
 
-| Player (soft ASS + skip intro) | Series detail | Background tasks |
-| --- | --- | --- |
-| ![Player](docs/screenshots/player.png) | ![Detail](docs/screenshots/detail.png) | ![Tasks](docs/screenshots/tasks.png) |
+| Player — soft subtitles, skip-intro, episode browser | Series detail |
+| :--: | :--: |
+| ![Player](docs/screenshots/player.png) | ![Series detail](docs/screenshots/detail.png) |
+| **Library** | **Background processing** |
+| ![Library](docs/screenshots/library.png) | ![Tasks](docs/screenshots/tasks.png) |
+| **Settings — automation, intro detection & users** | **Profile** |
+| ![Settings](docs/screenshots/settings.png) | ![Profile](docs/screenshots/account.png) |
 
 ## Features
 
