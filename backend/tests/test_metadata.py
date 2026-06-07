@@ -46,6 +46,37 @@ def test_anilist_maps_a_match() -> None:
     assert meta.description == "A certain scientific tale."
 
 
+def test_anilist_fetches_episode_titles_from_jikan() -> None:
+    media: dict[str, Any] = {
+        "data": {
+            "Page": {
+                "media": [
+                    {"id": 11061, "idMal": 11061, "title": {"romaji": "Hunter x Hunter"}}
+                ]
+            }
+        }
+    }
+    pages = {
+        1: {
+            "data": [{"mal_id": 1, "title": "Departure"}, {"mal_id": 2, "title": "Test"}],
+            "pagination": {"has_next_page": True},
+        },
+        2: {"data": [{"mal_id": 3, "title": "Rivals"}], "pagination": {"has_next_page": False}},
+    }
+    provider = AniListProvider(
+        transport=lambda query, variables: media,
+        episodes_transport=lambda mal_id, page: pages[page],
+    )
+    meta = provider.fetch(ParsedFields(title="Hunter x Hunter"))
+
+    assert meta is not None
+    assert {(e.season_number, e.number): e.title for e in meta.episodes} == {
+        (1, 1): "Departure",
+        (1, 2): "Test",
+        (1, 3): "Rivals",
+    }
+
+
 def test_anilist_returns_none_for_no_match() -> None:
     provider = AniListProvider(transport=lambda query, variables: {"data": {"Page": {"media": []}}})
     assert provider.fetch(ParsedFields(title="zzzzzzzz")) is None

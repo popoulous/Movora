@@ -11,15 +11,17 @@ from typing import Any
 
 import httpx
 
-from movora.domain import ParsedFields, Recommendation, SeriesMetadata
+from movora.domain import EpisodeMetadata, ParsedFields, Recommendation, SeriesMetadata
 
 ANILIST_URL = "https://graphql.anilist.co"
+JIKAN_URL = "https://api.jikan.moe/v4"  # MyAnimeList data — AniList has no per-episode titles
 
 _SEARCH_QUERY = """
 query ($search: String) {
   Page(perPage: 1) {
     media(search: $search, type: ANIME) {
       id
+      idMal
       title { romaji english native }
       episodes
       seasonYear
@@ -47,6 +49,7 @@ query ($search: String) {
 """
 
 Transport = Callable[[str, dict[str, object]], dict[str, Any]]
+EpisodeTransport = Callable[[int, int], dict[str, Any]]  # (mal_id, page) -> Jikan response
 
 
 def _httpx_transport(query: str, variables: dict[str, object]) -> dict[str, Any]:
@@ -58,13 +61,25 @@ def _httpx_transport(query: str, variables: dict[str, object]) -> dict[str, Any]
     return data
 
 
+def _jikan_episodes_transport(mal_id: int, page: int) -> dict[str, Any]:
+    url = f"{JIKAN_URL}/anime/{mal_id}/episodes"
+    response = httpx.get(url, params={"page": page}, timeout=10.0)
+    response.raise_for_status()
+    data: dict[str, Any] = response.json()
+    return data
+
+
 def _collapse_leading_particle(title: str) -> str:
     # Fansubs often split a leading particle that AniList writes as one word
     # ("To Aru" -> "Toaru", "Re Zero" -> "ReZero"); joining it lets the search match.
     return re.sub(r"\b([A-Za-z]{2,3})\s+([A-Za-z])", r"\1\2", title, count=1)
 
 
-def _to_metadata(media: dict[str, Any], fallback_title: str) -> SeriesMetadata:
+def _to_metadata(
+    media: dict[str, Any],
+    fallback_title: str,
+    episodes: tuple[EpisodeMetadata, ...] = (),
+) -> SeriesMetadata:
     names = media.get("title") or {}
     cover = media.get("coverImage") or {}
     genres = media.get("genres") or []
@@ -84,6 +99,7 @@ def _to_metadata(media: dict[str, Any], fallback_title: str) -> SeriesMetadata:
         episode_duration=media.get("duration"),
         end_year=(media.get("endDate") or {}).get("year"),
         recommendations=_parse_recommendations(media),
+        episodes=episodes,
     )
 
 
@@ -111,8 +127,13 @@ def _parse_recommendations(media: dict[str, Any]) -> tuple[Recommendation, ...]:
 
 
 class AniListProvider:
-    def __init__(self, transport: Transport | None = None) -> None:
+    def __init__(
+        self,
+        transport: Transport | None = None,
+        episodes_transport: EpisodeTransport | None = None,
+    ) -> None:
         self._transport = transport or _httpx_transport
+        self._episodes_transport = episodes_transport or _jikan_episodes_transport
 
     def fetch(self, parsed: ParsedFields) -> SeriesMetadata | None:
         if not parsed.title:
@@ -124,8 +145,35 @@ class AniListProvider:
             seen.add(candidate)
             media = self._search(candidate)
             if media is not None:
-                return _to_metadata(media, parsed.title)
+                return _to_metadata(media, parsed.title, self._episodes(media.get("idMal")))
         return None
+
+    def _episodes(self, mal_id: Any) -> tuple[EpisodeMetadata, ...]:
+        """Per-episode titles from MyAnimeList via Jikan (AniList has none). The matched anime
+        maps to the series' season 1; other folder-seasons keep their file titles. Degrades
+        gracefully: if Jikan is unavailable/rate-limited, return whatever was collected."""
+        if mal_id is None:
+            return ()
+        episodes: list[EpisodeMetadata] = []
+        page = 1
+        while page <= 50:  # safety cap (~5000 episodes)
+            try:
+                payload = self._episodes_transport(int(mal_id), page)
+            except httpx.HTTPError:
+                break
+            for ep in payload.get("data") or []:
+                number = ep.get("mal_id")
+                if number is None:
+                    continue
+                episodes.append(
+                    EpisodeMetadata(
+                        season_number=1, number=int(number), title=ep.get("title") or None
+                    )
+                )
+            if not (payload.get("pagination") or {}).get("has_next_page"):
+                break
+            page += 1
+        return tuple(episodes)
 
     def _search(self, title: str) -> dict[str, Any] | None:
         payload = self._transport(_SEARCH_QUERY, {"search": title})
