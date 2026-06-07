@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -13,7 +14,7 @@ from movora import __version__
 from movora.api.auth_routes import router as auth_router
 from movora.api.deps import get_current_user
 from movora.api.routes import router
-from movora.config import Settings, get_settings
+from movora.config import INSECURE_SECRET_KEY, Settings, get_settings
 from movora.db.base import create_db_engine, create_session_factory, init_db
 from movora.metadata import AniListProvider, MetadataRegistry, TmdbProvider
 from movora.normalize import (
@@ -26,6 +27,10 @@ from movora.normalize import (
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
+    if settings.secret_key == INSECURE_SECRET_KEY:
+        logging.getLogger("movora").warning(
+            "MOVORA_SECRET_KEY is the insecure default — set it before exposing Movora."
+        )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
