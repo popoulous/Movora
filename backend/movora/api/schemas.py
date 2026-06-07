@@ -16,6 +16,11 @@ class UserRead(BaseModel):
     username: str
     role: UserRole
     preferred_language: str | None = None
+    library_ids: list[int] = []
+
+
+class LibraryAccessUpdate(BaseModel):
+    library_ids: list[int]
 
 
 class LoginRequest(BaseModel):

@@ -5,10 +5,18 @@ from __future__ import annotations
 import enum
 from datetime import datetime
 
-from sqlalchemy import ForeignKey, UniqueConstraint, func
+from sqlalchemy import Column, ForeignKey, Table, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from movora.db.base import Base
+
+# Which libraries a (non-admin) user may see. Admins ignore this and see everything.
+user_library = Table(
+    "user_library",
+    Base.metadata,
+    Column("user_id", ForeignKey("user.id", ondelete="CASCADE"), primary_key=True),
+    Column("library_id", ForeignKey("library.id", ondelete="CASCADE"), primary_key=True),
+)
 
 
 class LibraryKind(str, enum.Enum):
@@ -214,6 +222,11 @@ class User(Base):
     watch_states: Mapped[list[WatchState]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
+    libraries: Mapped[list[Library]] = relationship(secondary=user_library)
+
+    @property
+    def library_ids(self) -> list[int]:
+        return [library.id for library in self.libraries]
 
 
 class WatchState(Base):

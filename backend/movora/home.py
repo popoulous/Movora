@@ -10,6 +10,7 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from movora.access import accessible_library_ids
 from movora.db.models import Episode, Season, Series, User, WatchState
 from movora.watch import pick_continue_episode
 
@@ -46,7 +47,9 @@ class HomeOverview:
 def home_overview(session: Session, user: User) -> HomeOverview:
     series_list = list(
         session.scalars(
-            select(Series).options(
+            select(Series)
+            .where(Series.library_id.in_(accessible_library_ids(session, user)))
+            .options(
                 selectinload(Series.seasons)
                 .selectinload(Season.episodes)
                 .selectinload(Episode.media_files)

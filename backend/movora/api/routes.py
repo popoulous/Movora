@@ -13,7 +13,8 @@ from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from movora import settings_store
-from movora.api.deps import CurrentUserDep, SessionDep
+from movora.access import accessible_library_ids, can_access_library
+from movora.api.deps import AdminDep, CurrentUserDep, SessionDep
 from movora.api.schemas import (
     CharacterRead,
     CollectionRead,
@@ -84,9 +85,25 @@ from movora.watch import (
 router = APIRouter(prefix="/api")
 
 
+def _require_library_access(user: User, library_id: int) -> None:
+    if not can_access_library(user, library_id):
+        raise HTTPException(status_code=403, detail="no access to this library")
+
+
+def _require_episode_access(session: Session, user: User, episode_id: int) -> None:
+    # A missing episode is left to the endpoint's own 404; only block real-but-forbidden ones.
+    episode = session.get(Episode, episode_id)
+    if episode is not None and not can_access_library(user, episode.season.series.library_id):
+        raise HTTPException(status_code=403, detail="no access to this episode")
+
+
 @router.post("/libraries", response_model=LibraryRead, status_code=201)
 def create_library(
-    payload: LibraryCreate, session: SessionDep, request: Request, background: BackgroundTasks
+    payload: LibraryCreate,
+    session: SessionDep,
+    request: Request,
+    background: BackgroundTasks,
+    admin: AdminDep,
 ) -> Library:
     if session.scalar(select(Library).where(Library.path == payload.path)) is not None:
         raise HTTPException(status_code=409, detail="a library with this path already exists")
@@ -101,12 +118,15 @@ def create_library(
 
 
 @router.get("/libraries", response_model=list[LibraryRead])
-def list_libraries(session: SessionDep) -> list[Library]:
-    return list(session.scalars(select(Library)))
+def list_libraries(session: SessionDep, user: CurrentUserDep) -> list[Library]:
+    allowed = accessible_library_ids(session, user)
+    return list(session.scalars(select(Library).where(Library.id.in_(allowed))))
 
 
 @router.patch("/libraries/{library_id}", response_model=LibraryRead)
-def update_library(library_id: int, payload: LibraryUpdate, session: SessionDep) -> Library:
+def update_library(
+    library_id: int, payload: LibraryUpdate, session: SessionDep, admin: AdminDep
+) -> Library:
     library = session.get(Library, library_id)
     if library is None:
         raise HTTPException(status_code=404, detail="library not found")
@@ -120,7 +140,9 @@ def update_library(library_id: int, payload: LibraryUpdate, session: SessionDep)
 
 
 @router.delete("/libraries/{library_id}", status_code=204)
-def delete_library(library_id: int, session: SessionDep, request: Request) -> None:
+def delete_library(
+    library_id: int, session: SessionDep, request: Request, admin: AdminDep
+) -> None:
     library = session.get(Library, library_id)
     if library is None:
         raise HTTPException(status_code=404, detail="library not found")
@@ -162,7 +184,11 @@ def _unlink_quiet(path: Path) -> None:
 
 @router.post("/libraries/{library_id}/scan", status_code=202)
 def scan(
-    library_id: int, session: SessionDep, request: Request, background: BackgroundTasks
+    library_id: int,
+    session: SessionDep,
+    request: Request,
+    background: BackgroundTasks,
+    admin: AdminDep,
 ) -> dict[str, str]:
     if session.get(Library, library_id) is None:
         raise HTTPException(status_code=404, detail="library not found")
@@ -173,7 +199,11 @@ def scan(
 
 @router.post("/libraries/{library_id}/enrich", status_code=202)
 def enrich(
-    library_id: int, session: SessionDep, request: Request, background: BackgroundTasks
+    library_id: int,
+    session: SessionDep,
+    request: Request,
+    background: BackgroundTasks,
+    admin: AdminDep,
 ) -> dict[str, str]:
     if session.get(Library, library_id) is None:
         raise HTTPException(status_code=404, detail="library not found")
@@ -190,6 +220,7 @@ def enrich(
 
 @router.get("/libraries/{library_id}/series", response_model=list[SeriesRead])
 def list_series(library_id: int, session: SessionDep, user: CurrentUserDep) -> list[SeriesRead]:
+    _require_library_access(user, library_id)
     series_list = list(
         session.scalars(
             select(Series)
@@ -305,8 +336,8 @@ def _home_series(overview: SeriesOverview) -> HomeSeries:
 
 
 @router.get("/search", response_model=list[SearchResult])
-def search(q: str, session: SessionDep) -> list[SearchResult]:
-    """Find series across all libraries by any of their titles (romaji/display/native)."""
+def search(q: str, session: SessionDep, user: CurrentUserDep) -> list[SearchResult]:
+    """Find series in the user's libraries by any of their titles (romaji/display/native)."""
     query = q.strip()
     if len(query) < 2:
         return []
@@ -315,11 +346,12 @@ def search(q: str, session: SessionDep) -> list[SearchResult]:
         select(Series)
         .options(selectinload(Series.library))
         .where(
+            Series.library_id.in_(accessible_library_ids(session, user)),
             or_(
                 Series.title.ilike(pattern),
                 Series.display_title.ilike(pattern),
                 Series.native_title.ilike(pattern),
-            )
+            ),
         )
         .order_by(Series.display_title, Series.title)
         .limit(30)
@@ -352,6 +384,7 @@ def series_detail(series_id: int, session: SessionDep, user: CurrentUserDep) -> 
     )
     if series is None:
         raise HTTPException(status_code=404, detail="series not found")
+    _require_library_access(user, series.library_id)
     return _series_detail(session, series, user)
 
 
@@ -462,6 +495,7 @@ def _recommendations(session: Session, series: Series) -> list[RecommendationRea
 def episode_playback(
     episode_id: int, session: SessionDep, request: Request, user: CurrentUserDep
 ) -> PlaybackInfo:
+    _require_episode_access(session, user, episode_id)
     media_file = _episode_media_file(session, episode_id)
     episode = media_file.episode
     season = episode.season
@@ -498,6 +532,7 @@ def update_watch_state(
 ) -> Response:
     if session.get(Episode, episode_id) is None:
         raise HTTPException(status_code=404, detail="episode not found")
+    _require_episode_access(session, user, episode_id)
     record_watch(
         session,
         user,
@@ -509,7 +544,8 @@ def update_watch_state(
 
 
 @router.get("/episodes/{episode_id}/stream")
-def stream_episode(episode_id: int, session: SessionDep) -> FileResponse:
+def stream_episode(episode_id: int, session: SessionDep, user: CurrentUserDep) -> FileResponse:
+    _require_episode_access(session, user, episode_id)
     media_file = _episode_media_file(session, episode_id)
     path, media_type, _ = _playback_source(media_file)
     if not path.is_file():
@@ -519,7 +555,10 @@ def stream_episode(episode_id: int, session: SessionDep) -> FileResponse:
 
 
 @router.get("/episodes/{episode_id}/thumbnail")
-def episode_thumbnail(episode_id: int, session: SessionDep) -> FileResponse:
+def episode_thumbnail(
+    episode_id: int, session: SessionDep, user: CurrentUserDep
+) -> FileResponse:
+    _require_episode_access(session, user, episode_id)
     episode = session.get(Episode, episode_id)
     if episode is None or episode.thumbnail_path is None:
         raise HTTPException(status_code=404, detail="no thumbnail")
@@ -531,8 +570,13 @@ def episode_thumbnail(episode_id: int, session: SessionDep) -> FileResponse:
 
 @router.post("/episodes/{episode_id}/normalize", status_code=202)
 def normalize_episode(
-    episode_id: int, session: SessionDep, request: Request, background: BackgroundTasks
+    episode_id: int,
+    session: SessionDep,
+    request: Request,
+    background: BackgroundTasks,
+    user: CurrentUserDep,
 ) -> dict[str, str]:
+    _require_episode_access(session, user, episode_id)
     media_file = _episode_media_file(session, episode_id)
     enqueue_normalize(session, [media_file.id])
     _run_worker(request, background)
@@ -541,11 +585,17 @@ def normalize_episode(
 
 @router.post("/series/{series_id}/normalize", status_code=202)
 def normalize_series(
-    series_id: int, session: SessionDep, request: Request, background: BackgroundTasks
+    series_id: int,
+    session: SessionDep,
+    request: Request,
+    background: BackgroundTasks,
+    user: CurrentUserDep,
 ) -> dict[str, str]:
     """Queue every file of a series that still needs optimizing (background)."""
-    if session.get(Series, series_id) is None:
+    series = session.get(Series, series_id)
+    if series is None:
         raise HTTPException(status_code=404, detail="series not found")
+    _require_library_access(user, series.library_id)
     media_ids = list(
         session.scalars(
             select(MediaFile.id)
@@ -561,7 +611,7 @@ def normalize_series(
 
 @router.post("/normalize/all", status_code=202)
 def normalize_all(
-    session: SessionDep, request: Request, background: BackgroundTasks
+    session: SessionDep, request: Request, background: BackgroundTasks, admin: AdminDep
 ) -> dict[str, str]:
     """Queue every file in the library that still needs optimizing (background)."""
     enqueue_normalize(session, list(session.scalars(select(MediaFile.id))))
@@ -571,7 +621,7 @@ def normalize_all(
 
 @router.post("/intro/detect", status_code=202)
 def detect_intros(
-    session: SessionDep, request: Request, background: BackgroundTasks
+    session: SessionDep, request: Request, background: BackgroundTasks, admin: AdminDep
 ) -> dict[str, str]:
     """Queue intro/outro detection for every library (background), independent of scan."""
     for library_id in session.scalars(select(Library.id)):
@@ -610,8 +660,9 @@ def _playback_source(media_file: MediaFile) -> tuple[Path, str, bool]:
 
 @router.get("/episodes/{episode_id}/subtitles")
 def episode_subtitle(
-    episode_id: int, track: str, session: SessionDep, request: Request
+    episode_id: int, track: str, session: SessionDep, request: Request, user: CurrentUserDep
 ) -> Response:
+    _require_episode_access(session, user, episode_id)
     media_file = _episode_media_file(session, episode_id)
     try:
         content, fmt = load_subtitle(_subtitle_base(media_file, request), track)
@@ -628,8 +679,9 @@ def episode_subtitle(
 
 @router.get("/episodes/{episode_id}/fonts/{name}")
 def episode_font(
-    episode_id: int, name: str, session: SessionDep, request: Request
+    episode_id: int, name: str, session: SessionDep, request: Request, user: CurrentUserDep
 ) -> FileResponse:
+    _require_episode_access(session, user, episode_id)
     media_file = _episode_media_file(session, episode_id)
     assets = _assets_dir(request, media_file.id).resolve()
     path = (assets / name).resolve()
@@ -793,7 +845,11 @@ def get_settings(session: SessionDep) -> SettingsRead:
 
 @router.patch("/settings", response_model=SettingsRead)
 def update_settings(
-    payload: SettingsUpdate, session: SessionDep, request: Request, background: BackgroundTasks
+    payload: SettingsUpdate,
+    session: SessionDep,
+    request: Request,
+    background: BackgroundTasks,
+    admin: AdminDep,
 ) -> SettingsRead:
     if payload.auto_normalize is not None:
         settings_store.set_bool(session, settings_store.AUTO_NORMALIZE, payload.auto_normalize)

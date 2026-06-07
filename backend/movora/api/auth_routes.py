@@ -12,13 +12,14 @@ from sqlalchemy import select
 from movora.api.deps import AUTH_COOKIE, AdminDep, CurrentUserDep, SessionDep
 from movora.api.schemas import (
     AuthStatus,
+    LibraryAccessUpdate,
     LoginRequest,
     PreferencesUpdate,
     UserCreate,
     UserRead,
 )
 from movora.auth import hash_password, issue_token, read_token, verify_password
-from movora.db.models import User, UserRole
+from movora.db.models import Library, User, UserRole
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -110,6 +111,20 @@ def create_user(payload: UserCreate, admin: AdminDep, session: SessionDep) -> Us
         role=payload.role,
     )
     session.add(user)
+    session.commit()
+    return user
+
+
+@router.put("/users/{user_id}/libraries", response_model=UserRead)
+def set_user_libraries(
+    user_id: int, payload: LibraryAccessUpdate, admin: AdminDep, session: SessionDep
+) -> User:
+    user = session.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="user not found")
+    user.libraries = list(
+        session.scalars(select(Library).where(Library.id.in_(payload.library_ids)))
+    )
     session.commit()
     return user
 
