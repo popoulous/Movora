@@ -333,7 +333,7 @@ function Grid({
     );
   }
   return (
-    <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-4 sm:grid-cols-[repeat(auto-fill,minmax(210px,1fr))]">
+    <div className="grid grid-cols-[repeat(auto-fill,minmax(144px,1fr))] gap-4">
       {items.map((s) => (
         <SeriesCard key={s.id} series={s} onClick={() => onOpen(s)} t={t} />
       ))}
