@@ -4,7 +4,7 @@ import fallbackFontUrl from "@fontsource/noto-sans/files/noto-sans-latin-400-nor
 import fallbackFontExtUrl from "@fontsource/noto-sans/files/noto-sans-latin-ext-400-normal.woff2?url";
 import { type TFunction } from "i18next";
 import JASSUB from "jassub";
-import { Check, Play, SkipForward, Star } from "lucide-react";
+import { Check, ChevronLeft, Play, SkipForward } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
@@ -240,7 +240,6 @@ export function PlayerPage(): JSX.Element {
     playback.episode_end_number !== null
       ? `${playback.episode_number}–${playback.episode_end_number}`
       : String(playback.episode_number);
-  const score = playback.score !== null ? (playback.score / 10).toFixed(1) : null;
   const artwork = playback.banner_image_url ?? playback.cover_image_url;
 
   return (
@@ -252,22 +251,22 @@ export function PlayerPage(): JSX.Element {
         />
       )}
 
-      {/* Info bar */}
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+      {/* Breadcrumb: back to the series, then season · episode (no series rating here) */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-neutral-400">
         <button
           onClick={() => navigate(`/series/${playback.series_id}`)}
-          className="text-sm text-neutral-400 transition hover:text-white"
+          className="-ml-1 inline-flex items-center gap-0.5 font-medium text-neutral-300 transition hover:text-white"
         >
-          ◂ {playback.series_title}
+          <ChevronLeft className="h-4 w-4" />
+          {playback.series_title}
         </button>
-        {isSeries && <span className="text-sm text-violet-300">{seasonPart}</span>}
         {isSeries && (
-          <span className="text-sm text-neutral-400">{t("series.episode", { number: epLabel })}</span>
-        )}
-        {score !== null && (
-          <span className="inline-flex items-center gap-1 text-sm text-amber-300">
-            <Star className="h-3.5 w-3.5 fill-current" /> {score}
-          </span>
+          <>
+            <span className="text-neutral-600">·</span>
+            <span className="text-violet-300">{seasonPart}</span>
+            <span className="text-neutral-600">·</span>
+            <span>{t("series.episode", { number: epLabel })}</span>
+          </>
         )}
       </div>
       <h1 className="mt-1 text-xl font-bold tracking-tight">
