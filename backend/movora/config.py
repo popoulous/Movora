@@ -8,10 +8,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 INSECURE_SECRET_KEY = "dev-insecure-change-me"  # the default; warn if still used in production
 
+# One .env at the repo root (used by both dev and the Docker template), resolved from this
+# file's location so it's found no matter the working directory the backend is started from.
+_ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_prefix="MOVORA_", env_file=".env", extra="ignore"
+        env_prefix="MOVORA_", env_file=str(_ENV_FILE), extra="ignore"
     )
 
     app_name: str = "Movora"
