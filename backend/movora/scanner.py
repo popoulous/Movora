@@ -123,7 +123,11 @@ def _migrate_watch_state(session: Session, old_episode_id: int, new_episode_id: 
 
 
 def _prune_empty(session: Session, library_id: int) -> None:
-    """Delete episodes/seasons/series left empty after a reconcile (cascade handles children)."""
+    """Delete episodes/seasons/series left empty after a reconcile, bottom-up.
+
+    expire_all() after each level refreshes the parents' stale child collections, so the
+    next level's delete-orphan cascade doesn't try to re-delete an already-deleted row.
+    """
     for episode in session.scalars(
         select(Episode)
         .join(Season)
@@ -132,11 +136,13 @@ def _prune_empty(session: Session, library_id: int) -> None:
     ):
         session.delete(episode)
     session.flush()
+    session.expire_all()
     for season in session.scalars(
         select(Season).join(Series).where(Series.library_id == library_id, ~Season.episodes.any())
     ):
         session.delete(season)
     session.flush()
+    session.expire_all()
     for series in session.scalars(
         select(Series).where(Series.library_id == library_id, ~Series.seasons.any())
     ):

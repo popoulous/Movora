@@ -208,6 +208,29 @@ def test_rescan_migrates_watch_state_to_new_episode(tmp_path: Path) -> None:
         assert session.scalar(select(Episode).where(Episode.number == 99)) is None
 
 
+def test_rescan_prunes_episode_carrying_watch_state(tmp_path: Path) -> None:
+    # A file-less episode that still has watch progress (a leftover after a show was
+    # re-identified) must prune cleanly; the episode_id foreign key used to fail the delete.
+    engine = create_db_engine(":memory:")
+    init_db(engine)
+    factory = create_session_factory(engine)
+    with factory() as session:
+        library = Library(path=str(tmp_path), name="A", kind=LibraryKind.SERIES)
+        session.add(library)
+        session.flush()
+        series = Series(title="Leftover", library=library)
+        season = Season(series=series, number=1)
+        episode = Episode(season=season, number=1)
+        session.add_all([series, season, episode])
+        session.commit()
+        record_watch(session, current_user(session), episode.id, position_seconds=50.0)
+
+        # The library has no files on disk, so the orphan episode (and its watch state) prune.
+        scan_library(session, library, title_prober=lambda path: None)
+        assert session.scalar(select(Episode)) is None
+        assert session.scalar(select(WatchState)) is None
+
+
 def test_scan_movie_title_cleaned_by_guessit(tmp_path: Path) -> None:
     # Film/series scene folders ("Title.Year.Extended.2160p…") clean better with guessit
     # than the anime heuristic, which would leave "Gladiator.2000.Extended".

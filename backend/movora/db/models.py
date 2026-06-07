@@ -117,6 +117,9 @@ class Episode(Base):
     media_files: Mapped[list[MediaFile]] = relationship(
         back_populates="episode", cascade="all, delete-orphan"
     )
+    # Pruning an episode (e.g. a leftover after a show is re-identified) must take its watch
+    # progress with it, or the delete fails the watch_state -> episode foreign key.
+    watch_states: Mapped[list[WatchState]] = relationship(cascade="all, delete-orphan")
 
 
 class MediaFile(Base):
