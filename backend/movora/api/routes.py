@@ -13,7 +13,7 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session, selectinload
 
 from movora import settings_store
-from movora.api.deps import SessionDep
+from movora.api.deps import CurrentUserDep, SessionDep
 from movora.api.schemas import (
     CharacterRead,
     CollectionRead,
@@ -48,6 +48,7 @@ from movora.db.models import (
     Series,
     Task,
     TaskType,
+    User,
     WatchState,
 )
 from movora.domain import CapabilityProfile
@@ -72,7 +73,6 @@ from movora.subtitles import (
     srt_to_vtt,
 )
 from movora.watch import (
-    current_user,
     pick_continue_episode,
     record_watch,
     resume_position,
@@ -188,7 +188,7 @@ def enrich(
 
 
 @router.get("/libraries/{library_id}/series", response_model=list[SeriesRead])
-def list_series(library_id: int, session: SessionDep) -> list[SeriesRead]:
+def list_series(library_id: int, session: SessionDep, user: CurrentUserDep) -> list[SeriesRead]:
     series_list = list(
         session.scalars(
             select(Series)
@@ -200,7 +200,6 @@ def list_series(library_id: int, session: SessionDep) -> list[SeriesRead]:
             )
         )
     )
-    user = current_user(session)
     states = {
         state.episode_id: state
         for state in session.scalars(select(WatchState).where(WatchState.user_id == user.id))
@@ -263,8 +262,8 @@ def _series_summary(series: Series, states: dict[int, WatchState]) -> SeriesRead
 
 
 @router.get("/home", response_model=HomeData)
-def home(session: SessionDep) -> HomeData:
-    overview = home_overview(session, current_user(session))
+def home(session: SessionDep, user: CurrentUserDep) -> HomeData:
+    overview = home_overview(session, user)
     return HomeData(
         hero=_home_series(overview.hero) if overview.hero else None,
         continue_watching=[_home_series(o) for o in overview.continue_watching],
@@ -305,7 +304,7 @@ def _home_series(overview: SeriesOverview) -> HomeSeries:
 
 
 @router.get("/series/{series_id}", response_model=SeriesDetail)
-def series_detail(series_id: int, session: SessionDep) -> SeriesDetail:
+def series_detail(series_id: int, session: SessionDep, user: CurrentUserDep) -> SeriesDetail:
     series = session.scalar(
         select(Series)
         .where(Series.id == series_id)
@@ -318,11 +317,10 @@ def series_detail(series_id: int, session: SessionDep) -> SeriesDetail:
     )
     if series is None:
         raise HTTPException(status_code=404, detail="series not found")
-    return _series_detail(session, series)
+    return _series_detail(session, series, user)
 
 
-def _series_detail(session: Session, series: Series) -> SeriesDetail:
-    user = current_user(session)
+def _series_detail(session: Session, series: Series, user: User) -> SeriesDetail:
     episode_ids = [episode.id for season in series.seasons for episode in season.episodes]
     watched = watched_episode_ids(session, user, episode_ids)
     summary = series_watch_summary(session, user, series)
@@ -426,7 +424,9 @@ def _recommendations(session: Session, series: Series) -> list[RecommendationRea
 
 
 @router.get("/episodes/{episode_id}/playback", response_model=PlaybackInfo)
-def episode_playback(episode_id: int, session: SessionDep, request: Request) -> PlaybackInfo:
+def episode_playback(
+    episode_id: int, session: SessionDep, request: Request, user: CurrentUserDep
+) -> PlaybackInfo:
     media_file = _episode_media_file(session, episode_id)
     episode = media_file.episode
     season = episode.season
@@ -440,7 +440,7 @@ def episode_playback(episode_id: int, session: SessionDep, request: Request) -> 
         # Subtitles/fonts come from the original, or the preserved assets if it was deleted.
         subtitle_tracks=_subtitle_tracks(episode_id, _subtitle_base(media_file, request)),
         fonts=_font_urls(episode_id, media_file, request),
-        resume_position=resume_position(session, current_user(session), episode_id),
+        resume_position=resume_position(session, user, episode_id),
         intro_start=episode.intro_start,
         intro_end=episode.intro_end,
         outro_start=episode.outro_start,
@@ -459,13 +459,13 @@ def episode_playback(episode_id: int, session: SessionDep, request: Request) -> 
 
 @router.patch("/episodes/{episode_id}/watch-state", status_code=204)
 def update_watch_state(
-    episode_id: int, body: WatchStateUpdate, session: SessionDep
+    episode_id: int, body: WatchStateUpdate, session: SessionDep, user: CurrentUserDep
 ) -> Response:
     if session.get(Episode, episode_id) is None:
         raise HTTPException(status_code=404, detail="episode not found")
     record_watch(
         session,
-        current_user(session),
+        user,
         episode_id,
         position_seconds=body.position_seconds,
         watched=body.watched,

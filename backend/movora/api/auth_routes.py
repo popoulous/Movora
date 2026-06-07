@@ -1,0 +1,125 @@
+"""Authentication and user management — the public login gate plus admin user CRUD.
+
+The session is a signed, stateless cookie (movora.auth). Everything else under /api
+requires it; only these routes are reachable unauthenticated (and most still aren't).
+"""
+
+from __future__ import annotations
+
+from fastapi import APIRouter, HTTPException, Request, Response
+from sqlalchemy import select
+
+from movora.api.deps import AUTH_COOKIE, AdminDep, CurrentUserDep, SessionDep
+from movora.api.schemas import (
+    AuthStatus,
+    LoginRequest,
+    PreferencesUpdate,
+    UserCreate,
+    UserRead,
+)
+from movora.auth import hash_password, issue_token, read_token, verify_password
+from movora.db.models import User, UserRole
+
+router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+SESSION_TTL = 60 * 60 * 24 * 30  # 30 days
+
+
+def _set_session_cookie(response: Response, user_id: int, secret: str) -> None:
+    token = issue_token(user_id, secret, SESSION_TTL)
+    response.set_cookie(
+        AUTH_COOKIE, token, max_age=SESSION_TTL, httponly=True, samesite="lax", path="/"
+    )
+
+
+def _needs_setup(session: SessionDep) -> bool:
+    return session.scalar(select(User).where(User.password_hash != "")) is None
+
+
+@router.get("/status", response_model=AuthStatus)
+def auth_status(request: Request, session: SessionDep) -> AuthStatus:
+    token = request.cookies.get(AUTH_COOKIE)
+    user_id = read_token(token, request.app.state.settings.secret_key) if token else None
+    user = session.get(User, user_id) if user_id is not None else None
+    return AuthStatus(
+        authenticated=user is not None,
+        needs_setup=_needs_setup(session),
+        user=UserRead.model_validate(user) if user is not None else None,
+    )
+
+
+@router.post("/setup", response_model=UserRead)
+def setup(payload: LoginRequest, session: SessionDep, request: Request, response: Response) -> User:
+    """Create the first admin. Converts the lazily-created local user so its watch
+    history is kept; only allowed while no password-protected user exists."""
+    if not _needs_setup(session):
+        raise HTTPException(status_code=409, detail="already set up")
+    user = session.scalar(select(User).order_by(User.id)) or User(username=payload.username)
+    user.username = payload.username
+    user.password_hash = hash_password(payload.password)
+    user.role = UserRole.ADMIN
+    session.add(user)
+    session.commit()
+    _set_session_cookie(response, user.id, request.app.state.settings.secret_key)
+    return user
+
+
+@router.post("/login", response_model=UserRead)
+def login(payload: LoginRequest, session: SessionDep, request: Request, response: Response) -> User:
+    user = session.scalar(select(User).where(User.username == payload.username))
+    if user is None or not user.password_hash or not verify_password(
+        payload.password, user.password_hash
+    ):
+        raise HTTPException(status_code=401, detail="invalid username or password")
+    _set_session_cookie(response, user.id, request.app.state.settings.secret_key)
+    return user
+
+
+@router.post("/logout", status_code=204)
+def logout(response: Response) -> None:
+    response.delete_cookie(AUTH_COOKIE, path="/")
+
+
+@router.get("/me", response_model=UserRead)
+def me(user: CurrentUserDep) -> User:
+    return user
+
+
+@router.patch("/me/preferences", response_model=UserRead)
+def update_preferences(
+    payload: PreferencesUpdate, user: CurrentUserDep, session: SessionDep
+) -> User:
+    if payload.preferred_language is not None:
+        user.preferred_language = payload.preferred_language or None
+    session.commit()
+    return user
+
+
+@router.get("/users", response_model=list[UserRead])
+def list_users(admin: AdminDep, session: SessionDep) -> list[User]:
+    return list(session.scalars(select(User).order_by(User.id)))
+
+
+@router.post("/users", response_model=UserRead, status_code=201)
+def create_user(payload: UserCreate, admin: AdminDep, session: SessionDep) -> User:
+    if session.scalar(select(User).where(User.username == payload.username)) is not None:
+        raise HTTPException(status_code=409, detail="username already taken")
+    user = User(
+        username=payload.username,
+        password_hash=hash_password(payload.password),
+        role=payload.role,
+    )
+    session.add(user)
+    session.commit()
+    return user
+
+
+@router.delete("/users/{user_id}", status_code=204)
+def delete_user(user_id: int, admin: AdminDep, session: SessionDep) -> None:
+    if user_id == admin.id:
+        raise HTTPException(status_code=400, detail="cannot delete your own account")
+    user = session.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="user not found")
+    session.delete(user)
+    session.commit()

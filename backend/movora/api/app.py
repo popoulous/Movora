@@ -5,11 +5,13 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from movora import __version__
+from movora.api.auth_routes import router as auth_router
+from movora.api.deps import get_current_user
 from movora.api.routes import router
 from movora.config import Settings, get_settings
 from movora.db.base import create_db_engine, create_session_factory, init_db
@@ -52,7 +54,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.settings = settings
 
-    app.include_router(router)
+    app.include_router(auth_router)  # public: login gate + (admin-guarded) user management
+    app.include_router(router, dependencies=[Depends(get_current_user)])  # everything else: auth
 
     @app.get("/health")
     def health() -> dict[str, str]:

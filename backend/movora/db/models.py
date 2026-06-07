@@ -209,6 +209,7 @@ class User(Base):
     username: Mapped[str] = mapped_column(unique=True)
     password_hash: Mapped[str]
     role: Mapped[UserRole] = mapped_column(default=UserRole.USER)
+    preferred_language: Mapped[str | None] = mapped_column(default=None)  # subtitle/UI pref
 
     watch_states: Mapped[list[WatchState]] = relationship(
         back_populates="user", cascade="all, delete-orphan"

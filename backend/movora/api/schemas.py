@@ -6,7 +6,37 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
-from movora.db.models import LibraryKind
+from movora.db.models import LibraryKind, UserRole
+
+
+class UserRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    username: str
+    role: UserRole
+    preferred_language: str | None = None
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class UserCreate(BaseModel):
+    username: str
+    password: str
+    role: UserRole = UserRole.USER
+
+
+class AuthStatus(BaseModel):
+    authenticated: bool
+    needs_setup: bool  # no admin with a password exists yet -> first-run setup
+    user: UserRead | None = None
+
+
+class PreferencesUpdate(BaseModel):
+    preferred_language: str | None = None
 
 
 class LibraryCreate(BaseModel):
