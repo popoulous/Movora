@@ -55,6 +55,7 @@ from movora.filesystem import list_directories
 from movora.home import SeriesOverview, home_overview
 from movora.normalize import (
     cancel_transcodes,
+    enqueue_intro,
     enqueue_metadata,
     enqueue_normalize,
     enqueue_scan,
@@ -529,6 +530,17 @@ def normalize_all(
 ) -> dict[str, str]:
     """Queue every file in the library that still needs optimizing (background)."""
     enqueue_normalize(session, list(session.scalars(select(MediaFile.id))))
+    _run_worker(request, background)
+    return {"status": "queued"}
+
+
+@router.post("/intro/detect", status_code=202)
+def detect_intros(
+    session: SessionDep, request: Request, background: BackgroundTasks
+) -> dict[str, str]:
+    """Queue intro/outro detection for every library (background), independent of scan."""
+    for library_id in session.scalars(select(Library.id)):
+        enqueue_intro(session, library_id)
     _run_worker(request, background)
     return {"status": "queued"}
 

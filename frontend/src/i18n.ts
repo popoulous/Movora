@@ -17,6 +17,7 @@ const en = {
     type_metadata: "Metadata",
     type_normalize: "Optimization",
     type_thumbnail: "Thumbnails",
+    type_intro: "Intro detection",
     season: "Season {{number}}",
     episode: "Episode {{number}}",
     queued: "Queued",
@@ -62,6 +63,12 @@ const en = {
       "Once a file is verified and optimized, move the original to the OS trash to save space. Embedded subtitles and fonts are preserved first.",
     normalizeAll: "Normalize everything now",
     normalizeAllStarted: "Started — watch the activity bell",
+    introTitle: "Intro & outro skipping",
+    autoDetectIntro: "Auto-detect intro/outro on scan",
+    autoDetectIntroDesc:
+      "Find each episode's intro and ending so you can skip them, using chapter names or an audio fingerprint. Off by default — fingerprinting is CPU-heavy. Run it now with the button below.",
+    detectIntros: "Detect intros/outros now",
+    detectIntrosStarted: "Started — watch the activity bell",
   },
   library: {
     defaultName: "Library",
@@ -175,6 +182,8 @@ const en = {
     startingIn: "Starting in {{seconds}}s",
     playNow: "Play now",
     cancel: "Cancel",
+    skipIntro: "Skip intro",
+    skipOutro: "Skip outro",
     next: "Next",
   },
 };
@@ -195,6 +204,7 @@ const hu: typeof en = {
     type_metadata: "Metaadat",
     type_normalize: "Optimalizálás",
     type_thumbnail: "Indexképek",
+    type_intro: "Intro-felismerés",
     season: "{{number}}. évad",
     episode: "{{number}}. rész",
     queued: "Besorolva",
@@ -241,6 +251,12 @@ const hu: typeof en = {
       "A verifikált, optimalizált fájl után az eredetit a rendszer Lomtárába mozgatja a helyspórolásért. A beágyazott feliratok és fontok előbb megőrződnek.",
     normalizeAll: "Mindet normalizáld most",
     normalizeAllStarted: "Elindítva — nézd az aktivitás-harangot",
+    introTitle: "Intro & outro átugrása",
+    autoDetectIntro: "Intro/outro automatikus felismerése szkenneléskor",
+    autoDetectIntroDesc:
+      "Megkeresi minden rész introját és stáblistáját, hogy átugorhasd — fejezet-nevekből vagy audio-ujjlenyomatból. Alapból kikapcsolva, mert az ujjlenyomatozás CPU-igényes. Most az alábbi gombbal futtathatod.",
+    detectIntros: "Intro/outro felismerése most",
+    detectIntrosStarted: "Elindítva — nézd az aktivitás-harangot",
   },
   library: {
     defaultName: "Könyvtár",
@@ -354,6 +370,8 @@ const hu: typeof en = {
     startingIn: "{{seconds}} mp múlva indul",
     playNow: "Lejátszás most",
     cancel: "Mégse",
+    skipIntro: "Intro átugrása",
+    skipOutro: "Stáblista átugrása",
     next: "Következő",
   },
 };

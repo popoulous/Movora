@@ -143,6 +143,10 @@ export interface PlaybackInfo {
   subtitle_tracks: SubtitleTrack[];
   fonts: string[];
   resume_position: number;
+  intro_start: number | null;
+  intro_end: number | null;
+  outro_start: number | null;
+  outro_end: number | null;
   series_id: number;
   series_title: string;
   season_number: number;
@@ -168,6 +172,7 @@ export interface FsListing {
 export interface ServerSettings {
   auto_normalize: boolean;
   delete_original: boolean;
+  auto_detect_intro: boolean;
   tmdb_language: string;
 }
 
@@ -258,6 +263,8 @@ export const api = {
     }).then(throwIfNotOk),
   normalizeAll: (): Promise<void> =>
     fetch("/api/normalize/all", { method: "POST" }).then(throwIfNotOk),
+  detectIntros: (): Promise<void> =>
+    fetch("/api/intro/detect", { method: "POST" }).then(throwIfNotOk),
   getSettings: (): Promise<ServerSettings> =>
     fetch("/api/settings").then(asJson<ServerSettings>),
   updateSettings: (body: Partial<ServerSettings>): Promise<ServerSettings> =>

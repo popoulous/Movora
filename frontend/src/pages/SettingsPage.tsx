@@ -52,6 +52,7 @@ export function SettingsPage(): JSX.Element {
   const { refreshSoon } = useActivity();
   const [settings, setSettings] = useState<ServerSettings | null>(null);
   const [sweeping, setSweeping] = useState(false);
+  const [detecting, setDetecting] = useState(false);
 
   useEffect(() => {
     api
@@ -68,7 +69,7 @@ export function SettingsPage(): JSX.Element {
       .catch(() => undefined);
   }, [i18n.language]);
 
-  const toggle = (key: "auto_normalize" | "delete_original"): void => {
+  const toggle = (key: "auto_normalize" | "delete_original" | "auto_detect_intro"): void => {
     if (settings === null) return;
     const next = { ...settings, [key]: !settings[key] };
     setSettings(next);
@@ -89,6 +90,13 @@ export function SettingsPage(): JSX.Element {
     api.normalizeAll().catch(() => undefined);
     refreshSoon(); // show the spinner next to the bell right away
     window.setTimeout(() => setSweeping(false), 2000);
+  };
+
+  const detectIntros = (): void => {
+    setDetecting(true);
+    api.detectIntros().catch(() => undefined);
+    refreshSoon();
+    window.setTimeout(() => setDetecting(false), 2000);
   };
 
   return (
@@ -121,6 +129,27 @@ export function SettingsPage(): JSX.Element {
             className="rounded-xl bg-gradient-to-r from-[#7A4DFF] to-[#EC4899] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_8px_30px_rgba(168,85,247,0.35)] transition hover:brightness-110 disabled:opacity-60"
           >
             {sweeping ? t("settings.normalizeAllStarted") : t("settings.normalizeAll")}
+          </button>
+        </section>
+      )}
+
+      {settings !== null && (
+        <section className="space-y-3">
+          <h2 className="text-xs font-semibold tracking-wide text-neutral-500 uppercase">
+            {t("settings.introTitle")}
+          </h2>
+          <Toggle
+            label={t("settings.autoDetectIntro")}
+            description={t("settings.autoDetectIntroDesc")}
+            on={settings.auto_detect_intro}
+            onToggle={() => toggle("auto_detect_intro")}
+          />
+          <button
+            onClick={detectIntros}
+            disabled={detecting}
+            className="rounded-xl bg-gradient-to-r from-[#7A4DFF] to-[#EC4899] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_8px_30px_rgba(168,85,247,0.35)] transition hover:brightness-110 disabled:opacity-60"
+          >
+            {detecting ? t("settings.detectIntrosStarted") : t("settings.detectIntros")}
           </button>
         </section>
       )}

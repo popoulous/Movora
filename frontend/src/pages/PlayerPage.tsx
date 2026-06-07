@@ -90,6 +90,7 @@ export function PlayerPage(): JSX.Element {
   const [normalizing, setNormalizing] = useState(false);
   const [ended, setEnded] = useState(false);
   const [countdown, setCountdown] = useState(10);
+  const [skip, setSkip] = useState<"intro" | "outro" | null>(null);
 
   useEffect(() => {
     setPlayback(null);
@@ -99,6 +100,7 @@ export function PlayerPage(): JSX.Element {
     setNormalizing(false);
     setEnded(false);
     setCountdown(10);
+    setSkip(null);
     lastSaved.current = 0;
     api
       .getPlayback(id)
@@ -136,6 +138,27 @@ export function PlayerPage(): JSX.Element {
     if (video === null || video.currentTime - lastSaved.current < 10) return;
     lastSaved.current = video.currentTime;
     void api.recordWatch(id, { position_seconds: video.currentTime }).catch(() => undefined);
+  };
+  // Show the Skip button while we're inside a detected intro/outro window (kept up to date
+  // on timeupdate); only flips state on a window change to avoid re-rendering every tick.
+  const handleTimeUpdate = (): void => {
+    saveProgress();
+    const video = videoRef.current;
+    if (video === null || playback === null) return;
+    const time = video.currentTime;
+    const inWindow = (start: number | null, end: number | null): boolean =>
+      start !== null && end !== null && time >= start && time < end - 1;
+    const next: "intro" | "outro" | null = inWindow(playback.intro_start, playback.intro_end)
+      ? "intro"
+      : inWindow(playback.outro_start, playback.outro_end)
+        ? "outro"
+        : null;
+    setSkip((previous) => (previous === next ? previous : next));
+  };
+  const doSkip = (): void => {
+    const video = videoRef.current;
+    const end = skip === "intro" ? playback?.intro_end : playback?.outro_end;
+    if (video !== null && end != null) video.currentTime = end;
   };
   const markWatched = (): void => {
     void api.recordWatch(id, { watched: true }).catch(() => undefined);
@@ -296,7 +319,7 @@ export function PlayerPage(): JSX.Element {
               controls
               autoPlay
               onLoadedMetadata={resume}
-              onTimeUpdate={saveProgress}
+              onTimeUpdate={handleTimeUpdate}
               onEnded={markWatched}
               className="aspect-video w-full"
             >
@@ -311,6 +334,16 @@ export function PlayerPage(): JSX.Element {
                 />
               )}
             </video>
+
+            {skip !== null && !ended && (
+              <button
+                onClick={doSkip}
+                className="absolute right-5 bottom-20 inline-flex items-center gap-2 rounded-xl bg-white/15 px-4 py-2.5 text-sm font-semibold text-white ring-1 ring-white/25 backdrop-blur transition hover:bg-white/25"
+              >
+                {t(skip === "intro" ? "player.skipIntro" : "player.skipOutro")}
+                <SkipForward className="h-4 w-4" />
+              </button>
+            )}
 
             {ended && nextEpisode !== null && (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/75 px-6 text-center backdrop-blur-sm">
