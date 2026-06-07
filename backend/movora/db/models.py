@@ -43,6 +43,10 @@ class Library(Base):
         back_populates="library", cascade="all, delete-orphan"
     )
 
+    @property
+    def series_count(self) -> int:
+        return len(self.series)
+
 
 class Series(Base):
     __tablename__ = "series"

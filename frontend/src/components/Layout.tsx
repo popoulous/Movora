@@ -135,7 +135,12 @@ export function Layout(): JSX.Element {
               return (
                 <NavLink key={library.id} to={`/library/${library.id}`} className={navClass}>
                   <Icon className="h-4 w-4 shrink-0 text-neutral-400" />
-                  <span className="truncate">{library.name}</span>
+                  <span className="min-w-0 flex-1 truncate">{library.name}</span>
+                  {library.series_count > 0 && (
+                    <span className="shrink-0 rounded-full bg-white/10 px-1.5 py-0.5 text-[11px] tabular-nums text-neutral-400">
+                      {library.series_count}
+                    </span>
+                  )}
                 </NavLink>
               );
             })}

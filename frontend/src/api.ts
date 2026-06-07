@@ -5,6 +5,7 @@ export interface Library {
   path: string;
   name: string;
   kind: LibraryKind;
+  series_count: number;
 }
 
 export interface SeriesSummary {

@@ -27,6 +27,7 @@ class LibraryRead(BaseModel):
     path: str
     name: str
     kind: LibraryKind
+    series_count: int = 0
 
 
 class EpisodeRead(BaseModel):
