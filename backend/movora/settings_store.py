@@ -12,12 +12,16 @@ AUTO_NORMALIZE = "auto_normalize"
 # After a verified normalize, move the original to the OS trash to reclaim space
 # (off by default; embedded subtitles and fonts are preserved first).
 DELETE_ORIGINAL = "delete_original"
+# Detect intro/outro skip markers on scan (chapter names, else audio fingerprints).
+# Off by default — fingerprinting is CPU-heavy, so the owner opts in.
+AUTO_DETECT_INTRO = "auto_detect_intro"
 # TMDB result/match language (film/series), e.g. "hu-HU" — the UI sets it to your
 # locale, so Hungarian titles match (Troja -> Trója) and metadata comes back localised.
 TMDB_LANGUAGE = "tmdb_language"
 _DEFAULTS: dict[str, bool] = {
     AUTO_NORMALIZE: False,
     DELETE_ORIGINAL: False,
+    AUTO_DETECT_INTRO: False,
 }
 _STRING_DEFAULTS: dict[str, str] = {
     TMDB_LANGUAGE: "",  # unset -> the UI defaults it to your locale; the task falls back to en-US

@@ -178,6 +178,11 @@ class PlaybackInfo(BaseModel):
     subtitle_tracks: list[SubtitleTrackRead] = []
     fonts: list[str] = []  # URLs of embedded fonts for JASSUB
     resume_position: float = 0.0  # saved playback position to seek back to (seconds)
+    # Intro/outro skip windows (seconds), when detected — drive the "Skip" buttons.
+    intro_start: float | None = None
+    intro_end: float | None = None
+    outro_start: float | None = None
+    outro_end: float | None = None
     # Series context so the player shows what you're watching (info bar, episode list).
     series_id: int
     series_title: str
@@ -193,12 +198,14 @@ class PlaybackInfo(BaseModel):
 class SettingsRead(BaseModel):
     auto_normalize: bool
     delete_original: bool
+    auto_detect_intro: bool
     tmdb_language: str
 
 
 class SettingsUpdate(BaseModel):
     auto_normalize: bool | None = None
     delete_original: bool | None = None
+    auto_detect_intro: bool | None = None
     tmdb_language: str | None = None
 
 

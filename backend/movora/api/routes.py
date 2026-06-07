@@ -440,6 +440,10 @@ def episode_playback(episode_id: int, session: SessionDep, request: Request) -> 
         subtitle_tracks=_subtitle_tracks(episode_id, _subtitle_base(media_file, request)),
         fonts=_font_urls(episode_id, media_file, request),
         resume_position=resume_position(session, current_user(session), episode_id),
+        intro_start=episode.intro_start,
+        intro_end=episode.intro_end,
+        outro_start=episode.outro_start,
+        outro_end=episode.outro_end,
         series_id=series.id,
         series_title=series.display_title or series.title,
         season_number=season.number,
@@ -748,6 +752,10 @@ def update_settings(
         settings_store.set_bool(session, settings_store.AUTO_NORMALIZE, payload.auto_normalize)
     if payload.delete_original is not None:
         settings_store.set_bool(session, settings_store.DELETE_ORIGINAL, payload.delete_original)
+    if payload.auto_detect_intro is not None:
+        settings_store.set_bool(
+            session, settings_store.AUTO_DETECT_INTRO, payload.auto_detect_intro
+        )
     if payload.tmdb_language is not None:
         settings_store.set_str(session, settings_store.TMDB_LANGUAGE, payload.tmdb_language)
     return _read_settings(session)
@@ -757,5 +765,6 @@ def _read_settings(session: Session) -> SettingsRead:
     return SettingsRead(
         auto_normalize=settings_store.get_bool(session, settings_store.AUTO_NORMALIZE),
         delete_original=settings_store.get_bool(session, settings_store.DELETE_ORIGINAL),
+        auto_detect_intro=settings_store.get_bool(session, settings_store.AUTO_DETECT_INTRO),
         tmdb_language=settings_store.get_str(session, settings_store.TMDB_LANGUAGE),
     )

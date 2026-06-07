@@ -34,6 +34,7 @@ from movora.encoders import detect_h264_encoder
 from movora.enrich import enrich_library
 from movora.ffprobe import probe_media
 from movora.interfaces import NormalizationPlanner
+from movora.intro import detect_season
 from movora.metadata import MetadataRegistry, TmdbProvider
 from movora.normalization import WEB_TARGET, RemuxFirstPlanner, needs_normalization
 from movora.scanner import scan_library
@@ -52,7 +53,7 @@ _MAX_ATTEMPTS = 3  # bounded auto-retry before a task is marked failed
 _normalize_lock = threading.Lock()
 _light_lock = threading.Lock()
 _NORMALIZE_TYPES = (TaskType.NORMALIZE,)
-_LIGHT_TYPES = (TaskType.SCAN, TaskType.METADATA, TaskType.THUMBNAIL)
+_LIGHT_TYPES = (TaskType.SCAN, TaskType.METADATA, TaskType.THUMBNAIL, TaskType.INTRO)
 # Production runs the workers in threads; tests set this False to run them inline.
 _run_in_thread = True
 
@@ -242,6 +243,12 @@ def enqueue_thumbnail(session: Session, library_id: int) -> None:
         session.commit()
 
 
+def enqueue_intro(session: Session, library_id: int) -> None:
+    if not _has_active_library_task(session, library_id, TaskType.INTRO):
+        session.add(Task(type=TaskType.INTRO, library_id=library_id))
+        session.commit()
+
+
 def enqueue_normalize(session: Session, media_file_ids: list[int]) -> int:
     """Queue normalize Tasks, skipping active/already-optimized files and retrying failed.
 
@@ -426,6 +433,8 @@ def _process_task(
                 _run_metadata_task(session, task, registry)
             elif task.type == TaskType.THUMBNAIL:
                 _run_thumbnail_task(session, task, output_dir)
+            elif task.type == TaskType.INTRO:
+                _run_intro_task(session, task)
         except _Cancelled:
             session.rollback()  # the task was deleted mid-run (library removed) — stop
         except Exception as exc:  # keep the worker alive; retry a few times then fail
@@ -530,6 +539,8 @@ def _run_scan_task(session: Session, task: Task) -> None:
     # Chain: refresh metadata, extract missing thumbnails, normalize new files (if auto-on).
     enqueue_metadata(session, library.id)
     enqueue_thumbnail(session, library.id)
+    if settings_store.get_bool(session, settings_store.AUTO_DETECT_INTRO):
+        enqueue_intro(session, library.id)
     if new_ids and settings_store.get_bool(session, settings_store.AUTO_NORMALIZE):
         enqueue_normalize(session, new_ids)
     _finish(session, task, message=f"{len(new_ids)} added")
@@ -582,6 +593,44 @@ def _run_thumbnail_task(session: Session, task: Task, output_dir: Path) -> None:
             made += 1
             session.commit()
     _finish(session, task, message=f"{made} thumbnails")
+
+
+def _run_intro_task(session: Session, task: Task) -> None:
+    library = task.library
+    if library is None:
+        _finish(session, task, message="library gone")
+        return
+    _start(session, task)
+    seasons = session.scalars(
+        select(Season)
+        .join(Season.series)
+        .where(Series.library_id == library.id)
+        .options(selectinload(Season.episodes).selectinload(Episode.media_files))
+    )
+    # Detect a whole season at once (neighbours feed the fingerprint match); skip seasons
+    # already fully marked so a re-scan is cheap.
+    todo = [
+        episodes
+        for season in seasons
+        if (
+            episodes := sorted(
+                (ep for ep in season.episodes if ep.media_files), key=lambda ep: ep.number
+            )
+        )
+        and any(ep.intro_end is None for ep in episodes)
+    ]
+    progress = _counter(session, task)
+    marked = 0
+    for index, episodes in enumerate(todo, start=1):
+        progress(index, len(todo))
+        paths = [Path(episode.media_files[0].path) for episode in episodes]
+        for episode, markers in zip(episodes, detect_season(paths), strict=True):
+            if markers.has_any():
+                episode.intro_start, episode.intro_end = markers.intro_start, markers.intro_end
+                episode.outro_start, episode.outro_end = markers.outro_start, markers.outro_end
+                marked += 1
+        session.commit()
+    _finish(session, task, message=f"{marked} marked")
 
 
 def _start(session: Session, task: Task) -> None:

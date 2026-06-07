@@ -131,6 +131,11 @@ class Episode(Base):
     absolute_number: Mapped[int | None] = mapped_column(default=None)
     title: Mapped[str | None] = mapped_column(default=None)
     thumbnail_path: Mapped[str | None] = mapped_column(default=None)  # extracted frame (jpg)
+    # Intro/outro skip markers (seconds), detected from chapters or audio fingerprints.
+    intro_start: Mapped[float | None] = mapped_column(default=None)
+    intro_end: Mapped[float | None] = mapped_column(default=None)
+    outro_start: Mapped[float | None] = mapped_column(default=None)
+    outro_end: Mapped[float | None] = mapped_column(default=None)
 
     season: Mapped[Season] = relationship(back_populates="episodes")
     media_files: Mapped[list[MediaFile]] = relationship(
@@ -262,7 +267,7 @@ class TaskType(str, enum.Enum):
     METADATA = "metadata"
     NORMALIZE = "normalize"
     THUMBNAIL = "thumbnail"  # extract a representative frame per episode
-    # v2: INTRO = "intro", OUTRO = "outro" — the task center already groups by type.
+    INTRO = "intro"  # detect intro/outro skip markers per episode
 
 
 class Task(Base):
