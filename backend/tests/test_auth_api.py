@@ -66,6 +66,48 @@ def test_admin_manages_users_and_rbac(tmp_path: Path) -> None:
     assert client.get("/api/home").status_code == 200
 
 
+def test_password_change_self_and_admin_reset(tmp_path: Path) -> None:
+    client = _gated_client(tmp_path)
+    client.post("/api/auth/setup", json={"username": "admin", "password": "pw"})
+    client.post("/api/auth/users", json={"username": "bob", "password": "pw"})
+
+    # Bob changes his own password: the wrong current password is rejected.
+    client.post("/api/auth/login", json={"username": "bob", "password": "pw"})
+    assert (
+        client.patch(
+            "/api/auth/me/password",
+            json={"current_password": "wrong", "new_password": "newpass"},
+        ).status_code
+        == 400
+    )
+    assert (
+        client.patch(
+            "/api/auth/me/password",
+            json={"current_password": "pw", "new_password": "newpass"},
+        ).status_code
+        == 204
+    )
+    client.post("/api/auth/logout")
+    assert (
+        client.post("/api/auth/login", json={"username": "bob", "password": "newpass"}).status_code
+        == 200
+    )
+
+    # An admin resets Bob's password without knowing the current one.
+    client.post("/api/auth/login", json={"username": "admin", "password": "pw"})
+    bob = next(u for u in client.get("/api/auth/users").json() if u["username"] == "bob")
+    reset = client.put(f"/api/auth/users/{bob['id']}/password", json={"new_password": "reset1"})
+    assert reset.status_code == 204
+    client.post("/api/auth/logout")
+    assert (
+        client.post("/api/auth/login", json={"username": "bob", "password": "reset1"}).status_code
+        == 200
+    )
+    # A non-admin can't reset someone else's password.
+    denied = client.put(f"/api/auth/users/{bob['id']}/password", json={"new_password": "x123"})
+    assert denied.status_code == 403
+
+
 def test_library_access_is_granted_per_user(tmp_path: Path) -> None:
     app = create_app(Settings(database_path=tmp_path / "t.db", secret_key="test-secret"))
     client = TestClient(app)

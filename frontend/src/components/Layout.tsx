@@ -1,6 +1,7 @@
 import {
   ChevronsLeft,
   ChevronsRight,
+  CircleUser,
   Film,
   Home,
   ListChecks,
@@ -207,6 +208,12 @@ export function Layout(): JSX.Element {
               <span className={hide}>{t("nav.settings")}</span>
             </NavLink>
             {user !== null && (
+              <NavLink to="/profile" className={item} title={user.username}>
+                <CircleUser className="h-4 w-4 shrink-0" />
+                <span className={`min-w-0 flex-1 truncate ${hide}`}>{user.username}</span>
+              </NavLink>
+            )}
+            {user !== null && (
               <button
                 onClick={() => void logout()}
                 title={t("nav.logout")}
@@ -215,7 +222,7 @@ export function Layout(): JSX.Element {
                 }`}
               >
                 <LogOut className="h-4 w-4 shrink-0" />
-                <span className={`min-w-0 flex-1 truncate text-left ${hide}`}>{user.username}</span>
+                <span className={hide}>{t("nav.logout")}</span>
               </button>
             )}
             <button

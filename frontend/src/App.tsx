@@ -6,6 +6,7 @@ import { AuthPage } from "./pages/AuthPage";
 import { HomePage } from "./pages/HomePage";
 import { LibraryPage } from "./pages/LibraryPage";
 import { PlayerPage } from "./pages/PlayerPage";
+import { ProfilePage } from "./pages/ProfilePage";
 import { SeriesDetailPage } from "./pages/SeriesDetailPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { TasksPage } from "./pages/TasksPage";
@@ -36,6 +37,7 @@ function Gate(): JSX.Element {
         <Route path="series/:id" element={<SeriesDetailPage />} />
         <Route path="watch/:episodeId" element={<PlayerPage />} />
         <Route path="tasks" element={<TasksPage />} />
+        <Route path="profile" element={<ProfilePage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>
     </Routes>

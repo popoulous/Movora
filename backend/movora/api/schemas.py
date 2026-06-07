@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from movora.db.models import LibraryKind, UserRole
 
@@ -42,6 +42,15 @@ class AuthStatus(BaseModel):
 
 class PreferencesUpdate(BaseModel):
     preferred_language: str | None = None
+
+
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=4)
+
+
+class PasswordReset(BaseModel):  # admin sets another user's password (no current needed)
+    new_password: str = Field(min_length=4)
 
 
 class LibraryCreate(BaseModel):

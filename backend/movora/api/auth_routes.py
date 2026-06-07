@@ -14,6 +14,8 @@ from movora.api.schemas import (
     AuthStatus,
     LibraryAccessUpdate,
     LoginRequest,
+    PasswordChange,
+    PasswordReset,
     PreferencesUpdate,
     UserCreate,
     UserRead,
@@ -96,6 +98,17 @@ def update_preferences(
     return user
 
 
+@router.patch("/me/password", status_code=204)
+def change_password(
+    payload: PasswordChange, user: CurrentUserDep, session: SessionDep
+) -> Response:
+    if not verify_password(payload.current_password, user.password_hash):
+        raise HTTPException(status_code=400, detail="current password is incorrect")
+    user.password_hash = hash_password(payload.new_password)
+    session.commit()
+    return Response(status_code=204)
+
+
 @router.get("/users", response_model=list[UserRead])
 def list_users(admin: AdminDep, session: SessionDep) -> list[User]:
     return list(session.scalars(select(User).order_by(User.id)))
@@ -127,6 +140,18 @@ def set_user_libraries(
     )
     session.commit()
     return user
+
+
+@router.put("/users/{user_id}/password", status_code=204)
+def reset_user_password(
+    user_id: int, payload: PasswordReset, admin: AdminDep, session: SessionDep
+) -> Response:
+    user = session.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="user not found")
+    user.password_hash = hash_password(payload.new_password)
+    session.commit()
+    return Response(status_code=204)
 
 
 @router.delete("/users/{user_id}", status_code=204)

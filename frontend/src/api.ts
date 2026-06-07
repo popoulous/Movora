@@ -269,6 +269,18 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }).then(asJson<User>),
+  changePassword: (currentPassword: string, newPassword: string): Promise<void> =>
+    fetch("/api/auth/me/password", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+    }).then(throwIfNotOk),
+  resetUserPassword: (id: number, newPassword: string): Promise<void> =>
+    fetch(`/api/auth/users/${id}/password`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ new_password: newPassword }),
+    }).then(throwIfNotOk),
   listUsers: (): Promise<User[]> => fetch("/api/auth/users").then(asJson<User[]>),
   createUser: (body: { username: string; password: string; role: "admin" | "user" }): Promise<User> =>
     fetch("/api/auth/users", {

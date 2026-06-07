@@ -1,4 +1,4 @@
-import { Trash2 } from "lucide-react";
+import { KeyRound, Trash2 } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -52,7 +52,7 @@ function Toggle({
 export function SettingsPage(): JSX.Element {
   const { t, i18n } = useTranslation();
   const { refreshSoon } = useActivity();
-  const { user, setUser } = useAuth();
+  const { user } = useAuth();
   const [settings, setSettings] = useState<ServerSettings | null>(null);
   const [sweeping, setSweeping] = useState(false);
   const [detecting, setDetecting] = useState(false);
@@ -104,9 +104,6 @@ export function SettingsPage(): JSX.Element {
     window.setTimeout(() => setDetecting(false), 2000);
   };
 
-  const setPreferredLanguage = (value: string): void => {
-    api.updatePreferences({ preferred_language: value || null }).then(setUser).catch(() => undefined);
-  };
 
   return (
     <div className="max-w-2xl space-y-8">
@@ -206,38 +203,6 @@ export function SettingsPage(): JSX.Element {
         </section>
       )}
 
-      {user !== null && (
-        <section className="space-y-3">
-          <h2 className="text-xs font-semibold tracking-wide text-neutral-500 uppercase">
-            {t("settings.accountTitle")}
-          </h2>
-          <div className="flex items-center justify-between gap-4 rounded-xl bg-white/[0.03] p-4 ring-1 ring-white/10">
-            <span className="min-w-0">
-              <span className="block text-sm font-medium text-white">
-                {t("settings.preferredLanguage")}
-              </span>
-              <span className="mt-0.5 block text-xs leading-relaxed text-neutral-400">
-                {t("settings.preferredLanguageDesc")}
-              </span>
-            </span>
-            <select
-              value={user.preferred_language ?? ""}
-              onChange={(event) => setPreferredLanguage(event.target.value)}
-              className="shrink-0 rounded-lg bg-white/[0.06] px-3 py-2 text-sm text-neutral-100 ring-1 ring-white/10 focus:ring-violet-400/40 focus:outline-none"
-            >
-              <option value="" className="bg-[#120e1d]">
-                {t("settings.languageAuto")}
-              </option>
-              {LANGUAGES.map(([code, name]) => (
-                <option key={code} value={code.slice(0, 2)} className="bg-[#120e1d]">
-                  {name}
-                </option>
-              ))}
-            </select>
-          </div>
-        </section>
-      )}
-
       {user?.role === "admin" && <UsersSection currentUserId={user.id} t={t} />}
     </div>
   );
@@ -289,6 +254,15 @@ function UsersSection({
     api.deleteUser(id).then(reload).catch(() => undefined);
   };
 
+  const resetPassword = (member: User): void => {
+    const next = window.prompt(t("settings.resetPasswordPrompt", { name: member.username }));
+    if (next === null || next.length < 4) return;
+    api
+      .resetUserPassword(member.id, next)
+      .then(() => window.alert(t("settings.passwordReset")))
+      .catch(() => undefined);
+  };
+
   return (
     <section className="space-y-3">
       <h2 className="text-xs font-semibold tracking-wide text-neutral-500 uppercase">
@@ -307,6 +281,13 @@ function UsersSection({
               <span className="shrink-0 rounded-full bg-white/10 px-2 py-0.5 text-xs text-neutral-400">
                 {t(member.role === "admin" ? "settings.roleAdmin" : "settings.roleUser")}
               </span>
+              <button
+                onClick={() => resetPassword(member)}
+                title={t("settings.resetPassword")}
+                className="shrink-0 rounded-lg p-1.5 text-neutral-500 transition hover:bg-white/10 hover:text-violet-300"
+              >
+                <KeyRound className="h-4 w-4" />
+              </button>
               {member.id !== currentUserId && (
                 <button
                   onClick={() => remove(member.id)}
