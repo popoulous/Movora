@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from movora.access import accessible_library_ids
-from movora.db.models import Episode, Season, Series, User, WatchState
+from movora.db.models import Episode, LibraryKind, Season, Series, User, WatchState
 from movora.watch import pick_continue_episode
 
 _MIN = datetime.min  # sort key for missing timestamps (naive, like WatchState.updated_at)
@@ -25,6 +25,11 @@ class SeriesOverview:
     watch_status: str  # not_started | watching | completed
     watch_percent: int
     continue_episode_id: int | None
+    continue_episode_number: int | None
+    continue_season_number: int | None
+    continue_percent: int  # progress within the continue episode (0-100)
+    continue_position_seconds: float
+    continue_thumbnail_path: str | None
     last_watched_at: datetime | None
     finished_at: datetime | None
     normalized: bool  # every episode is Direct-Play ready (optimized)
@@ -50,9 +55,10 @@ def home_overview(session: Session, user: User) -> HomeOverview:
             select(Series)
             .where(Series.library_id.in_(accessible_library_ids(session, user)))
             .options(
+                selectinload(Series.library),
                 selectinload(Series.seasons)
                 .selectinload(Season.episodes)
-                .selectinload(Episode.media_files)
+                .selectinload(Episode.media_files),
             )
         )
     )
@@ -117,6 +123,7 @@ def _overview(series: Series, states: dict[int, WatchState]) -> SeriesOverview:
     times = [states[ep.id].updated_at for ep in ordered if ep.id in states]
     last_watched_at = max(times) if times else None
     media_files = [mf for ep in ordered for mf in ep.media_files]
+    is_movie = series.library.kind == LibraryKind.MOVIE  # a film has no season/episode label
     continue_ep = pick_continue_episode(ordered, states)
     position = (
         states[continue_ep.id].position_seconds
@@ -133,6 +140,15 @@ def _overview(series: Series, states: dict[int, WatchState]) -> SeriesOverview:
         watch_status=status,
         watch_percent=max(1, round(raw_percent)) if raw_percent > 0 else 0,
         continue_episode_id=continue_ep.id if continue_ep is not None else None,
+        continue_episode_number=(
+            continue_ep.number if continue_ep is not None and not is_movie else None
+        ),
+        continue_season_number=(
+            continue_ep.season.number if continue_ep is not None and not is_movie else None
+        ),
+        continue_percent=round(partial * 100),
+        continue_position_seconds=position,
+        continue_thumbnail_path=continue_ep.thumbnail_path if continue_ep is not None else None,
         last_watched_at=last_watched_at,
         finished_at=last_watched_at if status == "completed" else None,
         normalized=len(media_files) > 0 and all(mf.is_normalized for mf in media_files),

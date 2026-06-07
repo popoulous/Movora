@@ -15,7 +15,7 @@ import { useNavigate } from "react-router-dom";
 import { useActivity } from "../ActivityContext";
 import { api, type HomeData, type HomeSeries, type Library, type LibraryKind } from "../api";
 import { useLibraries } from "../LibrariesContext";
-import { SeriesCard } from "../components/SeriesCard";
+import { ContinueCard, SeriesCard } from "../components/SeriesCard";
 
 const title = (s: HomeSeries): string => s.display_title ?? s.title;
 
@@ -72,7 +72,13 @@ export function HomePage(): JSX.Element {
 
       <div className="space-y-8">
         {home.continue_watching.length > 0 && (
-          <Row title={t("home.continueWatching")} items={home.continue_watching} onOpen={open} t={t} />
+          <Row
+            title={t("home.continueWatching")}
+            items={home.continue_watching}
+            onOpen={open}
+            t={t}
+            continueCards
+          />
         )}
         {home.recently_added.length > 0 && (
           <Row title={t("home.recentlyAdded")} items={home.recently_added} onOpen={open} t={t} />
@@ -131,11 +137,13 @@ function Row({
   items,
   onOpen,
   t,
+  continueCards = false,
 }: {
   title: string;
   items: HomeSeries[];
   onOpen: (s: HomeSeries) => void;
   t: TFunction;
+  continueCards?: boolean;
 }): JSX.Element {
   const track = useRef<HTMLDivElement>(null);
   const scrollByPage = (direction: number): void => {
@@ -158,15 +166,25 @@ function Row({
         </div>
       </div>
       <div ref={track} className="no-scrollbar flex gap-4 overflow-x-auto pb-1">
-        {items.map((s) => (
-          <SeriesCard
-            key={s.id}
-            series={s}
-            onClick={() => onOpen(s)}
-            t={t}
-            className="w-36 shrink-0"
-          />
-        ))}
+        {items.map((s) =>
+          continueCards ? (
+            <ContinueCard
+              key={s.id}
+              series={s}
+              onClick={() => onOpen(s)}
+              t={t}
+              className="w-36 shrink-0"
+            />
+          ) : (
+            <SeriesCard
+              key={s.id}
+              series={s}
+              onClick={() => onOpen(s)}
+              t={t}
+              className="w-36 shrink-0"
+            />
+          ),
+        )}
       </div>
     </section>
   );

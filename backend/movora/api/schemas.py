@@ -112,6 +112,7 @@ class SeriesRead(BaseModel):
     normalized: bool = False  # every episode is Direct-Play ready (optimized)
     continue_episode_id: int | None = None  # first unwatched episode, to resume from
     continue_episode_number: int | None = None  # its number, for the continue card
+    continue_season_number: int | None = None  # its season, for the continue card (SxEy)
     continue_percent: int = 0  # progress *within* that episode (0-100)
     continue_position_seconds: float = 0.0  # resume position in that episode
     continue_thumbnail_url: str | None = None  # the continue episode's frame, for the card
@@ -183,6 +184,11 @@ class HomeSeries(BaseModel):
     watch_status: str = "not_started"
     watch_percent: int = 0
     continue_episode_id: int | None = None
+    continue_episode_number: int | None = None  # for the continue card (SxEy)
+    continue_season_number: int | None = None
+    continue_percent: int = 0  # progress within the continue episode (0-100)
+    continue_position_seconds: float = 0.0
+    continue_thumbnail_url: str | None = None
     normalized: bool = False  # every episode is Direct-Play ready (optimized)
 
 

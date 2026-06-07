@@ -45,6 +45,7 @@ from movora.db.models import (
     Episode,
     JobStatus,
     Library,
+    LibraryKind,
     MediaFile,
     Season,
     Series,
@@ -257,6 +258,7 @@ def _series_summary(series: Series, states: dict[int, WatchState]) -> SeriesRead
         status = "watching"
     times = [states[ep.id].updated_at for ep in ordered if ep.id in states]
     media_files = [mf for ep in ordered for mf in ep.media_files]
+    is_movie = series.library.kind == LibraryKind.MOVIE  # a film has no season/episode label
     continue_ep = pick_continue_episode(ordered, states)
     position = (
         states[continue_ep.id].position_seconds
@@ -281,7 +283,12 @@ def _series_summary(series: Series, states: dict[int, WatchState]) -> SeriesRead
         watch_percent=overall_percent,
         normalized=len(media_files) > 0 and all(mf.is_normalized for mf in media_files),
         continue_episode_id=continue_ep.id if continue_ep is not None else None,
-        continue_episode_number=continue_ep.number if continue_ep is not None else None,
+        continue_episode_number=(
+            continue_ep.number if continue_ep is not None and not is_movie else None
+        ),
+        continue_season_number=(
+            continue_ep.season.number if continue_ep is not None and not is_movie else None
+        ),
         continue_percent=min(100, round(position * 100 / ep_seconds)) if ep_seconds > 0 else 0,
         continue_position_seconds=position,
         continue_thumbnail_url=(
@@ -331,6 +338,15 @@ def _home_series(overview: SeriesOverview) -> HomeSeries:
         watch_status=overview.watch_status,
         watch_percent=overview.watch_percent,
         continue_episode_id=overview.continue_episode_id,
+        continue_episode_number=overview.continue_episode_number,
+        continue_season_number=overview.continue_season_number,
+        continue_percent=overview.continue_percent,
+        continue_position_seconds=overview.continue_position_seconds,
+        continue_thumbnail_url=(
+            f"/api/episodes/{overview.continue_episode_id}/thumbnail"
+            if overview.continue_episode_id is not None and overview.continue_thumbnail_path
+            else None
+        ),
         normalized=overview.normalized,
     )
 

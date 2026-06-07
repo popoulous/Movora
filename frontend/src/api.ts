@@ -22,6 +22,7 @@ export interface SeriesSummary {
   normalized: boolean;
   continue_episode_id: number | null;
   continue_episode_number: number | null;
+  continue_season_number: number | null;
   continue_percent: number;
   continue_position_seconds: number;
   continue_thumbnail_url: string | null;
@@ -103,6 +104,11 @@ export interface HomeSeries {
   watch_status: WatchStatus;
   watch_percent: number;
   continue_episode_id: number | null;
+  continue_episode_number: number | null;
+  continue_season_number: number | null;
+  continue_percent: number;
+  continue_position_seconds: number;
+  continue_thumbnail_url: string | null;
   normalized: boolean;
 }
 

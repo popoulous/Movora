@@ -115,6 +115,7 @@ export function SeriesCard({
 // A "continue watching" card: the episode to resume + progress within that episode.
 export interface ContinueSeries extends CardSeries {
   continue_episode_number: number | null;
+  continue_season_number: number | null;
   continue_percent: number;
   continue_position_seconds: number;
   continue_thumbnail_url: string | null;
@@ -157,10 +158,21 @@ export function ContinueCard({
       </div>
       <div className="mt-2 truncate text-sm font-medium">{cardTitle(series)}</div>
       <div className="truncate text-xs text-violet-300">
-        {series.continue_episode_number !== null &&
-          t("series.episode", { number: series.continue_episode_number })}
-        {series.continue_position_seconds > 0 &&
-          ` · ${fmtTime(series.continue_position_seconds)}`}
+        {[
+          series.continue_episode_number !== null
+            ? series.continue_season_number !== null
+              ? t("series.seasonEpisode", {
+                  season: series.continue_season_number,
+                  episode: series.continue_episode_number,
+                })
+              : t("series.episode", { number: series.continue_episode_number })
+            : null,
+          series.continue_position_seconds > 0
+            ? fmtTime(series.continue_position_seconds)
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" · ")}
       </div>
     </button>
   );
