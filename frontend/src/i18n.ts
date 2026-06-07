@@ -63,6 +63,8 @@ const en = {
     daysWatched: "Days watched",
     watchNow: "Watch now",
     completed: "Completed",
+    browseLibraries: "Browse libraries",
+    titleCount: "{{count}} titles",
     loading: "Loading…",
   },
   settings: {
@@ -289,6 +291,8 @@ const hu: typeof en = {
     daysWatched: "Nézett nap",
     watchNow: "Megnézem",
     completed: "Befejezve",
+    browseLibraries: "Könyvtárak",
+    titleCount: "{{count}} cím",
     loading: "Betöltés…",
   },
   settings: {

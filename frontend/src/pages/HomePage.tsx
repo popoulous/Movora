@@ -1,19 +1,35 @@
 import { type TFunction } from "i18next";
-import { CheckCircle2, ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
+import {
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Film,
+  type LucideIcon,
+  Sparkles,
+  Tv,
+} from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 
 import { useActivity } from "../ActivityContext";
-import { api, type HomeData, type HomeSeries } from "../api";
+import { api, type HomeData, type HomeSeries, type Library, type LibraryKind } from "../api";
+import { useLibraries } from "../LibrariesContext";
 import { SeriesCard } from "../components/SeriesCard";
 
 const title = (s: HomeSeries): string => s.display_title ?? s.title;
+
+const KIND_ICON: Record<LibraryKind, LucideIcon> = {
+  anime: Sparkles,
+  movie: Film,
+  series: Tv,
+};
 
 export function HomePage(): JSX.Element {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { running } = useActivity();
+  const { libraries } = useLibraries();
   const [home, setHome] = useState<HomeData | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -64,8 +80,41 @@ export function HomePage(): JSX.Element {
         {home.recently_finished.length > 0 && (
           <FinishedList items={home.recently_finished} onOpen={open} t={t} />
         )}
+        {libraries.length > 0 && <LibraryCards libraries={libraries} t={t} />}
       </div>
     </div>
+  );
+}
+
+function LibraryCards({ libraries, t }: { libraries: Library[]; t: TFunction }): JSX.Element {
+  const navigate = useNavigate();
+  return (
+    <section>
+      <SectionTitle>{t("home.browseLibraries")}</SectionTitle>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        {libraries.map((library) => {
+          const Icon = KIND_ICON[library.kind];
+          return (
+            <button
+              key={library.id}
+              onClick={() => navigate(`/library/${library.id}`)}
+              className="group flex items-center gap-3 rounded-2xl bg-white/[0.03] p-4 ring-1 ring-white/10 transition hover:bg-white/[0.06] hover:ring-violet-400/40"
+            >
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#7A4DFF]/30 to-[#EC4899]/20 text-violet-200 ring-1 ring-white/10">
+                <Icon className="h-5 w-5" />
+              </span>
+              <span className="min-w-0 flex-1 text-left">
+                <span className="block truncate font-semibold text-neutral-100">{library.name}</span>
+                <span className="block text-xs text-neutral-400">
+                  {t("home.titleCount", { count: library.series_count })}
+                </span>
+              </span>
+              <ChevronRight className="h-4 w-4 shrink-0 text-neutral-600 transition group-hover:translate-x-0.5 group-hover:text-violet-300" />
+            </button>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
