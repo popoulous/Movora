@@ -222,6 +222,7 @@ export interface User {
   username: string;
   role: "admin" | "user";
   preferred_language: string | null;
+  library_ids: number[];
 }
 
 export interface AuthStatus {
@@ -270,6 +271,12 @@ export const api = {
     }).then(asJson<User>),
   deleteUser: (id: number): Promise<void> =>
     fetch(`/api/auth/users/${id}`, { method: "DELETE" }).then(throwIfNotOk),
+  setUserLibraries: (id: number, libraryIds: number[]): Promise<User> =>
+    fetch(`/api/auth/users/${id}/libraries`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ library_ids: libraryIds }),
+    }).then(asJson<User>),
   search: (q: string): Promise<SearchResult[]> =>
     fetch(`/api/search?q=${encodeURIComponent(q)}`).then(asJson<SearchResult[]>),
   listLibraries: (): Promise<Library[]> => fetch("/api/libraries").then(asJson<Library[]>),

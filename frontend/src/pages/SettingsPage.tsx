@@ -3,7 +3,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useActivity } from "../ActivityContext";
-import { api, type ServerSettings, type User } from "../api";
+import { api, type Library, type ServerSettings, type User } from "../api";
 import { useAuth } from "../AuthContext";
 
 const LANGUAGES: [string, string][] = [
@@ -235,6 +235,7 @@ function UsersSection({
   t: ReturnType<typeof useTranslation>["t"];
 }): JSX.Element {
   const [users, setUsers] = useState<User[]>([]);
+  const [libraries, setLibraries] = useState<Library[]>([]);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<"admin" | "user">("user");
@@ -243,7 +244,17 @@ function UsersSection({
   const reload = (): void => {
     api.listUsers().then(setUsers).catch(() => undefined);
   };
-  useEffect(reload, []);
+  useEffect(() => {
+    reload();
+    api.listLibraries().then(setLibraries).catch(() => undefined);
+  }, []);
+
+  const toggleLibrary = (member: User, libraryId: number): void => {
+    const next = member.library_ids.includes(libraryId)
+      ? member.library_ids.filter((id) => id !== libraryId)
+      : [...member.library_ids, libraryId];
+    api.setUserLibraries(member.id, next).then(reload).catch(() => undefined);
+  };
 
   const create = (event: FormEvent): void => {
     event.preventDefault();
@@ -271,22 +282,48 @@ function UsersSection({
         {users.map((member) => (
           <div
             key={member.id}
-            className="flex items-center gap-3 rounded-xl bg-white/[0.03] px-4 py-2.5 ring-1 ring-white/10"
+            className="rounded-xl bg-white/[0.03] px-4 py-2.5 ring-1 ring-white/10"
           >
-            <span className="min-w-0 flex-1 truncate text-sm text-neutral-100">
-              {member.username}
-            </span>
-            <span className="shrink-0 rounded-full bg-white/10 px-2 py-0.5 text-xs text-neutral-400">
-              {t(member.role === "admin" ? "settings.roleAdmin" : "settings.roleUser")}
-            </span>
-            {member.id !== currentUserId && (
-              <button
-                onClick={() => remove(member.id)}
-                title={t("settings.deleteUser")}
-                className="shrink-0 rounded-lg p-1.5 text-neutral-500 transition hover:bg-red-500/15 hover:text-red-300"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
+            <div className="flex items-center gap-3">
+              <span className="min-w-0 flex-1 truncate text-sm text-neutral-100">
+                {member.username}
+              </span>
+              <span className="shrink-0 rounded-full bg-white/10 px-2 py-0.5 text-xs text-neutral-400">
+                {t(member.role === "admin" ? "settings.roleAdmin" : "settings.roleUser")}
+              </span>
+              {member.id !== currentUserId && (
+                <button
+                  onClick={() => remove(member.id)}
+                  title={t("settings.deleteUser")}
+                  className="shrink-0 rounded-lg p-1.5 text-neutral-500 transition hover:bg-red-500/15 hover:text-red-300"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+            {member.role === "admin" ? (
+              <p className="mt-1 text-xs text-neutral-500">{t("settings.allLibraries")}</p>
+            ) : (
+              libraries.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {libraries.map((library) => {
+                    const granted = member.library_ids.includes(library.id);
+                    return (
+                      <button
+                        key={library.id}
+                        onClick={() => toggleLibrary(member, library.id)}
+                        className={`rounded-full px-2.5 py-0.5 text-xs transition ${
+                          granted
+                            ? "bg-violet-500/30 text-violet-100 ring-1 ring-violet-400/40"
+                            : "bg-white/5 text-neutral-400 ring-1 ring-white/10 hover:bg-white/10"
+                        }`}
+                      >
+                        {library.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              )
             )}
           </div>
         ))}
