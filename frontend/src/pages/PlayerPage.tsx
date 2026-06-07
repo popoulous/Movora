@@ -4,7 +4,7 @@ import fallbackFontUrl from "@fontsource/noto-sans/files/noto-sans-latin-400-nor
 import fallbackFontExtUrl from "@fontsource/noto-sans/files/noto-sans-latin-ext-400-normal.woff2?url";
 import { type TFunction } from "i18next";
 import JASSUB from "jassub";
-import { Check, ChevronLeft, Play, SkipForward } from "lucide-react";
+import { Check, ChevronLeft, Play, SkipForward, Type } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
@@ -32,10 +32,103 @@ const LANG_NAMES: Record<string, string> = {
   fre: "Français",
 };
 
-function subtitleLabel(track: SubtitleTrack): string {
+function languageName(track: SubtitleTrack): string | null {
   const lang = track.language?.toLowerCase();
-  if (lang !== undefined && lang.length > 0) return LANG_NAMES[lang] ?? lang.toUpperCase();
-  return track.label;
+  if (lang === undefined || lang.length === 0) return null;
+  return LANG_NAMES[lang] ?? lang.toUpperCase();
+}
+
+function formatName(format: string): string {
+  return format === "vtt" ? "SRT" : format.toUpperCase();
+}
+
+// Distinguishable labels: the language name when it's unique; for tracks sharing a language
+// the embedded title (e.g. "Eng Full [SDH]") or the format; language-less tracks show the
+// format. So "Magyar / English / English" becomes "Magyar / Eng Full / Eng Full [SDH]".
+function subtitleLabels(tracks: SubtitleTrack[]): Record<string, string> {
+  const base = tracks.map((track) => languageName(track) ?? `(${formatName(track.format)})`);
+  const counts = new Map<string, number>();
+  base.forEach((label) => counts.set(label, (counts.get(label) ?? 0) + 1));
+  const result: Record<string, string> = {};
+  tracks.forEach((track, index) => {
+    const label = base[index];
+    if ((counts.get(label) ?? 0) === 1) {
+      result[track.id] = label;
+      return;
+    }
+    const title = track.label.trim();
+    const generic =
+      /^(embedded|external)\b/i.test(title) ||
+      title.toUpperCase() === (track.language ?? "").toUpperCase();
+    result[track.id] =
+      title.length > 0 && !generic ? title : `${label} (${formatName(track.format)})`;
+  });
+  return result;
+}
+
+type SubSize = "s" | "m" | "l";
+type SubBackground = "none" | "box" | "solid";
+interface SubStyle {
+  size: SubSize;
+  background: SubBackground;
+}
+
+const SIZE_SCALE: Record<SubSize, number> = { s: 0.8, m: 1, l: 1.3 };
+
+function loadSubStyle(): SubStyle {
+  try {
+    const raw = localStorage.getItem("subtitleStyle");
+    if (raw !== null) return JSON.parse(raw) as SubStyle;
+  } catch {
+    /* fall through to the default */
+  }
+  return { size: "m", background: "none" };
+}
+
+// Rewrite an ASS file's [V4+ Styles] for the chosen size and background box. Unchanged for the
+// default (medium, no background), so existing files render exactly as authored.
+function applyAssStyle(content: string, style: SubStyle): string {
+  const scale = SIZE_SCALE[style.size];
+  if (scale === 1 && style.background === "none") return content;
+  const boxColour = style.background === "solid" ? "&H00000000" : "&H80000000";
+  let columns: string[] | null = null;
+  return content
+    .split(/\r?\n/)
+    .map((line) => {
+      if (columns === null && /^\s*Format\s*:/i.test(line) && /fontsize/i.test(line)) {
+        columns = line
+          .replace(/^\s*Format\s*:/i, "")
+          .split(",")
+          .map((name) => name.trim().toLowerCase());
+        return line;
+      }
+      if (columns === null || !/^\s*Style\s*:/i.test(line)) return line;
+      const fields = line.replace(/^\s*Style\s*:/i, "").split(",");
+      const at = (name: string): number => columns?.indexOf(name) ?? -1;
+      const fs = at("fontsize");
+      if (scale !== 1 && fs >= 0 && !Number.isNaN(parseFloat(fields[fs]))) {
+        fields[fs] = String(Math.round(parseFloat(fields[fs]) * scale));
+      }
+      const bs = at("borderstyle");
+      if (bs >= 0) fields[bs] = style.background === "none" ? "1" : "3";
+      if (style.background !== "none") {
+        for (const name of ["outlinecolour", "backcolour"]) {
+          const i = at(name);
+          if (i >= 0) fields[i] = boxColour;
+        }
+      }
+      return "Style:" + fields.join(",");
+    })
+    .join("\n");
+}
+
+// Native <track> (VTT) styling, applied via a ::cue stylesheet.
+function cueCss(style: SubStyle): string {
+  const size = { s: "80%", m: "100%", l: "130%" }[style.size];
+  const bg = { none: "transparent", box: "rgba(0,0,0,0.55)", solid: "rgba(0,0,0,0.9)" }[
+    style.background
+  ];
+  return `::cue { font-size: ${size}; background-color: ${bg}; }`;
 }
 
 // 2- and 3-letter codes that count as the same language, so we can match the UI locale.
@@ -93,6 +186,11 @@ export function PlayerPage(): JSX.Element {
   const [ended, setEnded] = useState(false);
   const [countdown, setCountdown] = useState(10);
   const [skip, setSkip] = useState<"intro" | "outro" | null>(null);
+  const [subStyle, setSubStyleState] = useState<SubStyle>(loadSubStyle);
+  const setSubStyle = (next: SubStyle): void => {
+    setSubStyleState(next);
+    localStorage.setItem("subtitleStyle", JSON.stringify(next));
+  };
 
   useEffect(() => {
     setPlayback(null);
@@ -230,7 +328,7 @@ export function PlayerPage(): JSX.Element {
         }
         instance = new JASSUB({
           video: current,
-          subContent,
+          subContent: applyAssStyle(subContent, subStyle), // user size/background overrides
           // Embedded mkv fonts, plus the Noto Sans latin-ext face for Hungarian glyphs.
           fonts: [...playback.fonts, fallbackFontExtUrl],
           availableFonts: { "noto sans": fallbackFontUrl },
@@ -244,7 +342,7 @@ export function PlayerPage(): JSX.Element {
       cancelled = true;
       void instance?.destroy();
     };
-  }, [playback, trackId]);
+  }, [playback, trackId, subStyle]);
 
   if (error !== null) {
     return <p className="text-sm text-red-400">{error}</p>;
@@ -267,6 +365,7 @@ export function PlayerPage(): JSX.Element {
       ? `${playback.episode_number}–${playback.episode_end_number}`
       : String(playback.episode_number);
   const artwork = playback.banner_image_url ?? playback.cover_image_url;
+  const subLabels = subtitleLabels(playback.subtitle_tracks);
 
   return (
     <div className="relative">
@@ -391,9 +490,11 @@ export function PlayerPage(): JSX.Element {
                     onClick={() => setTrackId(track.id)}
                     className={chipClass(trackId === track.id)}
                   >
-                    {subtitleLabel(track)}
+                    {subLabels[track.id]}
                   </button>
                 ))}
+                <SubtitleStyleControl style={subStyle} onChange={setSubStyle} t={t} />
+                {vttTrack !== null && <style>{cueCss(subStyle)}</style>}
               </>
             )}
             {nextEpisode !== null && (
@@ -411,6 +512,75 @@ export function PlayerPage(): JSX.Element {
           <EpisodeList episodes={ordered} currentId={id} navigate={navigate} t={t} />
         )}
       </div>
+    </div>
+  );
+}
+
+function SubtitleStyleControl({
+  style,
+  onChange,
+  t,
+}: {
+  style: SubStyle;
+  onChange: (style: SubStyle) => void;
+  t: TFunction;
+}): JSX.Element {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const onClick = (event: MouseEvent): void => {
+      if (ref.current !== null && !ref.current.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, []);
+  const pill = (active: boolean): string =>
+    `rounded-md px-2.5 py-1 text-xs font-medium transition ${
+      active ? "bg-gradient-to-r from-[#7A4DFF] to-[#EC4899] text-white" : "bg-white/5 text-neutral-300 hover:bg-white/10"
+    }`;
+  const sizes: SubSize[] = ["s", "m", "l"];
+  const backgrounds: SubBackground[] = ["none", "box", "solid"];
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen((value) => !value)}
+        title={t("player.subtitleStyle")}
+        className={chipClass(open)}
+      >
+        <Type className="h-3.5 w-3.5" />
+      </button>
+      {open && (
+        <div className="absolute bottom-full left-0 z-20 mb-2 w-56 space-y-3 rounded-xl bg-[#0C0E19]/95 p-3 shadow-2xl ring-1 ring-white/10 backdrop-blur">
+          <div>
+            <div className="mb-1.5 text-xs text-neutral-400">{t("player.subtitleSize")}</div>
+            <div className="flex gap-1.5">
+              {sizes.map((size) => (
+                <button
+                  key={size}
+                  onClick={() => onChange({ ...style, size })}
+                  className={pill(style.size === size)}
+                >
+                  {t(`player.size_${size}`)}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="mb-1.5 text-xs text-neutral-400">{t("player.subtitleBackground")}</div>
+            <div className="flex gap-1.5">
+              {backgrounds.map((background) => (
+                <button
+                  key={background}
+                  onClick={() => onChange({ ...style, background })}
+                  className={pill(style.background === background)}
+                >
+                  {t(`player.bg_${background}`)}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
