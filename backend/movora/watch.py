@@ -12,7 +12,7 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from movora.db.models import Series, User, UserRole, WatchState
+from movora.db.models import Episode, Series, User, UserRole, WatchState
 
 
 def current_user(session: Session) -> User:
@@ -62,6 +62,18 @@ def resume_position(session: Session, user: User, episode_id: int) -> float:
     return state.position_seconds
 
 
+def pick_continue_episode(
+    ordered: list[Episode], states: dict[int, WatchState]
+) -> Episode | None:
+    """The episode to resume: the most recently-updated unfinished episode that has saved
+    progress, else the first not-yet-watched one (None when every episode is watched). This
+    resumes where the viewer actually left off even if they jumped ahead out of order."""
+    in_progress = [ep for ep in ordered if ep.id in states and not states[ep.id].watched]
+    if in_progress:
+        return max(in_progress, key=lambda ep: states[ep.id].updated_at)
+    return next((ep for ep in ordered if not (ep.id in states and states[ep.id].watched)), None)
+
+
 def watched_episode_ids(session: Session, user: User, episode_ids: list[int]) -> set[int]:
     if not episode_ids:
         return set()
@@ -108,17 +120,14 @@ def series_watch_summary(session: Session, user: User, series: Series) -> WatchS
 
     episodes_watched = sum(1 for state in states.values() if state.watched)
     percent = round(episodes_watched * 100 / total) if total else 0
-    # "Continue" = the first not-yet-watched episode (None when fully watched).
-    continue_id = next(
-        (episode.id for episode in episodes if not _is_watched(states.get(episode.id))),
-        None,
-    )
+    continue_ep = pick_continue_episode(episodes, states)
+    continue_id = continue_ep.id if continue_ep is not None else None
     times = [state.updated_at for state in states.values()]
     started_at = min(times) if times else None
     finished_at = max(times) if total and episodes_watched >= total else None
-    if episodes_watched == 0:
+    if not states:  # any saved progress counts as "watching", matching the library cards
         status = "not_started"
-    elif episodes_watched >= total:
+    elif total > 0 and episodes_watched >= total:
         status = "completed"
     else:
         status = "watching"
@@ -131,7 +140,3 @@ def series_watch_summary(session: Session, user: User, series: Series) -> WatchS
         started_at=started_at,
         finished_at=finished_at,
     )
-
-
-def _is_watched(state: WatchState | None) -> bool:
-    return state is not None and state.watched

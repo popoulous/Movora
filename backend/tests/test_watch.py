@@ -56,6 +56,21 @@ def test_watch_summary_progresses() -> None:
         assert summary.finished_at is not None
 
 
+def test_continue_resumes_in_progress_episode_even_when_ahead() -> None:
+    engine = create_db_engine(":memory:")
+    init_db(engine)
+    with create_session_factory(engine)() as session:
+        series, episodes = _series_with_episodes(session, 5)
+        user = current_user(session)
+
+        # Jumped ahead: part-way through episode 4 without finishing 1-3.
+        record_watch(session, user, episodes[3].id, position_seconds=120.0)
+        summary = series_watch_summary(session, user, series)
+        assert summary.status == "watching"
+        # Continue resumes where the viewer actually is, not the first unwatched episode.
+        assert summary.continue_episode_id == episodes[3].id
+
+
 def test_resume_position_until_watched() -> None:
     engine = create_db_engine(":memory:")
     init_db(engine)

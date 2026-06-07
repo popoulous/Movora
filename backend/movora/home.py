@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from movora.db.models import Episode, Season, Series, User, WatchState
+from movora.watch import pick_continue_episode
 
 _MIN = datetime.min  # sort key for missing timestamps (naive, like WatchState.updated_at)
 
@@ -113,7 +114,7 @@ def _overview(series: Series, states: dict[int, WatchState]) -> SeriesOverview:
     times = [states[ep.id].updated_at for ep in ordered if ep.id in states]
     last_watched_at = max(times) if times else None
     media_files = [mf for ep in ordered for mf in ep.media_files]
-    continue_ep = next((ep for ep in ordered if ep.id not in watched_ids), None)
+    continue_ep = pick_continue_episode(ordered, states)
     position = (
         states[continue_ep.id].position_seconds
         if continue_ep is not None and continue_ep.id in states

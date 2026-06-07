@@ -71,6 +71,7 @@ from movora.subtitles import (
 )
 from movora.watch import (
     current_user,
+    pick_continue_episode,
     record_watch,
     resume_position,
     series_watch_summary,
@@ -223,7 +224,7 @@ def _series_summary(series: Series, states: dict[int, WatchState]) -> SeriesRead
         status = "watching"
     times = [states[ep.id].updated_at for ep in ordered if ep.id in states]
     media_files = [mf for ep in ordered for mf in ep.media_files]
-    continue_ep = next((ep for ep in ordered if ep.id not in watched_ids), None)
+    continue_ep = pick_continue_episode(ordered, states)
     position = (
         states[continue_ep.id].position_seconds
         if continue_ep is not None and continue_ep.id in states
