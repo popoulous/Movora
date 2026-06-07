@@ -15,6 +15,7 @@ import {
   api,
   type Episode,
   type PlaybackInfo,
+  type Season,
   type SeriesDetail,
   type SubtitleTrack,
 } from "../api";
@@ -398,7 +399,7 @@ export function PlayerPage(): JSX.Element {
         {playback.episode_title ?? (isSeries ? t("series.episode", { number: epLabel }) : playback.series_title)}
       </h1>
 
-      <div className="mt-4 grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="mt-4 space-y-5">
         <div className="space-y-4">
           {!playback.direct_play && (
             <div className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
@@ -508,8 +509,8 @@ export function PlayerPage(): JSX.Element {
           </div>
         </div>
 
-        {isSeries && (
-          <EpisodeList episodes={ordered} currentId={id} navigate={navigate} t={t} />
+        {isSeries && series !== null && (
+          <EpisodeBrowser seasons={series.seasons} currentId={id} navigate={navigate} t={t} />
         )}
       </div>
     </div>
@@ -585,51 +586,96 @@ function SubtitleStyleControl({
   );
 }
 
-function EpisodeList({
-  episodes,
+function EpisodeBrowser({
+  seasons,
   currentId,
   navigate,
   t,
 }: {
-  episodes: Episode[];
+  seasons: Season[];
   currentId: number;
   navigate: (to: string) => void;
   t: TFunction;
 }): JSX.Element {
+  const ordered = [...seasons].sort((a, b) => seasonOrder(a.number) - seasonOrder(b.number));
+  const currentSeason =
+    ordered.find((season) => season.episodes.some((episode) => episode.id === currentId))?.number ??
+    ordered[0]?.number ??
+    1;
+  const [selected, setSelected] = useState(currentSeason);
+  useEffect(() => setSelected(currentSeason), [currentSeason]); // follow the playing episode
+
+  const season = ordered.find((entry) => entry.number === selected) ?? ordered[0];
+  const episodes = season ? [...season.episodes].sort((a, b) => a.number - b.number) : [];
+
   return (
-    <aside className="rounded-2xl bg-white/[0.03] ring-1 ring-white/10">
-      <h2 className="px-4 py-3 text-xs font-semibold tracking-wide text-neutral-400 uppercase">
-        {t("player.episodes")}
-      </h2>
-      <ul className="max-h-[70vh] divide-y divide-white/5 overflow-y-auto">
+    <section>
+      <div className="mb-3 flex flex-wrap items-center gap-3">
+        <h2 className="text-sm font-semibold tracking-wide text-neutral-300 uppercase">
+          {t("player.episodes")}
+        </h2>
+        {ordered.length > 1 && (
+          <div className="flex flex-wrap gap-1.5">
+            {ordered.map((entry) => (
+              <button
+                key={entry.id}
+                onClick={() => setSelected(entry.number)}
+                className={chipClass(entry.number === selected)}
+              >
+                {entry.number === 0
+                  ? t("series.season0")
+                  : t("series.season", { number: entry.number })}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="no-scrollbar flex gap-3 overflow-x-auto pb-2">
         {episodes.map((episode) => {
           const current = episode.id === currentId;
           return (
-            <li key={episode.id}>
-              <button
-                onClick={() => navigate(`/watch/${episode.id}`)}
-                className={`flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition ${
-                  current ? "bg-[#7A4DFF]/[0.12] text-white" : "hover:bg-white/[0.04]"
+            <button
+              key={episode.id}
+              onClick={() => navigate(`/watch/${episode.id}`)}
+              className="group w-44 shrink-0 text-left sm:w-48"
+            >
+              <div
+                className={`relative aspect-video overflow-hidden rounded-xl bg-white/5 ring-1 transition ${
+                  current ? "ring-2 ring-violet-400/70" : "ring-white/10 group-hover:ring-violet-400/40"
                 }`}
               >
-                <span className="w-8 shrink-0 text-right tabular-nums text-neutral-500">
+                {episode.thumbnail_url !== null ? (
+                  <img src={episode.thumbnail_url} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full items-center justify-center bg-gradient-to-br from-violet-900/40 to-fuchsia-900/30 text-sm text-neutral-400">
+                    {episodeLabel(episode)}
+                  </div>
+                )}
+                <span className="absolute top-1.5 left-1.5 rounded bg-black/70 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-neutral-100">
                   {episodeLabel(episode)}
                 </span>
                 <span
-                  className={`min-w-0 flex-1 truncate ${episode.watched ? "text-neutral-400" : "text-neutral-100"}`}
+                  className={`absolute inset-0 flex items-center justify-center bg-black/30 transition ${
+                    current ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                  }`}
                 >
-                  {episode.title ?? t("series.episode", { number: episodeLabel(episode) })}
+                  <Play className="h-7 w-7 fill-white text-white drop-shadow" />
                 </span>
-                {current ? (
-                  <Play className="h-3.5 w-3.5 shrink-0 fill-current text-violet-300" />
-                ) : episode.watched ? (
-                  <Check className="h-4 w-4 shrink-0 text-emerald-400" aria-label="watched" />
-                ) : null}
-              </button>
-            </li>
+                {episode.watched && !current && (
+                  <span className="absolute top-1.5 right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 ring-2 ring-black/30">
+                    <Check className="h-3 w-3 text-white" strokeWidth={3} />
+                  </span>
+                )}
+              </div>
+              <div
+                className={`mt-1.5 truncate text-sm ${current ? "font-semibold text-white" : "text-neutral-300"}`}
+              >
+                {episode.title ?? t("series.episode", { number: episodeLabel(episode) })}
+              </div>
+            </button>
           );
         })}
-      </ul>
-    </aside>
+      </div>
+    </section>
   );
 }
