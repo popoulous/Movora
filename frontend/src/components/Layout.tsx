@@ -177,8 +177,10 @@ export function Layout(): JSX.Element {
 
         <div className="relative flex min-w-0 flex-1 flex-col">
           <header className="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-center px-6 py-3">
-            <div className="pointer-events-auto ml-auto flex items-center gap-2">
+            <div className="pointer-events-auto">
               <GlobalSearch />
+            </div>
+            <div className="pointer-events-auto ml-auto flex items-center gap-2">
               <ActivityBell />
               <LanguageMenu />
             </div>

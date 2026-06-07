@@ -57,7 +57,7 @@ export function GlobalSearch(): JSX.Element {
         />
       </div>
       {open && query.trim().length >= 2 && (
-        <div className="absolute right-0 mt-2 max-h-96 w-72 overflow-auto rounded-xl bg-[#0C0E19]/95 p-1.5 shadow-2xl ring-1 ring-white/10 backdrop-blur">
+        <div className="absolute left-0 mt-2 max-h-96 w-72 overflow-auto rounded-xl bg-[#0C0E19]/95 p-1.5 shadow-2xl ring-1 ring-white/10 backdrop-blur">
           {results.length === 0 ? (
             <p className="px-3 py-3 text-sm text-neutral-500">{t("search.noResults")}</p>
           ) : (
