@@ -78,6 +78,36 @@ def test_tmdb_tv_search_uses_name_fields() -> None:
     assert meta.genres == "Drama"
 
 
+def test_tmdb_tv_fetches_episode_runtime_from_details() -> None:
+    # Search omits runtime, so a details call fills episode_duration (averaged over the
+    # reported runtimes) — this is what drives the within-episode progress bar.
+    responses = {
+        "/search/tv": {
+            "results": [{"id": 2290, "name": "Stargate Atlantis", "first_air_date": "2004-07-16"}]
+        },
+        "/tv/2290": {"episode_run_time": [44, 42]},
+    }
+    provider = TmdbProvider("tv", "KEY", transport=_transport(responses))
+    meta = provider.fetch(ParsedFields(title="Stargate Atlantis"))
+
+    assert meta is not None
+    assert meta.episode_duration == 43
+
+
+def test_tmdb_movie_fetches_runtime_from_details() -> None:
+    responses = {
+        "/search/movie": {
+            "results": [{"id": 27205, "title": "Inception", "release_date": "2010-07-15"}]
+        },
+        "/movie/27205": {"runtime": 148},
+    }
+    provider = TmdbProvider("movie", "KEY", transport=_transport(responses))
+    meta = provider.fetch(ParsedFields(title="Inception"))
+
+    assert meta is not None
+    assert meta.episode_duration == 148
+
+
 def test_tmdb_returns_none_without_key_or_match() -> None:
     assert TmdbProvider("movie", None, transport=_transport({})).fetch(
         ParsedFields(title="Inception")

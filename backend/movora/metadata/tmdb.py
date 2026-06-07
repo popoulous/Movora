@@ -58,7 +58,23 @@ class TmdbProvider:
             params[key] = parsed.year
         payload = self._transport(f"{TMDB_URL}/search/{self._media_type}", params)
         results = payload.get("results") or []
-        return self._to_metadata(results[0], parsed.title) if results else None
+        if not results:
+            return None
+        item = results[0]
+        return self._to_metadata(item, parsed.title, self._episode_duration(item.get("id")))
+
+    def _episode_duration(self, item_id: Any) -> int | None:
+        """Episode runtime in minutes — needs a details call; search omits it. For a movie
+        this is the film's own runtime (it is modelled as a single-episode series)."""
+        if item_id is None:
+            return None
+        params: dict[str, str | int] = {"api_key": self._api_key or "", "language": self._language}
+        details = self._transport(f"{TMDB_URL}/{self._media_type}/{item_id}", params)
+        if self._media_type == "movie":
+            runtime = details.get("runtime")
+            return int(runtime) if runtime else None
+        run_times = [int(t) for t in details.get("episode_run_time") or [] if t]
+        return round(sum(run_times) / len(run_times)) if run_times else None
 
     def _genre_map(self) -> dict[int, str]:
         if self._genres is None:
@@ -70,7 +86,9 @@ class TmdbProvider:
             self._genres = {g["id"]: g["name"] for g in payload.get("genres") or []}
         return self._genres
 
-    def _to_metadata(self, item: dict[str, Any], fallback_title: str) -> SeriesMetadata:
+    def _to_metadata(
+        self, item: dict[str, Any], fallback_title: str, episode_duration: int | None = None
+    ) -> SeriesMetadata:
         is_movie = self._media_type == "movie"
         date = str(item.get("release_date" if is_movie else "first_air_date") or "")
         year = int(date[:4]) if date[:4].isdigit() else None
@@ -91,4 +109,5 @@ class TmdbProvider:
             score=round(vote * 10) if vote else None,
             description=item.get("overview") or None,
             genres=", ".join(names) if names else None,
+            episode_duration=episode_duration,
         )
