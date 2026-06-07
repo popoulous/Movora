@@ -1,4 +1,7 @@
 import fallbackFontUrl from "@fontsource/noto-sans/files/noto-sans-latin-400-normal.woff2?url";
+// The latin subset lacks Latin Extended-A (ő, ű …); load the latin-ext face too so
+// libass can fall back to it for Hungarian glyphs instead of drawing tofu boxes.
+import fallbackFontExtUrl from "@fontsource/noto-sans/files/noto-sans-latin-ext-400-normal.woff2?url";
 import { type TFunction } from "i18next";
 import JASSUB from "jassub";
 import { Check, Play, SkipForward, Star } from "lucide-react";
@@ -202,7 +205,8 @@ export function PlayerPage(): JSX.Element {
         instance = new JASSUB({
           video: current,
           subContent,
-          fonts: playback.fonts, // fonts embedded in the source mkv
+          // Embedded mkv fonts, plus the Noto Sans latin-ext face for Hungarian glyphs.
+          fonts: [...playback.fonts, fallbackFontExtUrl],
           availableFonts: { "noto sans": fallbackFontUrl },
           defaultFont: "noto sans", // used when the .ass font isn't embedded
           // The browser local-font query sends an uncloneable callback to the worker
