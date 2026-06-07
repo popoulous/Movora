@@ -234,6 +234,10 @@ __marimo__/
 /normalized/
 /assets/
 /fonts/
+/thumbnails/
+
+# TypeScript incremental build cache
+frontend/tsconfig.tsbuildinfo
 
 # Local dev launcher scripts (Windows)
 /dev-backend.bat
