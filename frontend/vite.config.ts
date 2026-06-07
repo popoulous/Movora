@@ -2,19 +2,23 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
 
-// JASSUB's WebGL renderers request their canvas context with `desynchronized: true`.
-// On Windows + Chrome that paints an opaque black background instead of staying
-// transparent, so enabling subtitles blacks out the whole video (ThaUnknown/jassub#70).
-// The upstream fix isn't on npm yet, so flip the flag while Vite transforms jassub's
-// renderer modules — works in dev and build, and survives a node_modules reinstall.
-function jassubTransparentCanvas(): Plugin {
+// Two dev-time fixes applied while Vite transforms jassub's modules (works in dev and
+// build, and survives a node_modules reinstall):
+//  - desynchronized:true makes the WebGL canvas paint an opaque black background on
+//    Windows + Chrome, so subtitles black out the video (ThaUnknown/jassub#70); flip it.
+//  - jassub ships sourcemaps that reference source files it doesn't publish, so the
+//    browser logs "points to missing source files"; drop the sourceMappingURL comment.
+function jassubDevFixes(): Plugin {
   return {
-    name: "jassub-transparent-canvas",
+    name: "jassub-dev-fixes",
     transform(code, id) {
-      if (id.includes("jassub") && code.includes("desynchronized: true")) {
-        return { code: code.replace(/desynchronized: true/g, "desynchronized: false"), map: null };
+      if (!id.includes("jassub")) {
+        return null;
       }
-      return null;
+      const patched = code
+        .replace(/desynchronized: true/g, "desynchronized: false")
+        .replace(/\n?\/\/[#@] sourceMappingURL=\S+/g, "");
+      return patched === code ? null : { code: patched, map: null };
     },
   };
 }
@@ -22,13 +26,13 @@ function jassubTransparentCanvas(): Plugin {
 // In dev the SPA runs on Vite and proxies API calls to the FastAPI backend.
 // In production the backend serves the built static files (frontend/dist).
 export default defineConfig({
-  plugins: [react(), tailwindcss(), jassubTransparentCanvas()],
+  plugins: [react(), tailwindcss(), jassubDevFixes()],
   // JASSUB instantiates its libass worker via `new Worker(new URL(...), {type:"module"})`.
   // That worker code-splits (wasm glue + renderers), so it must be emitted as ES modules;
   // the default "iife" worker format can't handle code-splitting. The renderers (which carry
   // the desynchronized flag we patch) live in the worker graph, and Vite 5 does NOT apply the
   // root plugins to worker bundles — so register the transform here too.
-  worker: { format: "es", plugins: () => [jassubTransparentCanvas()] },
+  worker: { format: "es", plugins: () => [jassubDevFixes()] },
   optimizeDeps: {
     // JASSUB resolves its worker + wasm via `new URL('./worker/...', import.meta.url)`. Dep
     // pre-bundling flattens that to .vite/deps where the files 404, so nothing renders.
