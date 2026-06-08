@@ -64,17 +64,23 @@ export function useSpatialNav(enabled: boolean): void {
   useEffect(() => {
     if (!enabled) return;
 
-    // Auto-focus the first interactive element so D-pad has a starting point.
-    if (!document.activeElement || document.activeElement === document.body) {
-      document.querySelector<HTMLElement>(FOCUSABLE)?.focus();
-    }
-
     const onKeyDown = (e: KeyboardEvent): void => {
       const dir = DIR_MAP[e.key];
       if (dir === undefined) return;
 
       const active = document.activeElement;
-      if (active === null) return;
+
+      // No current focus (e.g. right after page load or fullscreen entry) —
+      // first arrow key focuses the first interactive element rather than
+      // jumping to a neighbour that doesn't exist yet.
+      if (active === null || active === document.body) {
+        const first = document.querySelector<HTMLElement>(FOCUSABLE);
+        if (first !== null) {
+          e.preventDefault();
+          first.focus();
+        }
+        return;
+      }
 
       // Let the <video> element keep its own arrow-key bindings (seek / volume).
       if (active.tagName === "VIDEO") return;

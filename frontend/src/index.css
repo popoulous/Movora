@@ -56,6 +56,14 @@ body {
   min-height: 3rem;
 }
 
+/* Tailwind wraps hover: classes in @media (hover:hover); some webOS builds report
+   hover:none even with the LG Magic Remote, killing all hover feedback.
+   Bypass the media query by applying a subtle brightness lift directly. */
+.tv a:hover,
+.tv button:hover {
+  filter: brightness(1.15);
+}
+
 /* Tailwind v4 stores gradient direction as "--tw-gradient-position: to right in oklab"
    which Chrome <111 ignores, killing the entire gradient declaration.
    Override the variable for each direction class used in the project so the

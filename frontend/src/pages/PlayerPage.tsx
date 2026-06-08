@@ -8,6 +8,7 @@ import { Check, ChevronLeft, Maximize, Minimize, Play, SkipForward, Type } from 
 import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -251,6 +252,29 @@ export function PlayerPage(): JSX.Element {
   const [skip, setSkip] = useState<"intro" | "outro" | null>(null);
   const [nearEnd, setNearEnd] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
+  const [controlsActive, setControlsActive] = useState(true);
+  const activityTimerRef = useRef<number | null>(null);
+
+  const showControls = useCallback((): void => {
+    setControlsActive(true);
+    if (activityTimerRef.current !== null) window.clearTimeout(activityTimerRef.current);
+    activityTimerRef.current = window.setTimeout(() => setControlsActive(false), 3000);
+  }, []);
+
+  // On TV: track pointer/key activity on the video container to auto-hide
+  // the fullscreen button after 3 s of inactivity.
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!tv || container === null) return;
+    container.addEventListener("pointermove", showControls);
+    container.addEventListener("keydown", showControls);
+    showControls();
+    return () => {
+      container.removeEventListener("pointermove", showControls);
+      container.removeEventListener("keydown", showControls);
+      if (activityTimerRef.current !== null) window.clearTimeout(activityTimerRef.current);
+    };
+  }, [tv, showControls]);
   const [subStyle, setSubStyleState] = useState<SubStyle>(loadSubStyle);
   const setSubStyle = (next: SubStyle): void => {
     setSubStyleState(next);
@@ -375,12 +399,21 @@ export function PlayerPage(): JSX.Element {
     return () => clearInterval(timer);
   }, [normalizing, id]);
 
-  // Track browser fullscreen state so the custom button icon reflects it.
+  // Track browser fullscreen state; on TV focus a button on entry so D-pad works.
   useEffect(() => {
-    const onFs = (): void => setFullscreen(!!document.fullscreenElement);
+    const onFs = (): void => {
+      const isFs = !!document.fullscreenElement;
+      setFullscreen(isFs);
+      if (isFs && tv) {
+        window.setTimeout(() => {
+          showControls();
+          containerRef.current?.querySelector<HTMLElement>("button:not(:disabled)")?.focus();
+        }, 150);
+      }
+    };
     document.addEventListener("fullscreenchange", onFs);
     return () => document.removeEventListener("fullscreenchange", onFs);
-  }, []);
+  }, [tv, showControls]);
 
   const toggleFullscreen = (): void => {
     if (!document.fullscreenElement) {
@@ -575,7 +608,7 @@ export function PlayerPage(): JSX.Element {
               <button
                 onClick={toggleFullscreen}
                 title={fullscreen ? "Exit fullscreen" : "Fullscreen"}
-                className="absolute right-3 bottom-3 z-20 rounded-lg bg-black/60 p-2 text-white ring-1 ring-white/20 transition hover:bg-black/80"
+                className={`absolute right-3 bottom-3 z-20 rounded-lg bg-black/60 p-2 text-white ring-1 ring-white/20 transition-[opacity,background-color] duration-500 hover:bg-black/80 ${controlsActive ? "opacity-100" : "pointer-events-none opacity-0"}`}
               >
                 {fullscreen ? <Minimize className="h-5 w-5" /> : <Maximize className="h-5 w-5" />}
               </button>
