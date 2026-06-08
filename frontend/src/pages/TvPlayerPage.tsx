@@ -29,13 +29,6 @@ function TvEpisodeCarousel({
     ? [...currentSeason.episodes].sort((a, b) => a.number - b.number)
     : [];
 
-  const activeRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    activeRef.current?.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
-    activeRef.current?.focus();
-  }, [currentId]);
-
   return (
     <div className="no-scrollbar flex gap-3 overflow-x-auto px-6 py-3">
       {episodes.map((episode) => {
@@ -43,7 +36,8 @@ function TvEpisodeCarousel({
         return (
           <button
             key={episode.id}
-            ref={current ? activeRef : null}
+            // data-active is used by TvPlayerPage to focus this button after panel opens
+            data-active={current ? "true" : undefined}
             onClick={() => navigate(`/watch/${episode.id}`)}
             className={`relative flex w-40 shrink-0 flex-col gap-1.5 rounded-xl bg-white/5 p-2 text-left ring-1 transition focus-visible:outline-none ${
               current
@@ -117,7 +111,17 @@ export function TvPlayerPage(): JSX.Element {
   const [playing, setPlaying] = useState(true);
   const [controlsActive, setControlsActive] = useState(true);
   const [panelOpen, setPanelOpen] = useState(false);
+
+  // Always-current refs — safe to read from capture-phase listeners and effects
+  const panelOpenRef = useRef(false);
+  panelOpenRef.current = panelOpen;
+
+  const rootRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const activityTimerRef = useRef<number | null>(null);
+  const panelTimerRef = useRef<number | null>(null);
+
+  // ── Controls top-bar auto-hide ─────────────────────────────────────────────
 
   const showControls = useCallback((): void => {
     setControlsActive(true);
@@ -132,47 +136,70 @@ export function TvPlayerPage(): JSX.Element {
     };
   }, [showControls]);
 
+  // ── Panel auto-hide ────────────────────────────────────────────────────────
+
+  const startPanelTimer = useCallback((): void => {
+    if (panelTimerRef.current !== null) window.clearTimeout(panelTimerRef.current);
+    panelTimerRef.current = window.setTimeout(() => setPanelOpen(false), 2000);
+  }, []);
+
+  useEffect(() => {
+    if (!panelOpen) {
+      if (panelTimerRef.current !== null) {
+        window.clearTimeout(panelTimerRef.current);
+        panelTimerRef.current = null;
+      }
+      return;
+    }
+    // Start the 2-second auto-hide countdown
+    startPanelTimer();
+    // Focus the currently-playing episode card after the slide-in animation (300 ms)
+    const focusTimer = window.setTimeout(() => {
+      panelRef.current?.querySelector<HTMLElement>('[data-active="true"]')?.focus();
+    }, 320);
+    return () => {
+      window.clearTimeout(focusTimer);
+      if (panelTimerRef.current !== null) {
+        window.clearTimeout(panelTimerRef.current);
+        panelTimerRef.current = null;
+      }
+    };
+  }, [panelOpen, startPanelTimer]);
+
+  // ── Global capture listener: panel keyboard ────────────────────────────────
+  // Uses capture phase (fires before spatial nav's bubble listener) so Escape/
+  // Back reliably closes the panel without competing with other handlers.
+  // panelOpenRef is always current, so no closure-staleness issue.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if (!panelOpenRef.current) return;
+      showControls();
+      startPanelTimer(); // any key while panel is open resets the auto-hide timer
+      if (e.key === "Escape" || e.key === "Backspace") {
+        e.stopImmediatePropagation(); // prevent spatial nav + React handlers from also firing
+        e.preventDefault();
+        setPanelOpen(false);
+        rootRef.current?.focus();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown, { capture: true });
+    return () => document.removeEventListener("keydown", onKeyDown, { capture: true });
+  }, [showControls, startPanelTimer]); // both are stable useCallback instances
+
+  // ── Play / pause ───────────────────────────────────────────────────────────
+
   const togglePlay = (): void => {
     const video = videoRef.current;
     if (video === null) return;
     if (video.paused) {
       void video.play();
-      setPlaying(true);
     } else {
       video.pause();
-      setPlaying(false);
     }
   };
 
-  const handleKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>): void => {
-    showControls();
-    if (panelOpen) {
-      if (e.key === "Escape" || e.key === "Backspace") {
-        e.preventDefault();
-        setPanelOpen(false);
-        (e.currentTarget as HTMLElement).focus();
-      }
-      // Arrow keys in the panel are handled by the global spatial nav hook
-      return;
-    }
-    switch (e.key) {
-      case "ArrowDown":
-        e.preventDefault();
-        if (isSeries && series !== null) setPanelOpen(true);
-        break;
-      case "Enter":
-        e.preventDefault();
-        togglePlay();
-        break;
-      case "Escape":
-      case "Backspace":
-        e.preventDefault();
-        navigate(`/series/${playback?.series_id ?? ""}`);
-        break;
-    }
-  };
+  // ── mediaSession: TV remote media keys ────────────────────────────────────
 
-  // TV remote media keys (play/pause/seek ±10 s)
   useEffect(() => {
     if (!("mediaSession" in navigator) || playback === null) return;
     navigator.mediaSession.metadata = new MediaMetadata({
@@ -183,14 +210,8 @@ export function TvPlayerPage(): JSX.Element {
     });
     const video = videoRef.current;
     if (video === null) return;
-    navigator.mediaSession.setActionHandler("play", () => {
-      void video.play();
-      setPlaying(true);
-    });
-    navigator.mediaSession.setActionHandler("pause", () => {
-      video.pause();
-      setPlaying(false);
-    });
+    navigator.mediaSession.setActionHandler("play", () => void video.play());
+    navigator.mediaSession.setActionHandler("pause", () => video.pause());
     navigator.mediaSession.setActionHandler("seekbackward", () => {
       video.currentTime -= 10;
     });
@@ -205,8 +226,48 @@ export function TvPlayerPage(): JSX.Element {
     };
   }, [playback, artwork, videoRef]);
 
+  // ── Root-div keyboard handler ──────────────────────────────────────────────
+  // Only handles keys when the panel is CLOSED. Panel-open keys (Escape/Back)
+  // are handled by the global capture listener above.
+
+  const handleKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>): void => {
+    showControls();
+    // When panel is open the capture listener already handled it (or will).
+    // Don't double-process here.
+    if (panelOpenRef.current) return;
+
+    switch (e.key) {
+      case "ArrowDown":
+        e.preventDefault();
+        if (isSeries) setPanelOpen(true);
+        break;
+      case "Enter":
+        // Play/pause only when the root div itself is the focus target
+        if (
+          document.activeElement === rootRef.current ||
+          document.activeElement === null ||
+          document.activeElement === document.body
+        ) {
+          e.preventDefault();
+          togglePlay();
+        }
+        break;
+      case "Escape":
+      case "Backspace":
+        if (document.activeElement === rootRef.current) {
+          e.preventDefault();
+          navigate(`/series/${playback?.series_id ?? ""}`);
+        }
+        break;
+    }
+  };
+
+  // ── Derived subtitle data ──────────────────────────────────────────────────
+
   const vttTracks = playback?.subtitle_tracks.filter((track) => track.format === "vtt") ?? [];
   const vttSubLabels = subtitleLabels(vttTracks);
+
+  // ── Loading / error states ─────────────────────────────────────────────────
 
   if (error !== null) {
     return (
@@ -223,9 +284,12 @@ export function TvPlayerPage(): JSX.Element {
     );
   }
 
+  // ── Main render ────────────────────────────────────────────────────────────
+
   return (
     <div
-      className="fixed inset-0 z-50 select-none bg-black"
+      ref={rootRef}
+      className="fixed inset-0 z-50 overflow-hidden select-none bg-black"
       tabIndex={0}
       onKeyDown={handleKeyDown}
       onPointerMove={showControls}
@@ -243,12 +307,14 @@ export function TvPlayerPage(): JSX.Element {
         />
       )}
 
-      {/* Video — no native controls; our UI is the control surface */}
+      {/* Video — no native controls; custom UI is the control surface */}
       <video
         key={String(playback.direct_play)}
         ref={videoRef}
         src={playback.stream_url}
         autoPlay
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
         onLoadedMetadata={resume}
         onTimeUpdate={handleTimeUpdate}
         onEnded={markWatched}
@@ -265,7 +331,7 @@ export function TvPlayerPage(): JSX.Element {
         ))}
       </video>
 
-      {/* Top bar — fades out after 3 s of inactivity */}
+      {/* Top bar — fades after 3 s of inactivity */}
       <div
         className={`pointer-events-none absolute inset-x-0 top-0 bg-gradient-to-b from-black/80 to-transparent px-8 pt-8 pb-20 transition-opacity duration-500 ${
           controlsActive ? "opacity-100" : "opacity-0"
@@ -340,8 +406,9 @@ export function TvPlayerPage(): JSX.Element {
         </div>
       )}
 
-      {/* Bottom panel — slides up on ↓ D-pad press */}
+      {/* Bottom panel — slides up on ↓ D-pad, auto-hides after 2 s */}
       <div
+        ref={panelRef}
         className={`absolute inset-x-0 bottom-0 bg-gradient-to-t from-black via-black/95 to-black/80 transition-transform duration-300 ${
           panelOpen ? "translate-y-0" : "translate-y-full"
         }`}
@@ -355,7 +422,7 @@ export function TvPlayerPage(): JSX.Element {
           />
         )}
 
-        {/* Controls row: subtitle chips + play/pause + next */}
+        {/* Controls row: subtitle chips + play/pause + next episode */}
         <div className="flex flex-wrap items-center gap-3 px-6 pb-8 pt-2">
           {vttTracks.length > 0 && (
             <>

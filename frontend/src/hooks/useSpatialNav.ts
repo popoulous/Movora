@@ -5,8 +5,16 @@ const FOCUSABLE =
 
 function isVisible(el: Element): boolean {
   const rect = el.getBoundingClientRect();
-  // Reject zero-size or off-screen elements
   if (rect.width === 0 || rect.height === 0) return false;
+  // Reject elements fully outside the viewport — catches translate-y-full panels
+  // that are in the DOM but not yet visible (off-screen).
+  if (
+    rect.bottom <= 0 ||
+    rect.top >= window.innerHeight ||
+    rect.right <= 0 ||
+    rect.left >= window.innerWidth
+  )
+    return false;
   const style = getComputedStyle(el);
   return style.display !== "none" && style.visibility !== "hidden" && style.opacity !== "0";
 }
