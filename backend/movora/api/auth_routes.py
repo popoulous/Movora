@@ -25,13 +25,18 @@ from movora.db.models import Library, User, UserRole
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
-SESSION_TTL = 60 * 60 * 24 * 30  # 30 days
-
-
-def _set_session_cookie(response: Response, user_id: int, secret: str) -> None:
-    token = issue_token(user_id, secret, SESSION_TTL)
+def _set_session_cookie(
+    response: Response, user_id: int, secret: str, ttl: int, secure: bool
+) -> None:
+    token = issue_token(user_id, secret, ttl)
     response.set_cookie(
-        AUTH_COOKIE, token, max_age=SESSION_TTL, httponly=True, samesite="lax", path="/"
+        AUTH_COOKIE,
+        token,
+        max_age=ttl,
+        httponly=True,
+        samesite="lax",
+        secure=secure,
+        path="/",
     )
 
 
@@ -63,7 +68,8 @@ def setup(payload: LoginRequest, session: SessionDep, request: Request, response
     user.role = UserRole.ADMIN
     session.add(user)
     session.commit()
-    _set_session_cookie(response, user.id, request.app.state.settings.secret_key)
+    cfg = request.app.state.settings
+    _set_session_cookie(response, user.id, cfg.secret_key, cfg.session_ttl_seconds, cfg.cookie_secure)
     return user
 
 
@@ -74,7 +80,8 @@ def login(payload: LoginRequest, session: SessionDep, request: Request, response
         payload.password, user.password_hash
     ):
         raise HTTPException(status_code=401, detail="invalid username or password")
-    _set_session_cookie(response, user.id, request.app.state.settings.secret_key)
+    cfg = request.app.state.settings
+    _set_session_cookie(response, user.id, cfg.secret_key, cfg.session_ttl_seconds, cfg.cookie_secure)
     return user
 
 

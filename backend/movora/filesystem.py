@@ -1,8 +1,4 @@
-"""List server-side directories for the library folder-picker.
-
-This exposes the server's filesystem, so it must become admin-only once auth
-lands. For now (pre-auth) it is open — a known, temporary state.
-"""
+"""List server-side directories for the library folder-picker (admin-only)."""
 
 from __future__ import annotations
 

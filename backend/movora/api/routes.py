@@ -759,7 +759,7 @@ def _episode_media_file(session: Session, episode_id: int) -> MediaFile:
 
 
 @router.get("/fs", response_model=FsListing)
-def browse_fs(path: str | None = None) -> FsListing:
+def browse_fs(admin: AdminDep, path: str | None = None) -> FsListing:
     try:
         listing = list_directories(path)
     except OSError as exc:
@@ -772,7 +772,7 @@ def browse_fs(path: str | None = None) -> FsListing:
 
 
 @router.get("/tasks", response_model=list[TaskRead])
-def list_tasks(session: SessionDep) -> list[TaskRead]:
+def list_tasks(session: SessionDep, admin: AdminDep) -> list[TaskRead]:
     tasks = session.scalars(
         select(Task)
         .order_by(Task.id.desc())
@@ -790,7 +790,7 @@ def list_tasks(session: SessionDep) -> list[TaskRead]:
 
 
 @router.post("/tasks/cancel")
-def cancel_tasks(payload: TaskCancel, session: SessionDep, request: Request) -> dict[str, int]:
+def cancel_tasks(payload: TaskCancel, session: SessionDep, request: Request, admin: AdminDep) -> dict[str, int]:
     """Cancel queued/running tasks: kill any running transcode and drop the rows."""
     tasks = list(
         session.scalars(
@@ -855,7 +855,7 @@ def _task_read(task: Task) -> TaskRead:
 
 
 @router.get("/settings", response_model=SettingsRead)
-def get_settings(session: SessionDep) -> SettingsRead:
+def get_settings(session: SessionDep, _user: CurrentUserDep) -> SettingsRead:
     return _read_settings(session)
 
 
