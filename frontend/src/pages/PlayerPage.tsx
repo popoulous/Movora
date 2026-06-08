@@ -4,77 +4,19 @@ import fallbackFontUrl from "@fontsource/noto-sans/files/noto-sans-latin-400-nor
 import fallbackFontExtUrl from "@fontsource/noto-sans/files/noto-sans-latin-ext-400-normal.woff2?url";
 import { type TFunction } from "i18next";
 import JASSUB from "jassub";
-import { Check, ChevronLeft, Maximize, Minimize, Play, SkipForward, Type } from "lucide-react";
+import { Check, ChevronLeft, Play, SkipForward, Type } from "lucide-react";
 import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
-  useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { useActivity } from "../ActivityContext";
-import { useAuth } from "../AuthContext";
-import {
-  api,
-  type Episode,
-  type PlaybackInfo,
-  type Season,
-  type SeriesDetail,
-  type SubtitleTrack,
-} from "../api";
-import { useTvMode } from "../hooks/useTvMode";
-
-const LANG_NAMES: Record<string, string> = {
-  hu: "Magyar",
-  hun: "Magyar",
-  en: "English",
-  eng: "English",
-  ja: "日本語",
-  jpn: "日本語",
-  de: "Deutsch",
-  ger: "Deutsch",
-  fr: "Français",
-  fre: "Français",
-};
-
-function languageName(track: SubtitleTrack): string | null {
-  const lang = track.language?.toLowerCase();
-  if (lang === undefined || lang.length === 0) return null;
-  return LANG_NAMES[lang] ?? lang.toUpperCase();
-}
-
-function formatName(format: string): string {
-  return format === "vtt" ? "SRT" : format.toUpperCase();
-}
-
-// Distinguishable labels: the language name when it's unique; for tracks sharing a language
-// the embedded title (e.g. "Eng Full [SDH]") or the format; language-less tracks show the
-// format. So "Magyar / English / English" becomes "Magyar / Eng Full / Eng Full [SDH]".
-function subtitleLabels(tracks: SubtitleTrack[]): Record<string, string> {
-  const base = tracks.map((track) => languageName(track) ?? `(${formatName(track.format)})`);
-  const counts = new Map<string, number>();
-  base.forEach((label) => counts.set(label, (counts.get(label) ?? 0) + 1));
-  const result: Record<string, string> = {};
-  tracks.forEach((track, index) => {
-    const label = base[index];
-    if ((counts.get(label) ?? 0) === 1) {
-      result[track.id] = label;
-      return;
-    }
-    const title = track.label.trim();
-    const generic =
-      /^(embedded|external)\b/i.test(title) ||
-      title.toUpperCase() === (track.language ?? "").toUpperCase();
-    result[track.id] =
-      title.length > 0 && !generic ? title : `${label} (${formatName(track.format)})`;
-  });
-  return result;
-}
+import { type Season } from "../api";
+import { episodeLabel, seasonOrder, usePlayback } from "../hooks/usePlayback";
 
 type SubSize = "s" | "m" | "l";
 type SubBackground = "none" | "box" | "solid";
@@ -193,36 +135,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
   return header + lines.join("\n") + "\n";
 }
 
-// 2- and 3-letter codes that count as the same language, so we can match the UI locale.
-const LANG_ALIASES: Record<string, string[]> = {
-  hu: ["hu", "hun"],
-  en: ["en", "eng"],
-  ja: ["ja", "jpn", "jp"],
-  de: ["de", "ger", "deu"],
-  fr: ["fr", "fre", "fra"],
-};
-
-// Pick the subtitle in the user's language (UI locale, which defaults from the device);
-// fall back to the first track so something always shows.
-function pickDefaultTrack(tracks: SubtitleTrack[], uiLang: string): SubtitleTrack | null {
-  const code = uiLang.slice(0, 2).toLowerCase();
-  const codes = LANG_ALIASES[code] ?? [code];
-  const preferred = tracks.find(
-    (track) => track.language !== null && codes.includes(track.language.toLowerCase()),
-  );
-  return preferred ?? tracks[0] ?? null;
-}
-
-function seasonOrder(number: number): number {
-  return number === 0 ? Number.MAX_SAFE_INTEGER : number;
-}
-
-function episodeLabel(episode: Episode): string {
-  return episode.end_number !== null
-    ? `${episode.number}–${episode.end_number}`
-    : String(episode.number);
-}
-
 function chipClass(active: boolean): string {
   return `rounded-full px-3 py-1 text-xs font-medium transition ${
     active
@@ -232,254 +144,64 @@ function chipClass(active: boolean): string {
 }
 
 export function PlayerPage(): JSX.Element {
-  const tv = useTvMode();
-  const { t, i18n } = useTranslation();
-  const { refreshSoon } = useActivity();
-  const { user } = useAuth();
+  const { t } = useTranslation();
   const { episodeId } = useParams();
   const id = Number(episodeId);
   const navigate = useNavigate();
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const lastSaved = useRef(0); // last position (s) we sent, to throttle progress writes
-  const [playback, setPlayback] = useState<PlaybackInfo | null>(null);
-  const [series, setSeries] = useState<SeriesDetail | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [trackId, setTrackId] = useState<string | null>(null);
-  const [normalizing, setNormalizing] = useState(false);
-  const [ended, setEnded] = useState(false);
-  const [countdown, setCountdown] = useState(10);
-  const [skip, setSkip] = useState<"intro" | "outro" | null>(null);
-  const [nearEnd, setNearEnd] = useState(false);
-  const [fullscreen, setFullscreen] = useState(false);
-  const [controlsActive, setControlsActive] = useState(true);
-  const activityTimerRef = useRef<number | null>(null);
 
-  const showControls = useCallback((): void => {
-    setControlsActive(true);
-    if (activityTimerRef.current !== null) window.clearTimeout(activityTimerRef.current);
-    activityTimerRef.current = window.setTimeout(() => setControlsActive(false), 3000);
-  }, []);
+  const {
+    playback,
+    series,
+    error,
+    ended,
+    setEnded,
+    countdown,
+    skip,
+    nearEnd,
+    normalizing,
+    trackId,
+    setTrackId,
+    subLabels,
+    artwork,
+    isSeries,
+    seasonPart,
+    epLabel,
+    nextEpisode,
+    videoRef,
+    handleTimeUpdate,
+    doSkip,
+    markWatched,
+    resume,
+    normalize,
+  } = usePlayback(id);
 
-  // On TV: track pointer/key activity on the video container to auto-hide
-  // the fullscreen button after 3 s of inactivity.
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!tv || container === null) return;
-    container.addEventListener("pointermove", showControls);
-    container.addEventListener("keydown", showControls);
-    showControls();
-    return () => {
-      container.removeEventListener("pointermove", showControls);
-      container.removeEventListener("keydown", showControls);
-      if (activityTimerRef.current !== null) window.clearTimeout(activityTimerRef.current);
-    };
-  }, [tv, showControls]);
   const [subStyle, setSubStyleState] = useState<SubStyle>(loadSubStyle);
   const setSubStyle = (next: SubStyle): void => {
     setSubStyleState(next);
     localStorage.setItem("subtitleStyle", JSON.stringify(next));
   };
 
-  useEffect(() => {
-    setPlayback(null);
-    setSeries(null);
-    setError(null);
-    setTrackId(null);
-    setNormalizing(false);
-    setEnded(false);
-    setCountdown(10);
-    setSkip(null);
-    setNearEnd(false);
-    lastSaved.current = 0;
-    api
-      .getPlayback(id)
-      .then((info) => {
-        setPlayback(info);
-        // Show a subtitle by default, preferring the account's language, else the UI locale.
-        const preferred = user?.preferred_language ?? i18n.language;
-        setTrackId(pickDefaultTrack(info.subtitle_tracks, preferred)?.id ?? null);
-      })
-      .catch((reason: unknown) => setError(String(reason)));
-  }, [id]);
-
-  // Pull the series so we can show the episode list and the next episode.
-  const seriesId = playback?.series_id;
-  useEffect(() => {
-    if (seriesId === undefined) return;
-    api.getSeries(seriesId).then(setSeries).catch(() => undefined);
-  }, [seriesId]);
-
-  const ordered = useMemo(
-    () =>
-      series === null
-        ? []
-        : [...series.seasons]
-            .sort((a, b) => seasonOrder(a.number) - seasonOrder(b.number))
-            .flatMap((season) => [...season.episodes].sort((a, b) => a.number - b.number)),
-    [series],
-  );
-  const currentIndex = ordered.findIndex((episode) => episode.id === id);
-  const nextEpisode = currentIndex >= 0 ? (ordered[currentIndex + 1] ?? null) : null;
-  const isSeries = ordered.length > 1;
-
-  // Record watch progress: throttled position on play, watched on end, resume on load.
-  const saveProgress = (): void => {
-    const video = videoRef.current;
-    if (video === null || video.currentTime - lastSaved.current < 10) return;
-    lastSaved.current = video.currentTime;
-    void api.recordWatch(id, { position_seconds: video.currentTime }).catch(() => undefined);
-  };
-  // Show the Skip button while we're inside a detected intro/outro window (kept up to date
-  // on timeupdate); only flips state on a window change to avoid re-rendering every tick.
-  const handleTimeUpdate = (): void => {
-    saveProgress();
-    const video = videoRef.current;
-    if (video === null || playback === null) return;
-    const time = video.currentTime;
-    const inWindow = (start: number | null, end: number | null): boolean =>
-      start !== null && end !== null && time >= start && time < end - 1;
-    const next: "intro" | "outro" | null = inWindow(playback.intro_start, playback.intro_end)
-      ? "intro"
-      : inWindow(playback.outro_start, playback.outro_end)
-        ? "outro"
-        : null;
-    setSkip((previous) => (previous === next ? previous : next));
-    const remaining = video.duration - time;
-    const isNearEnd = !isNaN(remaining) && remaining > 0 && remaining < 30;
-    setNearEnd((previous) => (previous === isNearEnd ? previous : isNearEnd));
-  };
-  const doSkip = (): void => {
-    const video = videoRef.current;
-    const end = skip === "intro" ? playback?.intro_end : playback?.outro_end;
-    if (video !== null && end != null) video.currentTime = end;
-  };
-  const markWatched = (): void => {
-    void api.recordWatch(id, { watched: true }).catch(() => undefined);
-    setEnded(true);
-  };
-  const resume = (): void => {
-    const video = videoRef.current;
-    if (video !== null && playback !== null && playback.resume_position > 0) {
-      video.currentTime = playback.resume_position;
-    }
-  };
-
-  // After the episode ends, count down and auto-advance to the next one.
-  useEffect(() => {
-    if (!ended || nextEpisode === null) return;
-    if (countdown <= 0) {
-      navigate(`/watch/${nextEpisode.id}`);
-      return;
-    }
-    const timer = setTimeout(() => setCountdown((value) => value - 1), 1000);
-    return () => clearTimeout(timer);
-  }, [ended, countdown, nextEpisode, navigate]);
-
-  const normalize = (): void => {
-    setNormalizing(true);
-    api.normalizeEpisode(id).catch(() => undefined);
-    refreshSoon(); // surface the spinner next to the bell immediately
-  };
-
-  // While optimizing, poll until the normalized mp4 is ready, then swap it in.
-  useEffect(() => {
-    if (!normalizing) return;
-    const timer = setInterval(() => {
-      api
-        .getPlayback(id)
-        .then((info) => {
-          if (info.direct_play) {
-            setPlayback(info);
-            setNormalizing(false);
-          }
-        })
-        .catch(() => undefined);
-    }, 4000);
-    return () => clearInterval(timer);
-  }, [normalizing, id]);
-
-  // Track browser fullscreen state; on TV focus a button on entry so D-pad works.
-  useEffect(() => {
-    const onFs = (): void => {
-      const isFs = !!document.fullscreenElement;
-      setFullscreen(isFs);
-      if (isFs && tv) {
-        window.setTimeout(() => {
-          showControls();
-          containerRef.current?.querySelector<HTMLElement>("button:not(:disabled)")?.focus();
-        }, 150);
-      }
-    };
-    document.addEventListener("fullscreenchange", onFs);
-    return () => document.removeEventListener("fullscreenchange", onFs);
-  }, [tv, showControls]);
-
-  const toggleFullscreen = (): void => {
-    if (!document.fullscreenElement) {
-      void containerRef.current?.requestFullscreen();
-    } else {
-      void document.exitFullscreen();
-    }
-  };
-
-  // mediaSession API: lets TV remote-control media keys (play/pause/seek) control the video.
-  useEffect(() => {
-    if (!tv || !("mediaSession" in navigator) || playback === null) return;
-    navigator.mediaSession.metadata = new MediaMetadata({
-      title: playback.episode_title ?? playback.series_title ?? "Movora",
-      artist: playback.series_title ?? "",
-    });
-    const video = videoRef.current;
-    if (video === null) return;
-    navigator.mediaSession.setActionHandler("play", () => void video.play());
-    navigator.mediaSession.setActionHandler("pause", () => video.pause());
-    navigator.mediaSession.setActionHandler("seekbackward", () => {
-      video.currentTime -= 10;
-    });
-    navigator.mediaSession.setActionHandler("seekforward", () => {
-      video.currentTime += 10;
-    });
-    return () => {
-      navigator.mediaSession.setActionHandler("play", null);
-      navigator.mediaSession.setActionHandler("pause", null);
-      navigator.mediaSession.setActionHandler("seekbackward", null);
-      navigator.mediaSession.setActionHandler("seekforward", null);
-    };
-  }, [tv, playback]);
-
   // Every subtitle (ASS and SRT/VTT alike) is rendered by JASSUB as a canvas overlay; the
   // instance is recreated on track change and destroyed on cleanup.
-  // On TV we skip JASSUB (WebGL reliability) and use native <track> elements instead.
   useEffect(() => {
-    if (tv) return;
     const video = videoRef.current;
-    if (video === null || playback === null) {
-      return;
-    }
+    if (video === null || playback === null) return;
     const selected = playback.subtitle_tracks.find((track) => track.id === trackId);
-    if (selected === undefined) {
-      return;
-    }
+    if (selected === undefined) return;
     let instance: JASSUB | null = null;
     let cancelled = false;
     void fetch(selected.url)
       .then((response) => response.text())
       .then((raw) => {
         const current = videoRef.current;
-        if (cancelled || current === null) {
-          return;
-        }
+        if (cancelled || current === null) return;
         const ass = selected.format === "ass" ? raw : vttToAss(raw);
         instance = new JASSUB({
           video: current,
-          subContent: applyAssStyle(ass, subStyle), // user size/background overrides
-          // Embedded mkv fonts, plus the Noto Sans latin-ext face for Hungarian glyphs.
+          subContent: applyAssStyle(ass, subStyle),
           fonts: [...playback.fonts, fallbackFontExtUrl],
           availableFonts: { "noto sans": fallbackFontUrl },
-          defaultFont: "noto sans", // used when the .ass font isn't embedded
-          // The browser local-font query sends an uncloneable callback to the worker
-          // (JASSUB DataCloneError) and isn't needed once we ship a fallback font.
+          defaultFont: "noto sans",
           queryFonts: false,
         });
       });
@@ -487,7 +209,7 @@ export function PlayerPage(): JSX.Element {
       cancelled = true;
       void instance?.destroy();
     };
-  }, [playback, trackId, subStyle]);
+  }, [playback, trackId, subStyle, videoRef]);
 
   if (error !== null) {
     return <p className="text-sm text-red-400">{error}</p>;
@@ -495,21 +217,6 @@ export function PlayerPage(): JSX.Element {
   if (playback === null) {
     return <p className="text-sm text-neutral-500">{t("player.loading")}</p>;
   }
-
-  const seasonPart =
-    playback.season_number === 0
-      ? t("series.season0")
-      : t("series.season", { number: playback.season_number });
-  const epLabel =
-    playback.episode_end_number !== null
-      ? `${playback.episode_number}–${playback.episode_end_number}`
-      : String(playback.episode_number);
-  const artwork = playback.banner_image_url ?? playback.cover_image_url;
-  // On TV, only VTT tracks render (via native <track>); hide ASS tracks from the picker.
-  const visibleTracks = tv
-    ? playback.subtitle_tracks.filter((track) => track.format === "vtt")
-    : playback.subtitle_tracks;
-  const subLabels = subtitleLabels(visibleTracks);
 
   return (
     <div className="relative">
@@ -520,7 +227,7 @@ export function PlayerPage(): JSX.Element {
         />
       )}
 
-      {/* Breadcrumb: back to the series, then season · episode (no series rating here) */}
+      {/* Breadcrumb: back to the series, then season · episode */}
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-neutral-400">
         <button
           onClick={() => navigate(`/series/${playback.series_id}`)}
@@ -539,7 +246,8 @@ export function PlayerPage(): JSX.Element {
         )}
       </div>
       <h1 className="mt-1 text-xl font-bold tracking-tight">
-        {playback.episode_title ?? (isSeries ? t("series.episode", { number: epLabel }) : playback.series_title)}
+        {playback.episode_title ??
+          (isSeries ? t("series.episode", { number: epLabel }) : playback.series_title)}
       </h1>
 
       <div className="mt-4 max-w-[1600px] space-y-5">
@@ -557,7 +265,7 @@ export function PlayerPage(): JSX.Element {
             </div>
           )}
 
-          <div ref={containerRef} className="tv-player relative overflow-hidden rounded-2xl bg-black shadow-[0_0_70px_rgba(122,77,255,0.12)] ring-1 ring-white/10">
+          <div className="tv-player relative overflow-hidden rounded-2xl bg-black shadow-[0_0_70px_rgba(122,77,255,0.12)] ring-1 ring-white/10">
             <video
               key={String(playback.direct_play)}
               ref={videoRef}
@@ -568,22 +276,7 @@ export function PlayerPage(): JSX.Element {
               onTimeUpdate={handleTimeUpdate}
               onEnded={markWatched}
               className="aspect-video w-full"
-              controlsList={tv ? "nofullscreen" : undefined}
-            >
-              {/* On TV, JASSUB is skipped; serve VTT tracks via native <track> instead. */}
-              {tv &&
-                playback.subtitle_tracks
-                  .filter((track) => track.format === "vtt")
-                  .map((track) => (
-                    <track
-                      key={track.id}
-                      kind="subtitles"
-                      src={track.url}
-                      srcLang={track.language ?? undefined}
-                      default={track.id === trackId}
-                    />
-                  ))}
-            </video>
+            />
 
             {skip !== null && !ended && (
               <button
@@ -601,16 +294,6 @@ export function PlayerPage(): JSX.Element {
                 className="absolute right-5 bottom-20 inline-flex items-center gap-2 rounded-xl bg-white/15 px-4 py-2.5 text-sm font-semibold text-white ring-1 ring-white/25 backdrop-blur transition hover:bg-white/25"
               >
                 {t("player.next")} <SkipForward className="h-4 w-4" />
-              </button>
-            )}
-
-            {tv && (
-              <button
-                onClick={toggleFullscreen}
-                title={fullscreen ? "Exit fullscreen" : "Fullscreen"}
-                className={`absolute right-3 bottom-3 z-20 rounded-lg bg-black/60 p-2 text-white ring-1 ring-white/20 transition-[opacity,background-color] duration-500 hover:bg-black/80 ${controlsActive ? "opacity-100" : "pointer-events-none opacity-0"}`}
-              >
-                {fullscreen ? <Minimize className="h-5 w-5" /> : <Maximize className="h-5 w-5" />}
               </button>
             )}
 
@@ -645,13 +328,13 @@ export function PlayerPage(): JSX.Element {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {visibleTracks.length > 0 && (
+            {playback.subtitle_tracks.length > 0 && (
               <>
                 <span className="text-sm text-neutral-400">{t("player.subtitles")}:</span>
                 <button onClick={() => setTrackId(null)} className={chipClass(trackId === null)}>
                   {t("player.subtitlesOff")}
                 </button>
-                {visibleTracks.map((track) => (
+                {playback.subtitle_tracks.map((track) => (
                   <button
                     key={track.id}
                     onClick={() => setTrackId(track.id)}
@@ -660,7 +343,7 @@ export function PlayerPage(): JSX.Element {
                     {subLabels[track.id]}
                   </button>
                 ))}
-                {!tv && <SubtitleStyleControl style={subStyle} onChange={setSubStyle} t={t} />}
+                <SubtitleStyleControl style={subStyle} onChange={setSubStyle} t={t} />
               </>
             )}
             {nextEpisode !== null && (
@@ -702,7 +385,9 @@ function SubtitleStyleControl({
   }, []);
   const pill = (active: boolean): string =>
     `rounded-md px-2.5 py-1 text-xs font-medium transition ${
-      active ? "bg-gradient-to-r from-[#7A4DFF] to-[#EC4899] text-white" : "bg-white/5 text-neutral-300 hover:bg-white/10"
+      active
+        ? "bg-gradient-to-r from-[#7A4DFF] to-[#EC4899] text-white"
+        : "bg-white/5 text-neutral-300 hover:bg-white/10"
     }`;
   const sizes: SubSize[] = ["s", "m", "l"];
   const backgrounds: SubBackground[] = ["none", "box", "solid"];
@@ -768,12 +453,11 @@ function EpisodeBrowser({
     ordered[0]?.number ??
     1;
   const [selected, setSelected] = useState(currentSeason);
-  useEffect(() => setSelected(currentSeason), [currentSeason]); // follow the playing episode
+  useEffect(() => setSelected(currentSeason), [currentSeason]);
 
   const season = ordered.find((entry) => entry.number === selected) ?? ordered[0];
   const episodes = season ? [...season.episodes].sort((a, b) => a.number - b.number) : [];
 
-  // Center the playing episode in the strip so it never has to be hunted for.
   const scrollRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -781,7 +465,7 @@ function EpisodeBrowser({
     if (container === null) return;
     const card = activeRef.current;
     if (card === null) {
-      container.scrollLeft = 0; // a season without the playing episode starts at the front
+      container.scrollLeft = 0;
       return;
     }
     const cRect = container.getBoundingClientRect();
@@ -789,7 +473,6 @@ function EpisodeBrowser({
     container.scrollLeft += kRect.left - cRect.left - (container.clientWidth - card.clientWidth) / 2;
   }, [currentId, selected]);
 
-  // Click-and-drag horizontal scrolling for mouse users (touch uses native scroll).
   const drag = useRef({ active: false, startX: 0, startScroll: 0, moved: false });
   const onPointerDown = (event: ReactPointerEvent): void => {
     if (event.pointerType !== "mouse" || scrollRef.current === null) return;
@@ -809,7 +492,6 @@ function EpisodeBrowser({
   const endDrag = (): void => {
     drag.current.active = false;
   };
-  // Swallow the click that ends a drag so it doesn't navigate to an episode.
   const onClickCapture = (event: ReactMouseEvent): void => {
     if (drag.current.moved) {
       event.preventDefault();

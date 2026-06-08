@@ -13,6 +13,7 @@ import { ProfilePage } from "./pages/ProfilePage";
 import { SeriesDetailPage } from "./pages/SeriesDetailPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { TasksPage } from "./pages/TasksPage";
+import { TvPlayerPage } from "./pages/TvPlayerPage";
 
 export function App(): JSX.Element {
   const tv = useTvMode();
@@ -25,6 +26,11 @@ export function App(): JSX.Element {
       <Gate />
     </AuthProvider>
   );
+}
+
+function PlayerRoute(): JSX.Element {
+  const tv = useTvMode();
+  return tv ? <TvPlayerPage /> : <PlayerPage />;
 }
 
 function Gate(): JSX.Element {
@@ -43,7 +49,7 @@ function Gate(): JSX.Element {
         <Route index element={<HomePage />} />
         <Route path="library/:id" element={<LibraryPage />} />
         <Route path="series/:id" element={<SeriesDetailPage />} />
-        <Route path="watch/:episodeId" element={<PlayerPage />} />
+        <Route path="watch/:episodeId" element={<PlayerRoute />} />
         <Route path="tasks" element={<TasksPage />} />
         <Route path="profile" element={<ProfilePage />} />
         <Route path="settings" element={<SettingsPage />} />
