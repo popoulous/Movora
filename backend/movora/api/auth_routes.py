@@ -69,7 +69,9 @@ def setup(payload: LoginRequest, session: SessionDep, request: Request, response
     session.add(user)
     session.commit()
     cfg = request.app.state.settings
-    _set_session_cookie(response, user.id, cfg.secret_key, cfg.session_ttl_seconds, cfg.cookie_secure)
+    _set_session_cookie(
+        response, user.id, cfg.secret_key, cfg.session_ttl_seconds, cfg.cookie_secure
+    )
     return user
 
 
@@ -81,7 +83,9 @@ def login(payload: LoginRequest, session: SessionDep, request: Request, response
     ):
         raise HTTPException(status_code=401, detail="invalid username or password")
     cfg = request.app.state.settings
-    _set_session_cookie(response, user.id, cfg.secret_key, cfg.session_ttl_seconds, cfg.cookie_secure)
+    _set_session_cookie(
+        response, user.id, cfg.secret_key, cfg.session_ttl_seconds, cfg.cookie_secure
+    )
     return user
 
 

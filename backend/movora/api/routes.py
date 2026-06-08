@@ -802,7 +802,9 @@ def list_tasks(session: SessionDep, admin: AdminDep) -> list[TaskRead]:
 
 
 @router.post("/tasks/cancel")
-def cancel_tasks(payload: TaskCancel, session: SessionDep, request: Request, admin: AdminDep) -> dict[str, int]:
+def cancel_tasks(
+    payload: TaskCancel, session: SessionDep, request: Request, admin: AdminDep
+) -> dict[str, int]:
     """Cancel queued/running tasks: kill any running transcode and drop the rows."""
     tasks = list(
         session.scalars(
