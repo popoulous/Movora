@@ -342,6 +342,8 @@ export const api = {
   normalizeSeries: (seriesId: number): Promise<void> =>
     fetch(`/api/series/${seriesId}/normalize`, { method: "POST" }).then(throwIfNotOk),
   listTasks: (): Promise<Task[]> => fetch("/api/tasks").then(asJson<Task[]>),
+  tasksBusy: (): Promise<boolean> =>
+    fetch("/api/tasks/busy").then(asJson<{ busy: boolean }>).then((r) => r.busy),
   cancelTasks: (ids: number[]): Promise<void> =>
     fetch("/api/tasks/cancel", {
       method: "POST",

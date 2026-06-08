@@ -590,9 +590,8 @@ def normalize_episode(
     session: SessionDep,
     request: Request,
     background: BackgroundTasks,
-    user: CurrentUserDep,
+    admin: AdminDep,
 ) -> dict[str, str]:
-    _require_episode_access(session, user, episode_id)
     media_file = _episode_media_file(session, episode_id)
     enqueue_normalize(session, [media_file.id])
     _run_worker(request, background)
@@ -605,13 +604,12 @@ def normalize_series(
     session: SessionDep,
     request: Request,
     background: BackgroundTasks,
-    user: CurrentUserDep,
+    admin: AdminDep,
 ) -> dict[str, str]:
     """Queue every file of a series that still needs optimizing (background)."""
     series = session.get(Series, series_id)
     if series is None:
         raise HTTPException(status_code=404, detail="series not found")
-    _require_library_access(user, series.library_id)
     media_ids = list(
         session.scalars(
             select(MediaFile.id)
@@ -771,6 +769,20 @@ def browse_fs(admin: AdminDep, path: str | None = None) -> FsListing:
     )
 
 
+@router.get("/tasks/busy")
+def tasks_busy(session: SessionDep, user: CurrentUserDep) -> dict[str, bool]:
+    """Lightweight check: is any task running or queued? Available to all logged-in users."""
+    busy = (
+        session.scalar(
+            select(Task.id)
+            .where(Task.status.in_([JobStatus.PENDING, JobStatus.RUNNING]))
+            .limit(1)
+        )
+        is not None
+    )
+    return {"busy": busy}
+
+
 @router.get("/tasks", response_model=list[TaskRead])
 def list_tasks(session: SessionDep, admin: AdminDep) -> list[TaskRead]:
     tasks = session.scalars(
@@ -855,7 +867,7 @@ def _task_read(task: Task) -> TaskRead:
 
 
 @router.get("/settings", response_model=SettingsRead)
-def get_settings(session: SessionDep, _user: CurrentUserDep) -> SettingsRead:
+def get_settings(session: SessionDep, admin: AdminDep) -> SettingsRead:
     return _read_settings(session)
 
 

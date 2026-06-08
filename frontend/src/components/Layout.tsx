@@ -74,8 +74,13 @@ export function Layout(): JSX.Element {
 
   useEffect(loadLibraries, []);
 
-  // Activity polling, shared via context so any page can show/refresh progress.
+  const isAdmin = user?.role === "admin";
+
+  // Activity polling:
+  //   Admin  → full task list (fast poll while busy, cancel button works)
+  //   Viewer → lightweight busy flag only (no task details / file paths exposed)
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [busy, setBusy] = useState(false);
   const [optimistic, setOptimistic] = useState(false);
   const boostUntil = useRef(0);
   const pollNow = useRef<() => void>(() => undefined);
@@ -83,31 +88,39 @@ export function Layout(): JSX.Element {
   useEffect(() => {
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
-    const tick = (): void => {
-      api
-        .listTasks()
-        .then((next) => {
-          if (!active) return;
-          setTasks(next);
-          const busy = next.some((task) => task.status === "running" || task.status === "pending");
-          if (busy) setOptimistic(false);
-          const fast = busy || Date.now() < boostUntil.current;
-          timer = setTimeout(tick, fast ? 1500 : 8000);
-        })
-        .catch(() => {
-          if (active) timer = setTimeout(tick, 8000);
-        });
-    };
-    pollNow.current = () => {
-      clearTimeout(timer);
+    if (isAdmin) {
+      const tick = (): void => {
+        api
+          .listTasks()
+          .then((next) => {
+            if (!active) return;
+            setTasks(next);
+            const isBusy = next.some((task) => task.status === "running" || task.status === "pending");
+            if (isBusy) setOptimistic(false);
+            const fast = isBusy || Date.now() < boostUntil.current;
+            timer = setTimeout(tick, fast ? 1500 : 8000);
+          })
+          .catch(() => {
+            if (active) timer = setTimeout(tick, 8000);
+          });
+      };
+      pollNow.current = () => { clearTimeout(timer); tick(); };
       tick();
-    };
-    tick();
+    } else {
+      const tick = (): void => {
+        api
+          .tasksBusy()
+          .then((isBusy) => { if (active) setBusy(isBusy); })
+          .catch(() => undefined)
+          .finally(() => { if (active) timer = setTimeout(tick, 10000); });
+      };
+      tick();
+    }
     return () => {
       active = false;
       clearTimeout(timer);
     };
-  }, []);
+  }, [isAdmin]);
 
   const refreshSoon = useCallback(() => {
     boostUntil.current = Date.now() + 30000;
@@ -117,7 +130,9 @@ export function Layout(): JSX.Element {
   }, []);
 
   const running =
-    optimistic || tasks.some((task) => task.status === "running" || task.status === "pending");
+    optimistic ||
+    busy ||
+    tasks.some((task) => task.status === "running" || task.status === "pending");
 
   const onAdded = (library: Library): void => {
     setPicking(false);
@@ -202,14 +217,18 @@ export function Layout(): JSX.Element {
           </nav>
 
           <nav className="mt-auto space-y-1 pt-8">
-            <NavLink to="/tasks" className={item}>
-              <ListChecks className="h-4 w-4 shrink-0" />
-              <span className={hide}>{t("nav.tasks")}</span>
-            </NavLink>
-            <NavLink to="/settings" className={item}>
-              <Settings className="h-4 w-4 shrink-0" />
-              <span className={hide}>{t("nav.settings")}</span>
-            </NavLink>
+            {isAdmin && (
+              <NavLink to="/tasks" className={item}>
+                <ListChecks className="h-4 w-4 shrink-0" />
+                <span className={hide}>{t("nav.tasks")}</span>
+              </NavLink>
+            )}
+            {isAdmin && (
+              <NavLink to="/settings" className={item}>
+                <Settings className="h-4 w-4 shrink-0" />
+                <span className={hide}>{t("nav.settings")}</span>
+              </NavLink>
+            )}
             {user !== null && (
               <NavLink to="/profile" className={item} title={user.username}>
                 <CircleUser className="h-4 w-4 shrink-0" />

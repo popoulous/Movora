@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router-dom";
 
 import { AuthProvider, useAuth } from "./AuthContext";
 import { useSpatialNav } from "./hooks/useSpatialNav";
@@ -33,6 +33,12 @@ function PlayerRoute(): JSX.Element {
   return tv ? <TvPlayerPage /> : <PlayerPage />;
 }
 
+function AdminRoute({ children }: { children: JSX.Element }): JSX.Element {
+  const { user } = useAuth();
+  if (user?.role !== "admin") return <Navigate to="/" replace />;
+  return children;
+}
+
 function Gate(): JSX.Element {
   const { loading, authenticated } = useAuth();
   if (loading) {
@@ -50,9 +56,9 @@ function Gate(): JSX.Element {
         <Route path="library/:id" element={<LibraryPage />} />
         <Route path="series/:id" element={<SeriesDetailPage />} />
         <Route path="watch/:episodeId" element={<PlayerRoute />} />
-        <Route path="tasks" element={<TasksPage />} />
+        <Route path="tasks" element={<AdminRoute><TasksPage /></AdminRoute>} />
         <Route path="profile" element={<ProfilePage />} />
-        <Route path="settings" element={<SettingsPage />} />
+        <Route path="settings" element={<AdminRoute><SettingsPage /></AdminRoute>} />
       </Route>
     </Routes>
   );

@@ -12,6 +12,7 @@ import {
   type SeriesDetail,
   type SeriesWatch,
 } from "../api";
+import { useAuth } from "../AuthContext";
 
 type Tab = "episodes" | "overview" | "characters";
 type NormalizeStatus = "optimize" | "optimizing" | "optimized";
@@ -58,6 +59,8 @@ export function SeriesDetailPage(): JSX.Element {
   const seriesId = Number(id);
   const navigate = useNavigate();
   const { running, refreshSoon } = useActivity();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   const [series, setSeries] = useState<SeriesDetail | null>(null);
   const [tab, setTab] = useState<Tab>("episodes");
   const [seasonId, setSeasonId] = useState<number | null>(null);
@@ -172,6 +175,7 @@ export function SeriesDetailPage(): JSX.Element {
             onPlay={playContinue}
             normalizeStatus={normalizeStatus}
             onNormalize={normalizeSeries}
+            isAdmin={isAdmin}
             t={t}
           />
 
@@ -191,6 +195,7 @@ export function SeriesDetailPage(): JSX.Element {
               continueId={watch?.continue_episode_id ?? null}
               navigate={navigate}
               onNormalizeEpisode={normalizeEpisode}
+              isAdmin={isAdmin}
               t={t}
             />
           )}
@@ -221,6 +226,7 @@ function Hero({
   onPlay,
   normalizeStatus,
   onNormalize,
+  isAdmin,
   t,
 }: {
   series: SeriesDetail;
@@ -234,6 +240,7 @@ function Hero({
   onPlay: () => void;
   normalizeStatus: NormalizeStatus;
   onNormalize: () => void;
+  isAdmin: boolean;
   t: TFunction;
 }): JSX.Element {
   return (
@@ -321,7 +328,7 @@ function Hero({
           >
             <Plus className="h-5 w-5" />
           </button>
-          <SeriesOptimizeButton status={normalizeStatus} onClick={onNormalize} t={t} />
+          {isAdmin && <SeriesOptimizeButton status={normalizeStatus} onClick={onNormalize} t={t} />}
         </div>
       </div>
     </div>
@@ -410,6 +417,7 @@ function EpisodesSection({
   continueId,
   navigate,
   onNormalizeEpisode,
+  isAdmin,
   t,
 }: {
   series: SeriesDetail;
@@ -418,6 +426,7 @@ function EpisodesSection({
   continueId: number | null;
   navigate: (to: string) => void;
   onNormalizeEpisode: (episodeId: number) => void;
+  isAdmin: boolean;
   t: TFunction;
 }): JSX.Element {
   const seasons = [...series.seasons].sort((a, b) => seasonOrder(a.number) - seasonOrder(b.number));
@@ -484,7 +493,7 @@ function EpisodesSection({
                 </span>
               ) : episode.normalizing ? (
                 <Loader2 className="h-4 w-4 shrink-0 animate-spin text-neutral-400" />
-              ) : (
+              ) : isAdmin ? (
                 <button
                   onClick={() => onNormalizeEpisode(episode.id)}
                   title={t("series.optimizeEpisode")}
@@ -492,7 +501,7 @@ function EpisodesSection({
                 >
                   <Wand2 className="h-4 w-4" />
                 </button>
-              )}
+              ) : null}
               {episode.watched && (
                 <Check className="h-4 w-4 shrink-0 text-emerald-400" aria-label="watched" />
               )}
