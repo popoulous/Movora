@@ -58,7 +58,7 @@ function Gate(): JSX.Element {
         <Route path="watch/:episodeId" element={<PlayerRoute />} />
         <Route path="tasks" element={<AdminRoute><TasksPage /></AdminRoute>} />
         <Route path="profile" element={<ProfilePage />} />
-        <Route path="settings" element={<AdminRoute><SettingsPage /></AdminRoute>} />
+        <Route path="settings" element={<SettingsPage />} />
       </Route>
     </Routes>
   );

@@ -223,12 +223,10 @@ export function Layout(): JSX.Element {
                 <span className={hide}>{t("nav.tasks")}</span>
               </NavLink>
             )}
-            {isAdmin && (
-              <NavLink to="/settings" className={item}>
-                <Settings className="h-4 w-4 shrink-0" />
-                <span className={hide}>{t("nav.settings")}</span>
-              </NavLink>
-            )}
+            <NavLink to="/settings" className={item}>
+              <Settings className="h-4 w-4 shrink-0" />
+              <span className={hide}>{t("nav.settings")}</span>
+            </NavLink>
             {user !== null && (
               <NavLink to="/profile" className={item} title={user.username}>
                 <CircleUser className="h-4 w-4 shrink-0" />
