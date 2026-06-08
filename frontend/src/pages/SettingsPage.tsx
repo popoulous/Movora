@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { useActivity } from "../ActivityContext";
 import { api, type Library, type ServerSettings, type User } from "../api";
 import { useAuth } from "../AuthContext";
+import { getTvOverride, setTvModeOverride, useTvMode } from "../hooks/useTvMode";
 
 const LANGUAGES: [string, string][] = [
   ["en-US", "English"],
@@ -56,6 +57,14 @@ export function SettingsPage(): JSX.Element {
   const [settings, setSettings] = useState<ServerSettings | null>(null);
   const [sweeping, setSweeping] = useState(false);
   const [detecting, setDetecting] = useState(false);
+  const tv = useTvMode();
+  const [tvOverride, setTvOverrideState] = useState(() => getTvOverride());
+
+  useEffect(() => {
+    const sync = () => setTvOverrideState(getTvOverride());
+    window.addEventListener("movora:tvmode", sync);
+    return () => window.removeEventListener("movora:tvmode", sync);
+  }, []);
 
   useEffect(() => {
     api
@@ -202,6 +211,26 @@ export function SettingsPage(): JSX.Element {
           </div>
         </section>
       )}
+
+      <section className="space-y-3">
+        <h2 className="text-xs font-semibold tracking-wide text-neutral-500 uppercase">
+          {t("settings.displayTitle")}
+        </h2>
+        <Toggle
+          label={t("settings.tvMode")}
+          description={t("settings.tvModeDesc")}
+          on={tv}
+          onToggle={() => setTvModeOverride(!tv)}
+        />
+        {tvOverride !== null && (
+          <button
+            onClick={() => setTvModeOverride(null)}
+            className="text-xs text-neutral-500 underline transition hover:text-neutral-300"
+          >
+            {t("settings.tvModeReset")}
+          </button>
+        )}
+      </section>
 
       {user?.role === "admin" && <UsersSection currentUserId={user.id} t={t} />}
     </div>

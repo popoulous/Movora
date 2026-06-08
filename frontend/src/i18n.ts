@@ -93,6 +93,11 @@ const en = {
       "Find each episode's intro and ending so you can skip them, using chapter names or an audio fingerprint. Off by default — fingerprinting is CPU-heavy. Run it now with the button below.",
     detectIntros: "Detect intros/outros now",
     detectIntrosStarted: "Started — watch the activity bell",
+    displayTitle: "Display",
+    tvMode: "TV / 10-foot mode",
+    tvModeDesc:
+      "Large controls and D-pad navigation. Auto-detected on smart TVs — override manually here for big-screen use on a monitor.",
+    tvModeReset: "Reset to auto-detect",
     accountTitle: "Account",
     preferredLanguage: "Preferred subtitle language",
     preferredLanguageDesc: "Auto-select this subtitle language in the player when available.",
@@ -342,6 +347,11 @@ const hu: typeof en = {
       "Megkeresi minden rész introját és stáblistáját, hogy átugorhasd — fejezet-nevekből vagy audio-ujjlenyomatból. Alapból kikapcsolva, mert az ujjlenyomatozás CPU-igényes. Most az alábbi gombbal futtathatod.",
     detectIntros: "Intro/outro felismerése most",
     detectIntrosStarted: "Elindítva — nézd az aktivitás-harangot",
+    displayTitle: "Megjelenítés",
+    tvMode: "TV / 10-lábas mód",
+    tvModeDesc:
+      "Nagy vezérlők és D-pad navigáció. Smart TV-n automatikusan érzékelve — monitoron is kézzel bekapcsolható nagyfelbontású nézethez.",
+    tvModeReset: "Visszaállítás automatikus felismerésre",
     accountTitle: "Fiók",
     preferredLanguage: "Előnyben részesített felirat-nyelv",
     preferredLanguageDesc: "A lejátszó automatikusan ezt a felirat-nyelvet választja, ha van.",
