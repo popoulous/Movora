@@ -33,7 +33,7 @@ ASS subtitles), Movora is built for it.
   audio → AAC; mp4 + faststart), hardware encoder auto-detected (QSV/NVENC/AMF/
   VideoToolbox → libx264), idempotent + verified, with an in-process task queue.
 - **Subtitle pipeline** — sidecar + embedded discovery, encoding normalization,
-  and `clean_ass`: classify dialogue vs. signs/songs and produce an SRT fallback,
+  and `clean_ass`: classifies dialogue vs. signs/songs and produces an SRT fallback,
   with a per-group override layer. Soft ASS is rendered in-browser by **JASSUB**
   (libass/WASM); adjustable size and background.
 - **Metadata** — AniList for anime, TMDB for film/series (localized), MyAnimeList
@@ -57,7 +57,7 @@ docker compose up --build     # http://localhost:8000
 
 On first run, open the app and create the **admin account** (one-time setup).
 Add a library with the **+** button, point it at a media folder, and Movora scans,
-fetches metadata and (optionally) normalizes it in the background.
+fetches metadata and (optionally) normalizes them in the background.
 
 ### Configuration
 
@@ -88,7 +88,7 @@ Checks (also enforced in CI):
 
 ## Architecture
 
-Movora is built behind stable interfaces (`ParserStrategy`, `MetadataProvider`,
+Movora is built around stable interfaces (`ParserStrategy`, `MetadataProvider`,
 `NormalizationPlanner`, `StreamStrategy`, `SubtitleResolver`, `JobQueue`,
 `AuthProvider`), with a central `CapabilityProfile` deciding what a client can play.
 Later features attach as new implementations rather than rewrites.
