@@ -26,6 +26,7 @@ import {
   type SeriesDetail,
   type SubtitleTrack,
 } from "../api";
+import { useTvMode } from "../hooks/useTvMode";
 
 const LANG_NAMES: Record<string, string> = {
   hu: "Magyar",
@@ -230,6 +231,7 @@ function chipClass(active: boolean): string {
 }
 
 export function PlayerPage(): JSX.Element {
+  const tv = useTvMode();
   const { t, i18n } = useTranslation();
   const { refreshSoon } = useActivity();
   const { user } = useAuth();
@@ -366,9 +368,36 @@ export function PlayerPage(): JSX.Element {
     return () => clearInterval(timer);
   }, [normalizing, id]);
 
+  // mediaSession API: lets TV remote-control media keys (play/pause/seek) control the video.
+  useEffect(() => {
+    if (!tv || !("mediaSession" in navigator) || playback === null) return;
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: playback.episode_title ?? playback.series_title ?? "Movora",
+      artist: playback.series_title ?? "",
+    });
+    const video = videoRef.current;
+    if (video === null) return;
+    navigator.mediaSession.setActionHandler("play", () => void video.play());
+    navigator.mediaSession.setActionHandler("pause", () => video.pause());
+    navigator.mediaSession.setActionHandler("seekbackward", () => {
+      video.currentTime -= 10;
+    });
+    navigator.mediaSession.setActionHandler("seekforward", () => {
+      video.currentTime += 10;
+    });
+    return () => {
+      navigator.mediaSession.setActionHandler("play", null);
+      navigator.mediaSession.setActionHandler("pause", null);
+      navigator.mediaSession.setActionHandler("seekbackward", null);
+      navigator.mediaSession.setActionHandler("seekforward", null);
+    };
+  }, [tv, playback]);
+
   // Every subtitle (ASS and SRT/VTT alike) is rendered by JASSUB as a canvas overlay; the
   // instance is recreated on track change and destroyed on cleanup.
+  // On TV we skip JASSUB (WebGL reliability) and use native <track> elements instead.
   useEffect(() => {
+    if (tv) return;
     const video = videoRef.current;
     if (video === null || playback === null) {
       return;
@@ -421,7 +450,11 @@ export function PlayerPage(): JSX.Element {
       ? `${playback.episode_number}–${playback.episode_end_number}`
       : String(playback.episode_number);
   const artwork = playback.banner_image_url ?? playback.cover_image_url;
-  const subLabels = subtitleLabels(playback.subtitle_tracks);
+  // On TV, only VTT tracks render (via native <track>); hide ASS tracks from the picker.
+  const visibleTracks = tv
+    ? playback.subtitle_tracks.filter((track) => track.format === "vtt")
+    : playback.subtitle_tracks;
+  const subLabels = subtitleLabels(visibleTracks);
 
   return (
     <div className="relative">
@@ -480,7 +513,21 @@ export function PlayerPage(): JSX.Element {
               onTimeUpdate={handleTimeUpdate}
               onEnded={markWatched}
               className="aspect-video w-full"
-            />
+            >
+              {/* On TV, JASSUB is skipped; serve VTT tracks via native <track> instead. */}
+              {tv &&
+                playback.subtitle_tracks
+                  .filter((track) => track.format === "vtt")
+                  .map((track) => (
+                    <track
+                      key={track.id}
+                      kind="subtitles"
+                      src={track.url}
+                      srcLang={track.language ?? undefined}
+                      default={track.id === trackId}
+                    />
+                  ))}
+            </video>
 
             {skip !== null && !ended && (
               <button
@@ -523,13 +570,13 @@ export function PlayerPage(): JSX.Element {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {playback.subtitle_tracks.length > 0 && (
+            {visibleTracks.length > 0 && (
               <>
                 <span className="text-sm text-neutral-400">{t("player.subtitles")}:</span>
                 <button onClick={() => setTrackId(null)} className={chipClass(trackId === null)}>
                   {t("player.subtitlesOff")}
                 </button>
-                {playback.subtitle_tracks.map((track) => (
+                {visibleTracks.map((track) => (
                   <button
                     key={track.id}
                     onClick={() => setTrackId(track.id)}
@@ -538,7 +585,7 @@ export function PlayerPage(): JSX.Element {
                     {subLabels[track.id]}
                   </button>
                 ))}
-                <SubtitleStyleControl style={subStyle} onChange={setSubStyle} t={t} />
+                {!tv && <SubtitleStyleControl style={subStyle} onChange={setSubStyle} t={t} />}
               </>
             )}
             {nextEpisode !== null && (

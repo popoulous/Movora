@@ -20,6 +20,7 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-do
 import { ActivityContext } from "../ActivityContext";
 import { useAuth } from "../AuthContext";
 import { api, type Library, type LibraryKind, type Task } from "../api";
+import { useTvMode } from "../hooks/useTvMode";
 import { LibrariesContext } from "../LibrariesContext";
 import { ActivityBell } from "./ActivityBell";
 import { FolderPicker } from "./FolderPicker";
@@ -45,9 +46,11 @@ export function Layout(): JSX.Element {
   const location = useLocation();
   const [libraries, setLibraries] = useState<Library[]>([]);
   const [picking, setPicking] = useState(false);
+  const tv = useTvMode();
   const [mobileOpen, setMobileOpen] = useState(false); // drawer on small screens
   const [collapsed, setCollapsed] = useState(
-    () => localStorage.getItem("sidebarCollapsed") === "1", // icon-only on desktop
+    // TV: always start collapsed (icon-only) — no room / no need for labels on a TV.
+    () => tv || localStorage.getItem("sidebarCollapsed") === "1",
   );
   const navigate = useNavigate();
 
@@ -225,32 +228,36 @@ export function Layout(): JSX.Element {
                 <span className={hide}>{t("nav.logout")}</span>
               </button>
             )}
-            <button
-              onClick={toggleCollapsed}
-              title={t("nav.collapse")}
-              className={`hidden w-full items-center gap-3 rounded-[14px] px-4 py-3 text-sm text-neutral-500 transition hover:bg-white/5 hover:text-neutral-200 lg:flex ${
-                collapsed ? "lg:justify-center lg:px-2" : ""
-              }`}
-            >
-              {collapsed ? (
-                <ChevronsRight className="h-4 w-4 shrink-0" />
-              ) : (
-                <ChevronsLeft className="h-4 w-4 shrink-0" />
-              )}
-              <span className={hide}>{t("nav.collapse")}</span>
-            </button>
+            {!tv && (
+              <button
+                onClick={toggleCollapsed}
+                title={t("nav.collapse")}
+                className={`hidden w-full items-center gap-3 rounded-[14px] px-4 py-3 text-sm text-neutral-500 transition hover:bg-white/5 hover:text-neutral-200 lg:flex ${
+                  collapsed ? "lg:justify-center lg:px-2" : ""
+                }`}
+              >
+                {collapsed ? (
+                  <ChevronsRight className="h-4 w-4 shrink-0" />
+                ) : (
+                  <ChevronsLeft className="h-4 w-4 shrink-0" />
+                )}
+                <span className={hide}>{t("nav.collapse")}</span>
+              </button>
+            )}
           </nav>
         </aside>
 
         <div className="relative flex min-w-0 flex-1 flex-col">
           <header className="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-center gap-2 px-4 py-3 sm:px-6">
-            <button
-              onClick={() => setMobileOpen(true)}
-              aria-label={t("nav.menu")}
-              className="pointer-events-auto rounded-lg bg-white/5 p-2 text-neutral-300 ring-1 ring-white/10 backdrop-blur transition hover:bg-white/10 lg:hidden"
-            >
-              <Menu className="h-5 w-5" />
-            </button>
+            {!tv && (
+              <button
+                onClick={() => setMobileOpen(true)}
+                aria-label={t("nav.menu")}
+                className="pointer-events-auto rounded-lg bg-white/5 p-2 text-neutral-300 ring-1 ring-white/10 backdrop-blur transition hover:bg-white/10 lg:hidden"
+              >
+                <Menu className="h-5 w-5" />
+              </button>
+            )}
             <div className="pointer-events-auto">
               <GlobalSearch />
             </div>

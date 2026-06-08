@@ -20,6 +20,42 @@ body {
   display: none;
 }
 
+/* ── TV mode (webOS / HbbTV / SmartTV) ───────────────────────────────────── */
+/* Applied by App.tsx when the UA matches a known smart-TV browser. */
+
+/* 10-foot UI: everything a bit larger so it's readable from the couch. */
+.tv {
+  font-size: 120%;
+}
+
+/* Glassmorphism is slow and sometimes broken on TV Chromium builds;
+   fall back to opaque surfaces everywhere under .tv. */
+.tv * {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.tv aside {
+  background: #080a12 !important;
+}
+
+.tv header {
+  background: rgba(8, 10, 18, 0.97) !important;
+}
+
+/* Large, clearly visible D-pad focus ring. */
+.tv *:focus-visible {
+  outline: 4px solid #7a4dff !important;
+  outline-offset: 4px !important;
+  border-radius: 8px;
+}
+
+/* Bigger tap/D-pad targets. */
+.tv a,
+.tv button {
+  min-height: 3rem;
+}
+
 /* Rounded gradient border with a fully transparent center (mask compositing). */
 .gradient-border {
   position: relative;

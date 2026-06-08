@@ -1,6 +1,8 @@
+import { useEffect } from "react";
 import { Route, Routes } from "react-router-dom";
 
 import { AuthProvider, useAuth } from "./AuthContext";
+import { useTvMode } from "./hooks/useTvMode";
 import { Layout } from "./components/Layout";
 import { AuthPage } from "./pages/AuthPage";
 import { HomePage } from "./pages/HomePage";
@@ -12,6 +14,10 @@ import { SettingsPage } from "./pages/SettingsPage";
 import { TasksPage } from "./pages/TasksPage";
 
 export function App(): JSX.Element {
+  const tv = useTvMode();
+  useEffect(() => {
+    document.documentElement.classList.toggle("tv", tv);
+  }, [tv]);
   return (
     <AuthProvider>
       <Gate />

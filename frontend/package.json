@@ -23,8 +23,9 @@
     "react-router-dom": "^7.17.0"
   },
   "devDependencies": {
+    "@csstools/postcss-oklab-function": "^5.0.4",
     "@playwright/test": "^1.60.0",
-    "@tailwindcss/vite": "^4.3.0",
+    "@tailwindcss/postcss": "^4.3.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
