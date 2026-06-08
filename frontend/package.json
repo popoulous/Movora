@@ -23,6 +23,7 @@
     "react-router-dom": "^7.17.0"
   },
   "devDependencies": {
+    "@csstools/postcss-cascade-layers": "^6.0.0",
     "@csstools/postcss-oklab-function": "^5.0.4",
     "@playwright/test": "^1.60.0",
     "@tailwindcss/postcss": "^4.3.0",
