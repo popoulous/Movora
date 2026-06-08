@@ -4,7 +4,7 @@ import fallbackFontUrl from "@fontsource/noto-sans/files/noto-sans-latin-400-nor
 import fallbackFontExtUrl from "@fontsource/noto-sans/files/noto-sans-latin-ext-400-normal.woff2?url";
 import { type TFunction } from "i18next";
 import JASSUB from "jassub";
-import { Check, ChevronLeft, Play, SkipForward, Type } from "lucide-react";
+import { Check, ChevronLeft, Maximize, Minimize, Play, SkipForward, Type } from "lucide-react";
 import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
@@ -239,6 +239,7 @@ export function PlayerPage(): JSX.Element {
   const id = Number(episodeId);
   const navigate = useNavigate();
   const videoRef = useRef<HTMLVideoElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const lastSaved = useRef(0); // last position (s) we sent, to throttle progress writes
   const [playback, setPlayback] = useState<PlaybackInfo | null>(null);
   const [series, setSeries] = useState<SeriesDetail | null>(null);
@@ -248,6 +249,8 @@ export function PlayerPage(): JSX.Element {
   const [ended, setEnded] = useState(false);
   const [countdown, setCountdown] = useState(10);
   const [skip, setSkip] = useState<"intro" | "outro" | null>(null);
+  const [nearEnd, setNearEnd] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
   const [subStyle, setSubStyleState] = useState<SubStyle>(loadSubStyle);
   const setSubStyle = (next: SubStyle): void => {
     setSubStyleState(next);
@@ -263,6 +266,7 @@ export function PlayerPage(): JSX.Element {
     setEnded(false);
     setCountdown(10);
     setSkip(null);
+    setNearEnd(false);
     lastSaved.current = 0;
     api
       .getPlayback(id)
@@ -317,6 +321,9 @@ export function PlayerPage(): JSX.Element {
         ? "outro"
         : null;
     setSkip((previous) => (previous === next ? previous : next));
+    const remaining = video.duration - time;
+    const isNearEnd = !isNaN(remaining) && remaining > 0 && remaining < 30;
+    setNearEnd((previous) => (previous === isNearEnd ? previous : isNearEnd));
   };
   const doSkip = (): void => {
     const video = videoRef.current;
@@ -367,6 +374,21 @@ export function PlayerPage(): JSX.Element {
     }, 4000);
     return () => clearInterval(timer);
   }, [normalizing, id]);
+
+  // Track browser fullscreen state so the custom button icon reflects it.
+  useEffect(() => {
+    const onFs = (): void => setFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", onFs);
+    return () => document.removeEventListener("fullscreenchange", onFs);
+  }, []);
+
+  const toggleFullscreen = (): void => {
+    if (!document.fullscreenElement) {
+      void containerRef.current?.requestFullscreen();
+    } else {
+      void document.exitFullscreen();
+    }
+  };
 
   // mediaSession API: lets TV remote-control media keys (play/pause/seek) control the video.
   useEffect(() => {
@@ -502,7 +524,7 @@ export function PlayerPage(): JSX.Element {
             </div>
           )}
 
-          <div className="relative overflow-hidden rounded-2xl bg-black shadow-[0_0_70px_rgba(122,77,255,0.12)] ring-1 ring-white/10">
+          <div ref={containerRef} className="tv-player relative overflow-hidden rounded-2xl bg-black shadow-[0_0_70px_rgba(122,77,255,0.12)] ring-1 ring-white/10">
             <video
               key={String(playback.direct_play)}
               ref={videoRef}
@@ -513,6 +535,7 @@ export function PlayerPage(): JSX.Element {
               onTimeUpdate={handleTimeUpdate}
               onEnded={markWatched}
               className="aspect-video w-full"
+              controlsList={tv ? "nofullscreen" : undefined}
             >
               {/* On TV, JASSUB is skipped; serve VTT tracks via native <track> instead. */}
               {tv &&
@@ -536,6 +559,25 @@ export function PlayerPage(): JSX.Element {
               >
                 {t(skip === "intro" ? "player.skipIntro" : "player.skipOutro")}
                 <SkipForward className="h-4 w-4" />
+              </button>
+            )}
+
+            {nearEnd && !ended && nextEpisode !== null && skip === null && (
+              <button
+                onClick={() => navigate(`/watch/${nextEpisode.id}`)}
+                className="absolute right-5 bottom-20 inline-flex items-center gap-2 rounded-xl bg-white/15 px-4 py-2.5 text-sm font-semibold text-white ring-1 ring-white/25 backdrop-blur transition hover:bg-white/25"
+              >
+                {t("player.next")} <SkipForward className="h-4 w-4" />
+              </button>
+            )}
+
+            {tv && (
+              <button
+                onClick={toggleFullscreen}
+                title={fullscreen ? "Exit fullscreen" : "Fullscreen"}
+                className="absolute right-3 bottom-3 z-20 rounded-lg bg-black/60 p-2 text-white ring-1 ring-white/20 transition hover:bg-black/80"
+              >
+                {fullscreen ? <Minimize className="h-5 w-5" /> : <Maximize className="h-5 w-5" />}
               </button>
             )}
 

@@ -56,6 +56,41 @@ body {
   min-height: 3rem;
 }
 
+/* Tailwind v4 stores gradient direction as "--tw-gradient-position: to right in oklab"
+   which Chrome <111 ignores, killing the entire gradient declaration.
+   Override the variable for each direction class used in the project so the
+   "in oklab" interpolation hint is removed on TV browsers.
+   !important is required to beat the :not(#\#) specificity added by
+   @csstools/postcss-cascade-layers. */
+.tv .bg-gradient-to-r  { --tw-gradient-position: to right !important; }
+.tv .bg-gradient-to-l  { --tw-gradient-position: to left !important; }
+.tv .bg-gradient-to-b  { --tw-gradient-position: to bottom !important; }
+.tv .bg-gradient-to-t  { --tw-gradient-position: to top !important; }
+.tv .bg-gradient-to-br { --tw-gradient-position: to bottom right !important; }
+.tv .bg-gradient-to-bl { --tw-gradient-position: to bottom left !important; }
+.tv .bg-gradient-to-tr { --tw-gradient-position: to top right !important; }
+.tv .bg-gradient-to-tl { --tw-gradient-position: to top left !important; }
+
+/* TV fullscreen: fullscreen the container div (not just <video>) so overlays
+   (skip intro, next-ep chip) remain visible during fullscreen playback. */
+.tv-player:fullscreen,
+.tv-player:-webkit-full-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  border-radius: 0;
+  width: 100vw;
+  height: 100vh;
+}
+
+.tv-player:fullscreen video,
+.tv-player:-webkit-full-screen video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
 /* Rounded gradient border with a fully transparent center (mask compositing). */
 .gradient-border {
   position: relative;

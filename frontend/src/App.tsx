@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Route, Routes } from "react-router-dom";
 
 import { AuthProvider, useAuth } from "./AuthContext";
+import { useSpatialNav } from "./hooks/useSpatialNav";
 import { useTvMode } from "./hooks/useTvMode";
 import { Layout } from "./components/Layout";
 import { AuthPage } from "./pages/AuthPage";
@@ -18,6 +19,7 @@ export function App(): JSX.Element {
   useEffect(() => {
     document.documentElement.classList.toggle("tv", tv);
   }, [tv]);
+  useSpatialNav(tv);
   return (
     <AuthProvider>
       <Gate />
