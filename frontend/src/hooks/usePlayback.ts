@@ -88,6 +88,7 @@ export interface UsePlaybackReturn {
   countdown: number;
   skip: "intro" | "outro" | null;
   nearEnd: boolean;
+  afterOutro: boolean;
   normalizing: boolean;
   trackId: string | null;
   setTrackId: Dispatch<SetStateAction<string | null>>;
@@ -124,6 +125,7 @@ export function usePlayback(id: number): UsePlaybackReturn {
   const [countdown, setCountdown] = useState(10);
   const [skip, setSkip] = useState<"intro" | "outro" | null>(null);
   const [nearEnd, setNearEnd] = useState(false);
+  const [afterOutro, setAfterOutro] = useState(false);
 
   useEffect(() => {
     setPlayback(null);
@@ -135,6 +137,7 @@ export function usePlayback(id: number): UsePlaybackReturn {
     setCountdown(10);
     setSkip(null);
     setNearEnd(false);
+    setAfterOutro(false);
     lastSaved.current = 0;
     api
       .getPlayback(id)
@@ -214,6 +217,8 @@ export function usePlayback(id: number): UsePlaybackReturn {
     const remaining = video.duration - time;
     const isNearEnd = !isNaN(remaining) && remaining > 0 && remaining < 30;
     setNearEnd((previous) => (previous === isNearEnd ? previous : isNearEnd));
+    const isAfterOutro = playback.outro_end !== null && time >= playback.outro_end;
+    setAfterOutro((previous) => (previous === isAfterOutro ? previous : isAfterOutro));
   };
 
   const doSkip = (): void => {
@@ -267,6 +272,7 @@ export function usePlayback(id: number): UsePlaybackReturn {
     countdown,
     skip,
     nearEnd,
+    afterOutro,
     normalizing,
     trackId,
     setTrackId,

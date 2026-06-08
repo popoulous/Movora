@@ -21,6 +21,10 @@ ASS subtitles), Movora is built for it.
 | **Settings — automation, intro detection & users** | **Profile** |
 | ![Settings](docs/screenshots/settings.png) | ![Profile](docs/screenshots/account.png) |
 
+**TV player** — 10-foot UI with D-pad navigation, per-season episode carousel and subtitle controls:
+
+![TV player](docs/screenshots/tv_player.png)
+
 ## Features
 
 - **Streaming + Direct Play** — HTTP range/seek; `.mkv` is optimized into a
@@ -36,6 +40,9 @@ ASS subtitles), Movora is built for it.
   episode titles, and cast on the detail page.
 - **Intro / outro detection + skip** — chapter names first, else a Chromaprint
   audio fingerprint matched across a season; a Skip button in the player.
+- **TV player (10-foot UI)** — a fullscreen overlay optimized for smart-TV
+  D-pad remotes: spatial navigation, skip-intro/outro chip, per-season episode
+  carousel, and subtitle appearance controls (size + background).
 - **Continue watching, per-episode thumbnails, overall progress, global search.**
 - **Multi-user + RBAC** — a login gate, admin/viewer roles, and **per-user library
   access** (grant a viewer only the libraries they may watch).
