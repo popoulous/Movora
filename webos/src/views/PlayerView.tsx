@@ -21,7 +21,7 @@ const SUB_PREF_KEY = "movora_sub_pref";
 const EP_W = 200;
 const EP_H = aspectHeight(EP_W, "16/9");
 
-type SubSize = "s" | "m" | "l";
+type SubSize = "s" | "m" | "l" | "xl";
 type SubBg = "none" | "box" | "solid";
 type SubPos = "low" | "mid" | "high";
 interface SubStyle {
@@ -31,17 +31,19 @@ interface SubStyle {
 }
 
 const SUB_STYLE_KEY = "movora_sub_style";
-const SIZES: SubSize[] = ["s", "m", "l"];
+const SIZES: SubSize[] = ["s", "m", "l", "xl"];
 const BGS: SubBg[] = ["none", "box", "solid"];
 const POSS: SubPos[] = ["low", "mid", "high"];
-const SIZE_VH: Record<SubSize, string> = { s: "2.6vh", m: "3.4vh", l: "4.4vh" };
+const SIZE_VH: Record<SubSize, string> = { s: "2.6vh", m: "3.4vh", l: "4.4vh", xl: "5.6vh" };
 const BG_COLOR: Record<SubBg, string> = {
   none: "transparent",
   box: "rgba(0,0,0,0.5)",
   solid: "#000000",
 };
-const POS_BASE: Record<SubPos, string> = { low: "-1vh", mid: "-7vh", high: "-14vh" };
-const SIZE_LABEL: Record<SubSize, string> = { s: "Kicsi", m: "Közepes", l: "Nagy" };
+// Move the whole cue container up from its default bottom position: bottom ->
+// roughly screen centre -> near the top.
+const POS_BASE: Record<SubPos, string> = { low: "-2vh", mid: "-42vh", high: "-82vh" };
+const SIZE_LABEL: Record<SubSize, string> = { s: "Kicsi", m: "Közepes", l: "Nagy", xl: "Óriás" };
 const BG_LABEL: Record<SubBg, string> = { none: "Nincs", box: "Áttetsző", solid: "Tömör" };
 const POS_LABEL: Record<SubPos, string> = { low: "Lent", mid: "Közép", high: "Fent" };
 
