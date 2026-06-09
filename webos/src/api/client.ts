@@ -116,6 +116,23 @@ export interface PairApproved {
 
 // ---------------------------------------------------------------------------
 
+// Resolve an image/media URL for an <img>/<video>/<track> element. Those requests
+// can't send the Authorization header, so an internal (relative) URL gets the server
+// base prefix and the device token as a ?token= query param; absolute URLs (AniList /
+// TMDB posters) pass through untouched.
+export function mediaUrl(
+  base: string,
+  token: string | null,
+  url: string | null | undefined,
+): string | undefined {
+  if (!url) return undefined;
+  if (!url.startsWith("/")) return url; // external absolute URL (poster CDN)
+  const root = base.replace(/\/$/, "");
+  if (!token) return `${root}${url}`;
+  const sep = url.includes("?") ? "&" : "?";
+  return `${root}${url}${sep}token=${encodeURIComponent(token)}`;
+}
+
 export function createApiClient(baseUrl: string, token: string | null) {
   const base = baseUrl.replace(/\/$/, "");
 

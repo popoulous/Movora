@@ -3,7 +3,7 @@ import { Panel, Header } from "@enact/sandstone/Panels";
 import Button from "@enact/sandstone/Button";
 import Spinner from "@enact/sandstone/Spinner";
 import Scroller from "@enact/sandstone/Scroller";
-import { type HomeData, type HomeSeries } from "../api/client";
+import { type HomeData, type HomeSeries, mediaUrl } from "../api/client";
 import { useDevice } from "../context/DeviceContext";
 
 interface Props {
@@ -18,8 +18,13 @@ function SeriesCard({
   series: HomeSeries;
   onSelect: () => void;
 }): React.JSX.Element {
+  const { config } = useDevice();
   const label = series.display_title ?? series.title;
-  const thumb = series.continue_thumbnail_url ?? series.cover_image_url;
+  const thumb = mediaUrl(
+    config?.serverUrl ?? "",
+    config?.deviceToken ?? null,
+    series.continue_thumbnail_url ?? series.cover_image_url,
+  );
 
   return (
     <button

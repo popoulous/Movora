@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import Spinner from "@enact/sandstone/Spinner";
-import { type PlaybackInfo } from "../api/client";
+import { type PlaybackInfo, mediaUrl } from "../api/client";
 import { useDevice } from "../context/DeviceContext";
 
 interface Props {
@@ -183,7 +183,9 @@ export default function PlayerView({ episodeId, onBack }: Props): React.JSX.Elem
   }
 
   const base = config?.serverUrl ?? "";
-  const streamUrl = info ? `${base}${info.stream_url}` : "";
+  const token = config?.deviceToken ?? null;
+  // <video>/<track> can't send the bearer header — carry the token as ?token=.
+  const streamUrl = info ? mediaUrl(base, token, info.stream_url) : undefined;
   const vttTracks = info?.subtitle_tracks.filter((t) => t.format === "vtt") ?? [];
 
   return (
@@ -222,7 +224,7 @@ export default function PlayerView({ episodeId, onBack }: Props): React.JSX.Elem
               key={tr.id}
               kind="subtitles"
               label={tr.label}
-              src={`${base}${tr.url}`}
+              src={mediaUrl(base, token, tr.url)}
               srcLang={tr.language ?? undefined}
             />
           ))}

@@ -3,7 +3,7 @@ import { Panel, Header } from "@enact/sandstone/Panels";
 import Button from "@enact/sandstone/Button";
 import Spinner from "@enact/sandstone/Spinner";
 import Scroller from "@enact/sandstone/Scroller";
-import { type SeriesDetail, type Episode } from "../api/client";
+import { type SeriesDetail, type Episode, mediaUrl } from "../api/client";
 import { useDevice } from "../context/DeviceContext";
 
 interface Props {
@@ -19,6 +19,8 @@ function EpisodeRow({
   ep: Episode;
   onPlay: () => void;
 }): React.JSX.Element {
+  const { config } = useDevice();
+  const thumb = mediaUrl(config?.serverUrl ?? "", config?.deviceToken ?? null, ep.thumbnail_url);
   const label =
     ep.end_number !== null ? `${ep.number}–${ep.end_number}. rész` : `${ep.number}. rész`;
   return (
@@ -38,9 +40,9 @@ function EpisodeRow({
         color: ep.watched ? "#888" : "#f0f0f0",
       }}
     >
-      {ep.thumbnail_url && (
+      {thumb && (
         <img
-          src={ep.thumbnail_url}
+          src={thumb}
           alt=""
           style={{ width: 120, aspectRatio: "16/9", objectFit: "cover", borderRadius: 4, marginRight: "1rem" }}
         />

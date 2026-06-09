@@ -40,6 +40,11 @@ def test_device_create_lists_without_token_and_bearer_authenticates(tmp_path: Pa
     assert bearer.get("/api/home").status_code == 401  # no token -> unauthenticated
     assert bearer.get("/api/home", headers={"Authorization": "Bearer wrong"}).status_code == 401
 
+    # Media URLs an <img>/<video> loads can't set headers — the token also works
+    # as a ?token= query param.
+    assert bearer.get(f"/api/home?token={token}").status_code == 200
+    assert bearer.get("/api/home?token=wrong").status_code == 401
+
 
 def test_capabilities_update_and_revoke(tmp_path: Path) -> None:
     client = _gated_client(tmp_path)

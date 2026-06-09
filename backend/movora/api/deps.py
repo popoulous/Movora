@@ -35,15 +35,20 @@ MetadataProviderDep = Annotated[MetadataProvider, Depends(get_metadata_provider)
 
 
 def _device_from_bearer(request: Request, session: Session) -> Device | None:
-    """The paired Device behind an ``Authorization: Bearer <token>`` header, if any.
+    """The paired Device behind a device token, if any.
 
-    Pure lookup (no side effects) so both the auth dependency and the playback
-    endpoint (which needs the device's capability profile) can call it.
+    The token comes from an ``Authorization: Bearer <token>`` header, or — for media
+    URLs an ``<img>``/``<video>``/``<track>`` element loads (which can't set headers)
+    — a ``?token=`` query param. Pure lookup (no side effects) so both the auth
+    dependency and the playback endpoint (which needs the device's capability profile)
+    can call it.
     """
+    token: str | None = None
     header = request.headers.get("Authorization")
-    if not header or not header.lower().startswith("bearer "):
-        return None
-    token = header[7:].strip()
+    if header and header.lower().startswith("bearer "):
+        token = header[7:].strip()
+    if not token:
+        token = request.query_params.get("token")
     if not token:
         return None
     return session.scalar(
