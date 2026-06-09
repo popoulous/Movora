@@ -366,4 +366,10 @@ export const api = {
     const query = path !== undefined ? `?path=${encodeURIComponent(path)}` : "";
     return fetch(`/api/fs${query}`).then(asJson<FsListing>);
   },
+  pairApprove: (code: string): Promise<{ id: number; name: string }> =>
+    fetch("/api/devices/pair/approve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
+    }).then(asJson<{ id: number; name: string }>),
 };

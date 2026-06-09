@@ -83,6 +83,24 @@ class DeviceCreated(DeviceRead):
     token: str  # the bearer token, shown only once at creation
 
 
+class PairStartRequest(BaseModel):
+    device_name: str | None = None
+
+
+class PairStartResponse(BaseModel):
+    code: str  # 6-digit pairing code shown on the TV
+    expires_at: datetime
+
+
+class PairStatusResponse(BaseModel):
+    status: str  # waiting | approved | expired
+    device_token: str | None = None  # handed to the TV once, on approval
+
+
+class PairApproveRequest(BaseModel):
+    code: str
+
+
 class LibraryCreate(BaseModel):
     path: str
     name: str

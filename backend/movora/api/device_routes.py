@@ -2,13 +2,19 @@
 device, receives a long-lived bearer token once, and declares its playback
 capabilities. The token authenticates subsequent requests (see ``deps.py``).
 
-Devices are user-scoped: you manage your own; an admin may revoke any. The 6-digit
-pairing-code flow is v2b (this is the manual/programmatic creation v2a needs).
+Devices are user-scoped: you manage your own; an admin may revoke any. Pairing
+(``/pair/*``) lets a TV obtain a token without typing credentials: it shows a
+6-digit code, a logged-in web user approves it, and the TV collects the token.
 """
 
 from __future__ import annotations
 
 import json
+import secrets
+import threading
+import time
+from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import select
@@ -19,11 +25,103 @@ from movora.api.schemas import (
     DeviceCreate,
     DeviceCreated,
     DeviceRead,
+    PairApproveRequest,
+    PairStartRequest,
+    PairStartResponse,
+    PairStatusResponse,
 )
 from movora.auth import generate_device_token, hash_device_token
 from movora.db.models import Device, UserRole
 
 router = APIRouter(prefix="/api/devices", tags=["devices"])
+
+# ---------------------------------------------------------------------------
+# Pairing — a TV shows a short code; a logged-in web user approves it, which
+# mints a Device + bearer token the TV then collects (plan §13.3). In-memory,
+# single-use, 5-minute TTL (mirrors the login rate-limit pattern; no migration).
+# ---------------------------------------------------------------------------
+_PAIR_TTL = 5 * 60  # seconds
+
+
+@dataclass
+class _Pairing:
+    device_name: str
+    created_at: float
+    status: str  # "waiting" | "approved"
+    device_token: str | None = None  # plaintext, handed to the TV exactly once
+
+
+_pair_lock = threading.Lock()
+_pairings: dict[str, _Pairing] = {}
+
+
+def _purge_expired(now: float) -> None:
+    for code in [c for c, p in _pairings.items() if now - p.created_at > _PAIR_TTL]:
+        del _pairings[code]
+
+
+def _unique_code() -> str:
+    while True:
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        if code not in _pairings:
+            return code
+
+
+@router.post("/pair/start", response_model=PairStartResponse)
+def pair_start(payload: PairStartRequest) -> PairStartResponse:
+    """Unauthenticated: the TV asks for a pairing code to display."""
+    now = time.time()
+    with _pair_lock:
+        _purge_expired(now)
+        code = _unique_code()
+        _pairings[code] = _Pairing(
+            device_name=(payload.device_name or "").strip() or "webOS TV",
+            created_at=now,
+            status="waiting",
+        )
+    return PairStartResponse(
+        code=code, expires_at=datetime.fromtimestamp(now + _PAIR_TTL, tz=timezone.utc)
+    )
+
+
+@router.get("/pair/{code}/status", response_model=PairStatusResponse)
+def pair_status(code: str) -> PairStatusResponse:
+    """Unauthenticated: the TV polls until approved, then collects its token once."""
+    now = time.time()
+    with _pair_lock:
+        _purge_expired(now)
+        pairing = _pairings.get(code)
+        if pairing is None:
+            return PairStatusResponse(status="expired")
+        if pairing.status == "approved" and pairing.device_token is not None:
+            token = pairing.device_token
+            del _pairings[code]  # one-shot: token handed over, pairing consumed
+            return PairStatusResponse(status="approved", device_token=token)
+        return PairStatusResponse(status=pairing.status)
+
+
+@router.post("/pair/approve", response_model=DeviceRead)
+def pair_approve(
+    payload: PairApproveRequest, user: CurrentUserDep, session: SessionDep
+) -> DeviceRead:
+    """A logged-in user approves the code shown on a TV: mints its device + token."""
+    now = time.time()
+    with _pair_lock:
+        _purge_expired(now)
+        pairing = _pairings.get(payload.code)
+        if pairing is None:
+            raise HTTPException(status_code=404, detail="pairing code not found or expired")
+        if pairing.status == "approved":
+            raise HTTPException(status_code=409, detail="code already approved")
+        token = generate_device_token()
+        device = Device(
+            user_id=user.id, name=pairing.device_name, token_hash=hash_device_token(token)
+        )
+        session.add(device)
+        session.commit()
+        pairing.status = "approved"
+        pairing.device_token = token
+    return _to_read(device)
 
 
 def _to_read(device: Device) -> DeviceRead:

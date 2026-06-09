@@ -232,8 +232,65 @@ export function SettingsPage(): JSX.Element {
         )}
       </section>
 
+      <PairDeviceSection t={t} />
+
       {user?.role === "admin" && <UsersSection currentUserId={user.id} t={t} />}
     </div>
+  );
+}
+
+function PairDeviceSection({
+  t,
+}: {
+  t: ReturnType<typeof useTranslation>["t"];
+}): JSX.Element {
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const approve = (event: FormEvent): void => {
+    event.preventDefault();
+    if (code.length < 6 || busy) return;
+    setBusy(true);
+    setMsg(null);
+    api
+      .pairApprove(code)
+      .then((device) =>
+        setMsg({ ok: true, text: t("settings.pairSuccess", { name: device.name }) }),
+      )
+      .catch(() => setMsg({ ok: false, text: t("settings.pairError") }))
+      .finally(() => {
+        setBusy(false);
+        setCode("");
+      });
+  };
+
+  return (
+    <section className="space-y-3">
+      <h2 className="text-xs font-semibold tracking-wide text-neutral-500 uppercase">
+        {t("settings.pairTitle")}
+      </h2>
+      <p className="text-xs leading-relaxed text-neutral-400">{t("settings.pairDesc")}</p>
+      <form onSubmit={approve} className="flex items-center gap-2">
+        <input
+          value={code}
+          onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+          inputMode="numeric"
+          placeholder={t("settings.pairCodePlaceholder")}
+          className="w-40 rounded-lg bg-white/[0.06] px-3 py-2 text-sm tracking-[0.3em] text-neutral-100 ring-1 ring-white/10 focus:ring-violet-400/40 focus:outline-none"
+        />
+        <button
+          type="submit"
+          disabled={busy || code.length < 6}
+          className="rounded-xl bg-gradient-to-r from-[#7A4DFF] to-[#EC4899] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_8px_30px_rgba(168,85,247,0.35)] transition hover:brightness-110 disabled:opacity-60"
+        >
+          {busy ? t("settings.pairApproving") : t("settings.pairApprove")}
+        </button>
+      </form>
+      {msg !== null && (
+        <p className={`text-xs ${msg.ok ? "text-emerald-400" : "text-rose-400"}`}>{msg.text}</p>
+      )}
+    </section>
   );
 }
 
