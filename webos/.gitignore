@@ -10,6 +10,9 @@ coverage
 build
 dist
 
+# packaged app bundle (built on demand via ares-package)
+*.ipk
+
 # misc
 .DS_Store
 npm-debug.log

@@ -6,6 +6,7 @@
   "main": "index.html",
   "title": "Movora",
   "icon": "icon.png",
+  "largeIcon": "largeIcon.png",
   "bgColor": "#05060B",
   "transparent": false,
   "requiredPermissions": ["time.query", "network.operation"]

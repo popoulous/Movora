@@ -1,3 +1,40 @@
+# Movora — webOS TV client
+
+The LG webOS TV client (Enact / Sandstone). It talks to the Movora backend over the
+LAN with a device bearer token (see the backend `/api/devices` endpoints).
+
+## Deploy to a webOS TV (sideload)
+
+Prerequisites on the TV: install the **Developer Mode** app, sign in, enable dev
+mode, and turn on **Key Server** (it shows a passphrase). Note the TV's IP.
+
+```sh
+# 1. Install the webOS CLI (once)
+npm install -g @webosose/ares-cli
+
+# 2. Register the TV (host = TV IP, port 9922, user "prisoner"), then fetch its key
+ares-setup-device                                  # add a device, e.g. "movora-tv"
+ares-novacom --device movora-tv --getkey           # enter the Key Server passphrase
+
+# 3. Build, package, install, launch
+npm run pack-p                                      # -> ./dist (incl. appinfo.json + icons)
+ares-package ./dist                                 # -> hu.movora.app_0.1.0_all.ipk
+ares-install --device movora-tv ./hu.movora.app_0.1.0_all.ipk
+ares-launch  --device movora-tv hu.movora.app
+
+# Remote DevTools while it runs
+ares-inspect --device movora-tv --app hu.movora.app
+```
+
+`npm run pack-p` already copies `appinfo.json`, `icon.png` and `largeIcon.png` into
+`dist/`, so no manual copy is needed before `ares-package`.
+
+> The backend must allow the TV's cross-origin requests (CORS) — the web UI is
+> same-origin, the TV app is not. Pairing (the 6-digit code flow) is a later phase;
+> until then a device + token is created via `POST /api/devices`.
+
+---
+
 This project was bootstrapped with [@enact/cli](https://github.com/enactjs/cli).
 
 Below you will find some information on how to perform common tasks.
