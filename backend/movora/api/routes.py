@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import json
 import shutil
 from pathlib import Path
 from urllib.parse import quote
@@ -14,7 +15,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from movora import settings_store
 from movora.access import accessible_library_ids, can_access_library
-from movora.api.deps import AdminDep, CurrentUserDep, SessionDep
+from movora.api.deps import AdminDep, CurrentUserDep, RequestDeviceDep, SessionDep
 from movora.api.schemas import (
     CharacterRead,
     CollectionRead,
@@ -41,7 +42,9 @@ from movora.api.schemas import (
     TaskRead,
     WatchStateUpdate,
 )
+from movora.compat import PlaybackSource, parse_capabilities, select_source
 from movora.db.models import (
+    Device,
     Episode,
     JobStatus,
     Library,
@@ -66,7 +69,6 @@ from movora.normalize import (
     start_workers,
     transcode_pids,
 )
-from movora.streaming import DirectPlayStrategy
 from movora.subtitles import (
     SoftAssOrSrtResolver,
     discover_fonts,
@@ -509,19 +511,23 @@ def _recommendations(session: Session, series: Series) -> list[RecommendationRea
 
 @router.get("/episodes/{episode_id}/playback", response_model=PlaybackInfo)
 def episode_playback(
-    episode_id: int, session: SessionDep, request: Request, user: CurrentUserDep
+    episode_id: int,
+    session: SessionDep,
+    request: Request,
+    user: CurrentUserDep,
+    device: RequestDeviceDep,
 ) -> PlaybackInfo:
     _require_episode_access(session, user, episode_id)
     media_file = _episode_media_file(session, episode_id)
     episode = media_file.episode
     season = episode.season
     series = season.series
-    _, media_type, direct_play = _playback_source(media_file)
+    source = _playback_source(media_file, _device_profile(device))
     return PlaybackInfo(
         media_file_id=media_file.id,
         stream_url=f"/api/episodes/{episode_id}/stream",
-        media_type=media_type,
-        direct_play=direct_play,
+        media_type=source.media_type,
+        direct_play=source.direct_play,
         # Subtitles/fonts come from the original, or the preserved assets if it was deleted.
         subtitle_tracks=_subtitle_tracks(episode_id, _subtitle_base(media_file, request)),
         fonts=_font_urls(episode_id, media_file, request),
@@ -560,14 +566,16 @@ def update_watch_state(
 
 
 @router.get("/episodes/{episode_id}/stream")
-def stream_episode(episode_id: int, session: SessionDep, user: CurrentUserDep) -> FileResponse:
+def stream_episode(
+    episode_id: int, session: SessionDep, user: CurrentUserDep, device: RequestDeviceDep
+) -> FileResponse:
     _require_episode_access(session, user, episode_id)
     media_file = _episode_media_file(session, episode_id)
-    path, media_type, _ = _playback_source(media_file)
-    if not path.is_file():
+    source = _playback_source(media_file, _device_profile(device))
+    if not source.path.is_file():
         raise HTTPException(status_code=404, detail="media file is missing on disk")
     # FileResponse honours the Range header (HTTP 206) so the player can seek.
-    return FileResponse(path, media_type=media_type)
+    return FileResponse(source.path, media_type=source.media_type)
 
 
 @router.get("/episodes/{episode_id}/thumbnail")
@@ -661,15 +669,19 @@ def _thumbnails_dir(request: Request) -> Path:
     return Path(request.app.state.settings.database_path.parent) / "thumbnails"
 
 
-def _playback_source(media_file: MediaFile) -> tuple[Path, str, bool]:
-    """Prefer the normalized mp4 (always Direct Play); else the original file."""
-    if media_file.normalized_path is not None:
-        normalized = Path(media_file.normalized_path)
-        if normalized.is_file():
-            return normalized, "video/mp4", True
-    original = Path(media_file.path)
-    stream = DirectPlayStrategy().open_stream(str(original), CapabilityProfile())
-    return original, stream.media_type, stream.direct_play
+def _device_profile(device: Device | None) -> CapabilityProfile | None:
+    """The capability profile a paired device declared, or None (browser-default)."""
+    if device is None or not device.capabilities:
+        return None
+    return parse_capabilities(json.loads(device.capabilities))
+
+
+def _playback_source(
+    media_file: MediaFile, profile: CapabilityProfile | None
+) -> PlaybackSource:
+    """Best playable source for the client: the CompatibilitySelector over the
+    media file's variants, falling back to the original (plan §13.1)."""
+    return select_source(profile, list(media_file.variants), media_file)
 
 
 @router.get("/episodes/{episode_id}/subtitles")

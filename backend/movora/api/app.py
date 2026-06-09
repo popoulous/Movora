@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from movora import __version__, settings_store
 from movora.api.auth_routes import router as auth_router
 from movora.api.deps import get_current_user
+from movora.api.device_routes import router as device_router
 from movora.api.routes import router
 from movora.config import INSECURE_SECRET_KEY, Settings, get_settings
 from movora.db.base import create_db_engine, create_session_factory, init_db
@@ -70,6 +71,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
 
     app.include_router(auth_router)  # public: login gate + (admin-guarded) user management
+    app.include_router(device_router)  # auth enforced per-handler (CurrentUserDep)
     app.include_router(router, dependencies=[Depends(get_current_user)])  # everything else: auth
 
     @app.get("/health")

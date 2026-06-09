@@ -30,15 +30,18 @@ from sqlalchemy.orm import Session, selectinload, sessionmaker
 from sqlalchemy.orm.exc import StaleDataError
 
 from movora import settings_store
+from movora.compat import fingerprint
 from movora.db.models import (
     Episode,
     JobStatus,
     Library,
     MediaFile,
+    MediaVariant,
     Season,
     Series,
     Task,
     TaskType,
+    VariantStatus,
 )
 from movora.encoders import detect_h264_encoder
 from movora.enrich import enrich_library
@@ -47,6 +50,7 @@ from movora.interfaces import NormalizationPlanner
 from movora.intro import detect_episode
 from movora.metadata import MetadataRegistry, TmdbProvider
 from movora.normalization import WEB_TARGET, RemuxFirstPlanner, needs_normalization
+from movora.recipes import DEFAULT_RECIPE
 from movora.scanner import scan_library
 from movora.streaming import DirectPlayStrategy
 from movora.subtitles import preserve_embedded_assets
@@ -184,8 +188,42 @@ def normalize_media_file(
     partial.replace(output)
     media_file.normalized_path = str(output)
     media_file.is_normalized = True
+    record_web_variant(session, media_file, output)
     session.commit()
     return output
+
+
+def record_web_variant(session: Session, media_file: MediaFile, output: Path) -> None:
+    """Upsert the default web MediaVariant for a freshly normalized mp4.
+
+    The integration layer reads playback from MediaVariant rows (plan §13.1), so a
+    new normalization must record one — not only ``normalized_path`` — or the
+    CompatibilitySelector wouldn't find it. Keyed by (media_file, recipe): re-runs
+    refresh the path and fingerprint in place.
+    """
+    existing = session.scalar(
+        select(MediaVariant).where(
+            MediaVariant.media_file_id == media_file.id,
+            MediaVariant.recipe_id == DEFAULT_RECIPE.id,
+        )
+    )
+    src_fp = fingerprint(Path(media_file.path))
+    if existing is None:
+        session.add(
+            MediaVariant(
+                media_file_id=media_file.id,
+                recipe_id=DEFAULT_RECIPE.id,
+                path=str(output),
+                status=VariantStatus.READY,
+                quality_score=DEFAULT_RECIPE.quality_score,
+                source_fingerprint=src_fp,
+            )
+        )
+    else:
+        existing.path = str(output)
+        existing.status = VariantStatus.READY
+        existing.quality_score = DEFAULT_RECIPE.quality_score
+        existing.source_fingerprint = src_fp
 
 
 def _track_progress(
@@ -533,6 +571,10 @@ def _run_normalize_task(session: Session, task: Task, output_dir: Path) -> None:
         # Mark it ready (unless the source vanished) so the UI shows it as optimized.
         if media_file.normalized_path or Path(media_file.path).is_file():
             media_file.is_normalized = True
+        # Self-heal: an already-normalized file must have its web variant row so the
+        # CompatibilitySelector can serve it (a pre-variant normalize wouldn't have one).
+        if media_file.normalized_path and Path(media_file.normalized_path).is_file():
+            record_web_variant(session, media_file, Path(media_file.normalized_path))
         _finish(session, task, message="already optimized")
         return
     task_id = task.id
