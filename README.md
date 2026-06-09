@@ -67,7 +67,27 @@ Settings are environment variables prefixed with `MOVORA_` (see `.env.example`):
   cookie. Generate one with `python -c "import secrets; print(secrets.token_hex(32))"`.
 - `MOVORA_TMDB_API_KEY` — free [TMDB v3](https://www.themoviedb.org/settings/api)
   key for film/series metadata (anime works without it).
+- `MOVORA_COOKIE_SECURE` — set to `true` when serving over HTTPS (see below).
+- `MOVORA_SESSION_TTL_SECONDS` — session lifetime (default: 1 209 600 = 14 days).
 - `MOVORA_DATABASE_PATH`, `MOVORA_MEDIA` — see `.env.example`.
+
+### Safe remote access
+
+Movora is designed for a trusted home network. If you want to reach it from
+outside, use an encrypted tunnel — **do not expose port 8000 directly to the
+internet** (no TLS, no rate limiting on the network layer).
+
+**Recommended: [Tailscale](https://tailscale.com)** — zero-config WireGuard
+mesh; install on the server and your devices, done. No port forwarding, no
+certificate management.
+
+**Alternative: [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)**
+— free, gives you a public HTTPS domain, works without a static IP or open
+ports. Pair with Cloudflare Access to add an extra auth layer.
+
+If you run Movora behind a **reverse proxy** (nginx, Caddy) that terminates
+TLS, set `MOVORA_COOKIE_SECURE=true` in your `.env` so the session cookie is
+marked `Secure`.
 
 ## Development
 

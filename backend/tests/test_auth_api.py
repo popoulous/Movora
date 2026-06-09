@@ -108,6 +108,27 @@ def test_password_change_self_and_admin_reset(tmp_path: Path) -> None:
     assert denied.status_code == 403
 
 
+def test_login_rate_limit(tmp_path: Path) -> None:
+    import movora.api.auth_routes as ar
+
+    ar._rl_attempts.clear()  # isolate from other tests
+    client = _gated_client(tmp_path)
+    client.post("/api/auth/setup", json={"username": "admin", "password": "pw"})
+    client.post("/api/auth/logout")
+
+    for _ in range(5):
+        r = client.post("/api/auth/login", json={"username": "admin", "password": "bad"})
+        assert r.status_code == 401
+
+    # 6th attempt must be blocked regardless of the password.
+    assert (
+        client.post("/api/auth/login", json={"username": "admin", "password": "pw"}).status_code
+        == 429
+    )
+
+    ar._rl_attempts.clear()  # restore for subsequent tests
+
+
 def test_library_access_is_granted_per_user(tmp_path: Path) -> None:
     app = create_app(Settings(database_path=tmp_path / "t.db", secret_key="test-secret"))
     client = TestClient(app)

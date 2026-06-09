@@ -6,6 +6,9 @@ requires it; only these routes are reachable unauthenticated (and most still are
 
 from __future__ import annotations
 
+import threading
+import time
+
 from fastapi import APIRouter, HTTPException, Request, Response
 from sqlalchemy import select
 
@@ -24,6 +27,36 @@ from movora.auth import hash_password, issue_token, read_token, verify_password
 from movora.db.models import Library, User, UserRole
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+# ---------------------------------------------------------------------------
+# Login rate limiting — in-memory, no external dependencies.
+# Tracks failed attempts per client IP; resets on successful login.
+# ---------------------------------------------------------------------------
+_rl_lock: threading.Lock = threading.Lock()
+_rl_attempts: dict[str, list[float]] = {}
+_RL_WINDOW: int = 15 * 60  # seconds
+_RL_MAX: int = 5
+
+
+def _rl_check(ip: str) -> None:
+    now = time.monotonic()
+    with _rl_lock:
+        _rl_attempts[ip] = [t for t in _rl_attempts.get(ip, []) if now - t < _RL_WINDOW]
+        if len(_rl_attempts[ip]) >= _RL_MAX:
+            raise HTTPException(
+                status_code=429, detail="too many failed login attempts, try again later"
+            )
+
+
+def _rl_record(ip: str) -> None:
+    with _rl_lock:
+        _rl_attempts.setdefault(ip, []).append(time.monotonic())
+
+
+def _rl_clear(ip: str) -> None:
+    with _rl_lock:
+        _rl_attempts.pop(ip, None)
+
 
 def _set_session_cookie(
     response: Response, user_id: int, secret: str, ttl: int, secure: bool
@@ -77,11 +110,15 @@ def setup(payload: LoginRequest, session: SessionDep, request: Request, response
 
 @router.post("/login", response_model=UserRead)
 def login(payload: LoginRequest, session: SessionDep, request: Request, response: Response) -> User:
+    ip = request.client.host if request.client else "unknown"
+    _rl_check(ip)
     user = session.scalar(select(User).where(User.username == payload.username))
     if user is None or not user.password_hash or not verify_password(
         payload.password, user.password_hash
     ):
+        _rl_record(ip)
         raise HTTPException(status_code=401, detail="invalid username or password")
+    _rl_clear(ip)
     cfg = request.app.state.settings
     _set_session_cookie(
         response, user.id, cfg.secret_key, cfg.session_ttl_seconds, cfg.cookie_secure
