@@ -2,6 +2,7 @@ import React from "react";
 import { mediaUrl } from "../api/client";
 import { useDevice } from "../context/DeviceContext";
 import { theme } from "../theme";
+import { aspectHeight, scrollFocus } from "../util";
 
 interface Props {
   title: string;
@@ -26,11 +27,13 @@ export function PosterCard({
 }: Props): React.JSX.Element {
   const { config } = useDevice();
   const img = mediaUrl(config?.serverUrl ?? "", config?.deviceToken ?? null, cover);
+  const imgHeight = aspectHeight(width, aspect);
 
   return (
     <button
-      className="mv-focusable"
+      className="spottable mv-focusable"
       onClick={onSelect}
+      onFocus={scrollFocus}
       style={{
         width,
         flexShrink: 0,
@@ -44,7 +47,7 @@ export function PosterCard({
         color: theme.text,
       }}
     >
-      <div style={{ position: "relative", width: "100%", aspectRatio: aspect, background: "#11131f" }}>
+      <div style={{ position: "relative", width: "100%", height: imgHeight, background: "#11131f" }}>
         {img ? (
           <img
             src={img}

@@ -3,6 +3,8 @@ import { type HomeData, type HomeSeries, type Library } from "../api/client";
 import { useDevice } from "../context/DeviceContext";
 import { PosterCard } from "../components/PosterCard";
 import { theme } from "../theme";
+import { scrollFocus } from "../util";
+import { useInitialFocus } from "../hooks";
 
 interface Props {
   onSeries: (id: number) => void;
@@ -37,10 +39,12 @@ export default function HomeView({ onSeries, onLibrary, onSettings }: Props): Re
     api.getLibraries().then(setLibraries).catch(() => undefined);
   }, [api]);
 
+  useInitialFocus(data);
+
   const seriesLabel = (s: HomeSeries): string => s.display_title ?? s.title;
 
   return (
-    <div className="mv-app" style={{ minHeight: "100vh" }}>
+    <div className="mv-app" style={{ height: "100vh", overflowY: "auto" }}>
       <header
         style={{
           display: "flex",
@@ -57,8 +61,9 @@ export default function HomeView({ onSeries, onLibrary, onSettings }: Props): Re
           }}>Movora</span>
         </span>
         <button
-          className="mv-focusable"
+          className="spottable mv-focusable"
           onClick={onSettings}
+          onFocus={scrollFocus}
           style={{
             background: theme.surface,
             border: `1px solid ${theme.border}`,
@@ -116,8 +121,9 @@ export default function HomeView({ onSeries, onLibrary, onSettings }: Props): Re
             {libraries.map((lib) => (
               <button
                 key={lib.id}
-                className="mv-focusable"
+                className="spottable mv-focusable"
                 onClick={() => onLibrary(lib.id)}
+                onFocus={scrollFocus}
                 style={{
                   width: 220,
                   flexShrink: 0,

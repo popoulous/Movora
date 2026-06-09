@@ -2,6 +2,11 @@ import React, { useEffect, useState } from "react";
 import { type SeriesDetail, type Episode, mediaUrl } from "../api/client";
 import { useDevice } from "../context/DeviceContext";
 import { theme } from "../theme";
+import { aspectHeight, scrollFocus } from "../util";
+import { useInitialFocus } from "../hooks";
+
+const THUMB_W = 132;
+const THUMB_H = aspectHeight(THUMB_W, "16/9");
 
 interface Props {
   seriesId: number;
@@ -16,8 +21,9 @@ function EpisodeRow({ ep, onPlay }: { ep: Episode; onPlay: () => void }): React.
     ep.end_number !== null ? `${ep.number}–${ep.end_number}. rész` : `${ep.number}. rész`;
   return (
     <button
-      className="mv-focusable"
+      className="spottable mv-focusable"
       onClick={onPlay}
+      onFocus={scrollFocus}
       style={{
         display: "flex",
         alignItems: "center",
@@ -37,10 +43,10 @@ function EpisodeRow({ ep, onPlay }: { ep: Episode; onPlay: () => void }): React.
         <img
           src={thumb}
           alt=""
-          style={{ width: 132, aspectRatio: "16/9", objectFit: "cover", borderRadius: 8, flexShrink: 0 }}
+          style={{ width: THUMB_W, height: THUMB_H, objectFit: "cover", borderRadius: 8, flexShrink: 0 }}
         />
       ) : (
-        <div style={{ width: 132, aspectRatio: "16/9", borderRadius: 8, background: "#11131f", flexShrink: 0 }} />
+        <div style={{ width: THUMB_W, height: THUMB_H, borderRadius: 8, background: "#11131f", flexShrink: 0 }} />
       )}
       <div style={{ minWidth: 0 }}>
         <div style={{ fontWeight: 600, fontSize: "0.95rem" }}>
@@ -78,6 +84,8 @@ export default function SeriesView({ seriesId, onPlay, onBack }: Props): React.J
       .catch((e: unknown) => setError(String(e)));
   }, [api, seriesId]);
 
+  useInitialFocus(series);
+
   const title = series ? (series.display_title ?? series.title) : "Betöltés…";
   const currentSeason = series?.seasons[selectedSeason];
   const banner = mediaUrl(
@@ -87,7 +95,7 @@ export default function SeriesView({ seriesId, onPlay, onBack }: Props): React.J
   );
 
   return (
-    <div className="mv-app" style={{ minHeight: "100vh" }}>
+    <div className="mv-app" style={{ height: "100vh", overflowY: "auto" }}>
       {/* Hero */}
       <div style={{ position: "relative", padding: "1.5rem 2.5rem 1rem" }}>
         {banner && (
@@ -105,8 +113,9 @@ export default function SeriesView({ seriesId, onPlay, onBack }: Props): React.J
         )}
         <div style={{ position: "relative" }}>
           <button
-            className="mv-focusable"
+            className="spottable mv-focusable"
             onClick={onBack}
+            onFocus={scrollFocus}
             style={{
               background: theme.surface,
               border: `1px solid ${theme.border}`,
@@ -155,8 +164,9 @@ export default function SeriesView({ seriesId, onPlay, onBack }: Props): React.J
               {series.seasons.map((sn, i) => (
                 <button
                   key={sn.id}
-                  className="mv-focusable"
+                  className="spottable mv-focusable"
                   onClick={() => setSelectedSeason(i)}
+                  onFocus={scrollFocus}
                   style={{
                     display: "block",
                     width: "100%",
@@ -178,7 +188,7 @@ export default function SeriesView({ seriesId, onPlay, onBack }: Props): React.J
           )}
 
           {/* Episode list */}
-          <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="mv-grid" style={{ flex: 1, minWidth: 0 }}>
             {currentSeason?.episodes.map((ep) => (
               <EpisodeRow key={ep.id} ep={ep} onPlay={() => onPlay(ep.id)} />
             ))}

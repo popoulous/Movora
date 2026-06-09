@@ -3,6 +3,8 @@ import { type SeriesSummary } from "../api/client";
 import { useDevice } from "../context/DeviceContext";
 import { PosterCard } from "../components/PosterCard";
 import { theme } from "../theme";
+import { scrollFocus } from "../util";
+import { useInitialFocus } from "../hooks";
 
 interface Props {
   libraryId: number;
@@ -26,12 +28,15 @@ export default function LibraryView({ libraryId, onSeries, onBack }: Props): Rea
       .catch((e: unknown) => setError(String(e)));
   }, [api, libraryId]);
 
+  useInitialFocus(series);
+
   return (
-    <div className="mv-app" style={{ minHeight: "100vh" }}>
+    <div className="mv-app" style={{ height: "100vh", overflowY: "auto" }}>
       <header style={{ display: "flex", alignItems: "center", gap: "1rem", padding: "1.5rem 2.5rem 0.5rem" }}>
         <button
-          className="mv-focusable"
+          className="spottable mv-focusable"
           onClick={onBack}
+          onFocus={scrollFocus}
           style={{
             background: theme.surface,
             border: `1px solid ${theme.border}`,
@@ -53,6 +58,7 @@ export default function LibraryView({ libraryId, onSeries, onBack }: Props): Rea
         {series && series.length === 0 && <p style={{ color: theme.muted }}>Üres könyvtár.</p>}
         {series && series.length > 0 && (
           <div
+            className="mv-grid"
             style={{
               display: "grid",
               gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))",
