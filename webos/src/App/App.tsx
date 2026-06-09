@@ -39,6 +39,7 @@ function AppInner(): React.JSX.Element {
       return (
         <HomeView
           onSeries={(id) => push({ id: "series", seriesId: id })}
+          onPlay={(id) => push({ id: "player", episodeId: id })}
           onLibrary={(id) => push({ id: "library", libraryId: id })}
           onSettings={() => push({ id: "settings" })}
         />

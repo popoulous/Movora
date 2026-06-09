@@ -8,6 +8,7 @@ import { useInitialFocus } from "../hooks";
 
 interface Props {
   onSeries: (id: number) => void;
+  onPlay: (episodeId: number) => void;
   onLibrary: (id: number) => void;
   onSettings: () => void;
 }
@@ -27,7 +28,7 @@ function Row({ title, children }: { title: string; children: React.ReactNode }):
   );
 }
 
-export default function HomeView({ onSeries, onLibrary, onSettings }: Props): React.JSX.Element {
+export default function HomeView({ onSeries, onPlay, onLibrary, onSettings }: Props): React.JSX.Element {
   const { api } = useDevice();
   const [data, setData] = useState<HomeData | null>(null);
   const [libraries, setLibraries] = useState<Library[]>([]);
@@ -97,7 +98,9 @@ export default function HomeView({ onSeries, onLibrary, onSettings }: Props): Re
                     ? `${s.continue_season_number}. évad · ${s.continue_episode_number}. rész`
                     : undefined
                 }
-                onSelect={() => onSeries(s.id)}
+                onSelect={() =>
+                  s.continue_episode_id !== null ? onPlay(s.continue_episode_id) : onSeries(s.id)
+                }
               />
             ))}
           </Row>

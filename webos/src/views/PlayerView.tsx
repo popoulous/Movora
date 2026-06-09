@@ -307,7 +307,11 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
     else if (id === "next") {
       if (nextEpisodeId !== null) onNext(nextEpisodeId);
     } else if (id === "skip") doSkip();
-    else if (id === "set") setSettingsOpen(true);
+    else if (id === "set") {
+      if (panelTimer.current) clearTimeout(panelTimer.current);
+      setSetFocus(0);
+      setSettingsOpen(true);
+    }
   };
 
   // The transport buttons, in ←/→ focus order. Skip appears only inside its window.
@@ -338,7 +342,8 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
     }
 
     if (settingsOpen) {
-      armPanelTimer();
+      // Don't auto-close the panel while the settings sub-view is open.
+      if (panelTimer.current) clearTimeout(panelTimer.current);
       if (k === "ArrowUp") {
         e.preventDefault();
         setSetFocus((f) => Math.max(0, f - 1));
@@ -354,6 +359,7 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
       } else if (k === "Enter" || k === " ") {
         e.preventDefault();
         setSettingsOpen(false);
+        armPanelTimer();
       }
       return;
     }
@@ -367,7 +373,11 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
         seekBy(-10);
       } else if (k === "ArrowRight") {
         seekBy(10);
-      } else if (k === "ArrowDown" || k === "ArrowUp") {
+      } else if (k === "ArrowDown") {
+        e.preventDefault();
+        if (skip !== null) doSkip(); // the on-video skip chip is reachable with Down
+        else openPanel();
+      } else if (k === "ArrowUp") {
         e.preventDefault();
         openPanel();
       }
@@ -426,6 +436,7 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
     popRef.current = () => {
       if (settingsOpen) {
         setSettingsOpen(false);
+        armPanelTimer();
         history.pushState({ mvPlayer: true }, "");
       } else if (panelOpen) {
         setPanelOpen(false);
@@ -511,7 +522,7 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
       {skip !== null && !ended && !panelOpen && (
         <div onClick={doSkip} style={{ position: "absolute", right: "3rem", bottom: "3rem", display: "flex", alignItems: "center", gap: "0.5rem", background: theme.gradient, color: "#fff", padding: "0.7rem 1.3rem", borderRadius: theme.radius, fontWeight: 700, cursor: "pointer" }}>
           <Icon name="skip" size={18} />
-          {skip === "intro" ? "Intro kihagyása" : "Következő rész"}
+          {skip === "intro" ? "Intro kihagyása ▼" : "Következő rész ▼"}
         </div>
       )}
 
@@ -589,10 +600,60 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
             })}
           </div>
 
-          {/* Episode strip */}
-          <div style={{ fontSize: "0.9rem", fontWeight: 700, color: "#fff", marginBottom: "0.6rem" }}>Részek</div>
-          <div className="mv-row" style={{ display: "flex", overflowX: "auto", paddingBottom: "0.3rem" }}>
-            {flat.map((ep, i) => {
+          {/* Subtitle settings sub-view (gear) replaces the episode strip */}
+          {settingsOpen ? (
+            <div>
+              <div style={{ fontSize: "0.95rem", fontWeight: 700, color: "#fff", marginBottom: "0.7rem" }}>Felirat beállítások</div>
+              {[
+                { label: "Méret", options: SIZES.map((v) => ({ v: v as string, l: SIZE_LABEL[v] })), cur: subStyle.size as string },
+                { label: "Háttér", options: BGS.map((v) => ({ v: v as string, l: BG_LABEL[v] })), cur: subStyle.bg as string },
+                { label: "Pozíció", options: POSS.map((v) => ({ v: v as string, l: POS_LABEL[v] })), cur: subStyle.pos as string },
+              ].map((def, ri) => (
+                <div
+                  key={def.label}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    marginBottom: "0.55rem",
+                    padding: "0.45rem 0.7rem",
+                    borderRadius: 10,
+                    border: `2px solid ${setFocus === ri ? theme.accent : "transparent"}`,
+                    background: setFocus === ri ? "rgba(122,77,255,0.14)" : "transparent",
+                  }}
+                >
+                  <span style={{ width: 100, color: theme.muted, fontSize: "0.92rem" }}>{def.label}</span>
+                  <div style={{ display: "flex" }}>
+                    {def.options.map((opt) => {
+                      const sel = opt.v === def.cur;
+                      return (
+                        <span
+                          key={opt.v}
+                          onClick={() => applySetting(ri, opt.v)}
+                          style={{
+                            marginRight: "0.6rem",
+                            padding: "0.32rem 0.95rem",
+                            borderRadius: 999,
+                            fontSize: "0.9rem",
+                            fontWeight: 600,
+                            cursor: "pointer",
+                            color: sel ? "#fff" : theme.muted,
+                            background: sel ? theme.gradient : "rgba(255,255,255,0.08)",
+                          }}
+                        >
+                          {opt.l}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+              <div style={{ marginTop: "0.5rem", color: theme.muted, fontSize: "0.78rem" }}>▲▼ Sor · ◀▶ Érték · Back Bezár</div>
+            </div>
+          ) : (
+            <>
+              <div style={{ fontSize: "0.9rem", fontWeight: 700, color: "#fff", marginBottom: "0.6rem" }}>Részek</div>
+              <div className="mv-row" style={{ display: "flex", overflowX: "auto", paddingBottom: "0.3rem" }}>
+                {flat.map((ep, i) => {
               const focused = row === "episodes" && i === epFocus;
               const isCurrent = ep.id === episodeId;
               const thumb = mediaUrl(base, token, ep.thumbnail_url);
@@ -635,60 +696,9 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
                 </div>
               );
             })}
-          </div>
-        </div>
-      )}
-
-      {/* Subtitle settings overlay (gear button) */}
-      {info && settingsOpen && (
-        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(5,6,11,0.72)" }}>
-          <div style={{ background: "rgba(15,16,26,0.98)", border: `1px solid ${theme.border}`, borderRadius: 16, padding: "1.8rem 2.2rem", minWidth: 480 }}>
-            <div style={{ fontSize: "1.2rem", fontWeight: 800, color: "#fff", marginBottom: "1.3rem" }}>Felirat beállítások</div>
-            {[
-              { label: "Méret", options: SIZES.map((v) => ({ v, l: SIZE_LABEL[v] })), cur: subStyle.size as string },
-              { label: "Háttér", options: BGS.map((v) => ({ v, l: BG_LABEL[v] })), cur: subStyle.bg as string },
-              { label: "Pozíció", options: POSS.map((v) => ({ v, l: POS_LABEL[v] })), cur: subStyle.pos as string },
-            ].map((def, ri) => (
-              <div
-                key={def.label}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  marginBottom: "0.7rem",
-                  padding: "0.5rem 0.7rem",
-                  borderRadius: 10,
-                  border: `2px solid ${setFocus === ri ? theme.accent : "transparent"}`,
-                  background: setFocus === ri ? "rgba(122,77,255,0.12)" : "transparent",
-                }}
-              >
-                <span style={{ width: 110, color: theme.muted, fontSize: "0.95rem" }}>{def.label}</span>
-                <div style={{ display: "flex" }}>
-                  {def.options.map((opt) => {
-                    const sel = opt.v === def.cur;
-                    return (
-                      <span
-                        key={opt.v}
-                        onClick={() => applySetting(ri, opt.v)}
-                        style={{
-                          marginRight: "0.6rem",
-                          padding: "0.35rem 0.95rem",
-                          borderRadius: 999,
-                          fontSize: "0.9rem",
-                          fontWeight: 600,
-                          cursor: "pointer",
-                          color: sel ? "#fff" : theme.muted,
-                          background: sel ? theme.gradient : "rgba(255,255,255,0.08)",
-                        }}
-                      >
-                        {opt.l}
-                      </span>
-                    );
-                  })}
-                </div>
               </div>
-            ))}
-            <div style={{ marginTop: "0.9rem", color: theme.muted, fontSize: "0.8rem" }}>▲▼ Sor · ◀▶ Érték · Back Bezár</div>
-          </div>
+            </>
+          )}
         </div>
       )}
 
