@@ -1,10 +1,7 @@
 import React, { useEffect, useState } from "react";
-import { Panel, Header } from "@enact/sandstone/Panels";
-import Button from "@enact/sandstone/Button";
-import Spinner from "@enact/sandstone/Spinner";
-import Scroller from "@enact/sandstone/Scroller";
 import { type SeriesDetail, type Episode, mediaUrl } from "../api/client";
 import { useDevice } from "../context/DeviceContext";
+import { theme } from "../theme";
 
 interface Props {
   seriesId: number;
@@ -12,48 +9,46 @@ interface Props {
   onBack: () => void;
 }
 
-function EpisodeRow({
-  ep,
-  onPlay,
-}: {
-  ep: Episode;
-  onPlay: () => void;
-}): React.JSX.Element {
+function EpisodeRow({ ep, onPlay }: { ep: Episode; onPlay: () => void }): React.JSX.Element {
   const { config } = useDevice();
   const thumb = mediaUrl(config?.serverUrl ?? "", config?.deviceToken ?? null, ep.thumbnail_url);
   const label =
     ep.end_number !== null ? `${ep.number}–${ep.end_number}. rész` : `${ep.number}. rész`;
   return (
     <button
+      className="mv-focusable"
       onClick={onPlay}
       style={{
         display: "flex",
         alignItems: "center",
+        gap: "1rem",
         width: "100%",
-        background: ep.watched ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.07)",
-        border: "none",
-        borderRadius: 6,
-        marginBottom: "0.5rem",
-        padding: "0.75rem 1rem",
+        background: theme.surface,
+        border: `1px solid ${theme.border}`,
+        borderRadius: theme.radius,
+        marginBottom: "0.6rem",
+        padding: "0.6rem 0.8rem",
         cursor: "pointer",
         textAlign: "left",
-        color: ep.watched ? "#888" : "#f0f0f0",
+        color: ep.watched ? theme.muted : theme.text,
       }}
     >
-      {thumb && (
+      {thumb ? (
         <img
           src={thumb}
           alt=""
-          style={{ width: 120, aspectRatio: "16/9", objectFit: "cover", borderRadius: 4, marginRight: "1rem" }}
+          style={{ width: 132, aspectRatio: "16/9", objectFit: "cover", borderRadius: 8, flexShrink: 0 }}
         />
+      ) : (
+        <div style={{ width: 132, aspectRatio: "16/9", borderRadius: 8, background: "#11131f", flexShrink: 0 }} />
       )}
-      <div>
-        <div style={{ fontWeight: 600, fontSize: "0.9rem" }}>{label}</div>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontWeight: 600, fontSize: "0.95rem" }}>
+          {label}
+          {ep.watched && <span style={{ color: "#4ade80", marginLeft: 8, fontSize: "0.8rem" }}>✓</span>}
+        </div>
         {ep.title && (
-          <div style={{ fontSize: "0.8rem", opacity: 0.7, marginTop: 2 }}>{ep.title}</div>
-        )}
-        {ep.watched && (
-          <div style={{ fontSize: "0.7rem", color: "#4ade80", marginTop: 2 }}>✓ Megnézve</div>
+          <div style={{ fontSize: "0.82rem", color: theme.muted, marginTop: 2 }}>{ep.title}</div>
         )}
       </div>
     </button>
@@ -61,7 +56,7 @@ function EpisodeRow({
 }
 
 export default function SeriesView({ seriesId, onPlay, onBack }: Props): React.JSX.Element {
-  const { api } = useDevice();
+  const { api, config } = useDevice();
   const [series, setSeries] = useState<SeriesDetail | null>(null);
   const [selectedSeason, setSelectedSeason] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -73,8 +68,7 @@ export default function SeriesView({ seriesId, onPlay, onBack }: Props): React.J
       .then((s) => {
         setSeries(s);
         setError(null);
-        // Pre-select the season with the continue episode if present.
-        if (s.watch?.continue_episode_id !== null) {
+        if (s.watch?.continue_episode_id != null) {
           const idx = s.seasons.findIndex((sn) =>
             sn.episodes.some((e) => e.id === s.watch?.continue_episode_id),
           );
@@ -86,66 +80,111 @@ export default function SeriesView({ seriesId, onPlay, onBack }: Props): React.J
 
   const title = series ? (series.display_title ?? series.title) : "Betöltés…";
   const currentSeason = series?.seasons[selectedSeason];
+  const banner = mediaUrl(
+    config?.serverUrl ?? "",
+    config?.deviceToken ?? null,
+    series?.banner_image_url ?? series?.cover_image_url ?? null,
+  );
 
   return (
-    <Panel>
-      <Header
-        title={title}
-        subtitle={series?.year?.toString()}
-        slotBefore={
-          <Button size="small" onClick={onBack}>
-            ←
-          </Button>
-        }
-      />
-      {!series && !error && <Spinner component="div" />}
-      {error && (
-        <p style={{ padding: "2rem", color: "#f87171" }}>Betöltési hiba: {error}</p>
-      )}
-      {series && (
-        <div style={{ display: "flex", height: "calc(100vh - 120px)" }}>
-          {/* Season selector */}
+    <div className="mv-app" style={{ minHeight: "100vh" }}>
+      {/* Hero */}
+      <div style={{ position: "relative", padding: "1.5rem 2.5rem 1rem" }}>
+        {banner && (
           <div
             style={{
-              width: 160,
-              padding: "1rem",
-              borderRight: "1px solid rgba(255,255,255,0.1)",
-              flexShrink: 0,
+              position: "absolute",
+              inset: 0,
+              backgroundImage: `url(${banner})`,
+              backgroundSize: "cover",
+              backgroundPosition: "center",
+              opacity: 0.18,
+              filter: "blur(2px)",
+            }}
+          />
+        )}
+        <div style={{ position: "relative" }}>
+          <button
+            className="mv-focusable"
+            onClick={onBack}
+            style={{
+              background: theme.surface,
+              border: `1px solid ${theme.border}`,
+              borderRadius: 999,
+              color: theme.text,
+              padding: "0.5rem 1.1rem",
+              cursor: "pointer",
+              fontSize: "1rem",
             }}
           >
-            {series.seasons.map((sn, i) => (
-              <button
-                key={sn.id}
-                onClick={() => setSelectedSeason(i)}
-                style={{
-                  display: "block",
-                  width: "100%",
-                  padding: "0.6rem 0.8rem",
-                  marginBottom: "0.3rem",
-                  background:
-                    i === selectedSeason ? "rgba(192,132,252,0.25)" : "transparent",
-                  border: i === selectedSeason ? "1px solid #c084fc" : "1px solid transparent",
-                  borderRadius: 6,
-                  color: i === selectedSeason ? "#c084fc" : "#d0d0e0",
-                  cursor: "pointer",
-                  fontWeight: i === selectedSeason ? 700 : 400,
-                }}
-              >
-                {sn.number}. évad
-              </button>
-            ))}
+            ← Vissza
+          </button>
+          <h1 style={{ fontSize: "2rem", fontWeight: 800, margin: "1rem 0 0.3rem" }}>{title}</h1>
+          <div style={{ color: theme.muted, fontSize: "0.9rem" }}>
+            {[series?.year, series?.format, series?.score ? `★ ${series.score}` : null]
+              .filter(Boolean)
+              .join(" · ")}
           </div>
+          {series?.description && (
+            <p
+              style={{
+                color: theme.muted,
+                fontSize: "0.9rem",
+                maxWidth: 760,
+                marginTop: "0.8rem",
+                lineHeight: 1.5,
+                display: "-webkit-box",
+                WebkitLineClamp: 3,
+                WebkitBoxOrient: "vertical",
+                overflow: "hidden",
+              }}
+            >
+              {series.description.replace(/<[^>]+>/g, "")}
+            </p>
+          )}
+        </div>
+      </div>
 
-          {/* Episode list */}
-          <Scroller style={{ flex: 1 }}>
-            <div style={{ padding: "1rem" }}>
-              {currentSeason?.episodes.map((ep) => (
-                <EpisodeRow key={ep.id} ep={ep} onPlay={() => onPlay(ep.id)} />
+      {error && <p style={{ padding: "0 2.5rem", color: "#f87171" }}>Betöltési hiba: {error}</p>}
+
+      {series && (
+        <div style={{ display: "flex", gap: "1.5rem", padding: "0.5rem 2.5rem 3rem" }}>
+          {/* Season selector */}
+          {series.seasons.length > 1 && (
+            <div style={{ width: 150, flexShrink: 0 }}>
+              {series.seasons.map((sn, i) => (
+                <button
+                  key={sn.id}
+                  className="mv-focusable"
+                  onClick={() => setSelectedSeason(i)}
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    padding: "0.6rem 0.8rem",
+                    marginBottom: "0.4rem",
+                    background: i === selectedSeason ? "rgba(122,77,255,0.25)" : theme.surface,
+                    border: `1px solid ${i === selectedSeason ? theme.accent : theme.border}`,
+                    borderRadius: theme.radius,
+                    color: i === selectedSeason ? "#fff" : theme.text,
+                    cursor: "pointer",
+                    fontWeight: i === selectedSeason ? 700 : 400,
+                    textAlign: "left",
+                  }}
+                >
+                  {sn.number}. évad
+                </button>
               ))}
             </div>
-          </Scroller>
+          )}
+
+          {/* Episode list */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {currentSeason?.episodes.map((ep) => (
+              <EpisodeRow key={ep.id} ep={ep} onPlay={() => onPlay(ep.id)} />
+            ))}
+          </div>
         </div>
       )}
-    </Panel>
+    </div>
   );
 }

@@ -12,6 +12,19 @@ export interface Library {
   series_count: number;
 }
 
+export interface SeriesSummary {
+  id: number;
+  title: string;
+  display_title: string | null;
+  year: number | null;
+  cover_image_url: string | null;
+  episode_count: number;
+  watch_status: WatchStatus;
+  watch_percent: number;
+  normalized: boolean;
+  continue_episode_id: number | null;
+}
+
 export interface Episode {
   id: number;
   number: number;
@@ -35,6 +48,7 @@ export interface SeriesDetail {
   display_title: string | null;
   native_title: string | null;
   year: number | null;
+  format: string | null;
   score: number | null;
   cover_image_url: string | null;
   banner_image_url: string | null;
@@ -159,6 +173,14 @@ export function createApiClient(baseUrl: string, token: string | null) {
   return {
     getHome: () =>
       fetch(`${base}/api/home`, { headers: authHeaders() }).then(asJson<HomeData>),
+
+    getLibraries: () =>
+      fetch(`${base}/api/libraries`, { headers: authHeaders() }).then(asJson<Library[]>),
+
+    listSeries: (libraryId: number) =>
+      fetch(`${base}/api/libraries/${libraryId}/series`, { headers: authHeaders() }).then(
+        asJson<SeriesSummary[]>,
+      ),
 
     getSeries: (id: number) =>
       fetch(`${base}/api/series/${id}`, { headers: authHeaders() }).then(asJson<SeriesDetail>),

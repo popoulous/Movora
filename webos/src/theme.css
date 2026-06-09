@@ -1,0 +1,46 @@
+/* Movora TV global styles: dark base + a clear D-pad focus treatment. */
+:root {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background: #05060b;
+  color: #f2f2f7;
+  font-family: "Inter", "Helvetica Neue", Arial, sans-serif;
+}
+
+/* Ambient brand glow behind everything (matches the web app's backdrop). */
+.mv-app {
+  position: relative;
+  min-height: 100vh;
+  background:
+    radial-gradient(60% 50% at 15% 0%, rgba(122, 77, 255, 0.18), transparent 70%),
+    radial-gradient(50% 50% at 90% 10%, rgba(236, 72, 153, 0.14), transparent 70%),
+    #05060b;
+}
+
+/* Any focusable card/button gets a bright ring + lift when the D-pad lands on it. */
+.mv-focusable {
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.12s ease,
+    background 0.12s ease;
+}
+.mv-focusable:focus,
+.mv-focusable:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 3px rgba(122, 77, 255, 0.95),
+    0 12px 36px rgba(168, 85, 247, 0.45);
+  transform: scale(1.05);
+  z-index: 3;
+}
+
+/* Hide scrollbars on the horizontal rows (still scrollable / spotlight-navigable). */
+.mv-row::-webkit-scrollbar {
+  display: none;
+}
+.mv-row {
+  scrollbar-width: none;
+}
