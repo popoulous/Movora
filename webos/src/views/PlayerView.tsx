@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import Spinner from "@enact/sandstone/Spinner";
-import { type PlaybackInfo, mediaUrl } from "../api/client";
+import { type PlaybackInfo, type SeriesDetail, mediaUrl } from "../api/client";
 import { useDevice } from "../context/DeviceContext";
+import { theme } from "../theme";
 
 interface Props {
   episodeId: number;
@@ -15,20 +15,38 @@ const SAVE_INTERVAL_S = 10;
 const NEAR_END_S = 90;
 const COUNTDOWN_START = 10;
 
-export default function PlayerView({ episodeId, onBack }: Props): React.JSX.Element {
+function fmt(sec: number): string {
+  if (!isFinite(sec) || sec < 0) return "0:00";
+  const s = Math.floor(sec % 60);
+  const m = Math.floor(sec / 60) % 60;
+  const h = Math.floor(sec / 3600);
+  const mm = h > 0 ? String(m).padStart(2, "0") : String(m);
+  return (h > 0 ? `${h}:` : "") + `${mm}:${String(s).padStart(2, "0")}`;
+}
+
+export default function PlayerView({ episodeId, onBack, onNext }: Props): React.JSX.Element {
   const { api, config } = useDevice();
   const [info, setInfo] = useState<PlaybackInfo | null>(null);
+  const [series, setSeries] = useState<SeriesDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [controlsActive, setControlsActive] = useState(true);
+  const [controls, setControls] = useState(true);
+  const [paused, setPaused] = useState(false);
+  const [cur, setCur] = useState(0);
+  const [dur, setDur] = useState(0);
   const [skip, setSkip] = useState<SkipZone>(null);
-  const [nearEnd, setNearEnd] = useState(false);
   const [ended, setEnded] = useState(false);
   const [countdown, setCountdown] = useState(COUNTDOWN_START);
+  const [subIdx, setSubIdx] = useState(-1); // -1 = off
+  const [toast, setToast] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
-  const lastSavedRef = useRef(0);
-  const controlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const lastSaved = useRef(0);
+  const ctrlTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cdTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const base = config?.serverUrl ?? "";
+  const token = config?.deviceToken ?? null;
 
   useEffect(() => {
     if (!api) return;
@@ -38,84 +56,120 @@ export default function PlayerView({ episodeId, onBack }: Props): React.JSX.Elem
         setInfo(i);
         setError(null);
         setEnded(false);
-        setNearEnd(false);
         setSkip(null);
         setCountdown(COUNTDOWN_START);
+        setSubIdx(-1);
+        lastSaved.current = 0;
+        api.getSeries(i.series_id).then(setSeries).catch(() => undefined);
       })
       .catch((e: unknown) => setError(String(e)));
   }, [api, episodeId]);
 
-  const handleLoadedMetadata = useCallback(() => {
-    if (videoRef.current && info && info.resume_position > 5) {
-      videoRef.current.currentTime = info.resume_position;
-    }
-  }, [info]);
+  // The next episode in series order (for auto-advance + the "next" actions).
+  const flat = series ? series.seasons.flatMap((s) => s.episodes) : [];
+  const curIdx = flat.findIndex((e) => e.id === episodeId);
+  const nextEpisodeId = curIdx >= 0 && curIdx + 1 < flat.length ? flat[curIdx + 1].id : null;
 
   const showControls = useCallback(() => {
-    setControlsActive(true);
-    if (controlsTimerRef.current) clearTimeout(controlsTimerRef.current);
-    controlsTimerRef.current = setTimeout(() => setControlsActive(false), 3000);
+    setControls(true);
+    if (ctrlTimer.current) clearTimeout(ctrlTimer.current);
+    ctrlTimer.current = setTimeout(() => setControls(false), 3500);
   }, []);
 
-  const handleTimeUpdate = useCallback(() => {
-    if (!videoRef.current || !info || !api) return;
-    const t = videoRef.current.currentTime;
-    const dur = videoRef.current.duration;
+  const flashToast = (text: string): void => {
+    setToast(text);
+    setTimeout(() => setToast((t) => (t === text ? null : t)), 2000);
+  };
 
-    if (info.intro_start !== null && info.intro_end !== null && t >= info.intro_start && t < info.intro_end) {
+  const handleLoadedMetadata = useCallback(() => {
+    const v = videoRef.current;
+    if (!v || !info) return;
+    setDur(v.duration);
+    if (info.resume_position > 5) v.currentTime = info.resume_position;
+    for (let i = 0; i < v.textTracks.length; i++) v.textTracks[i].mode = "disabled";
+  }, [info]);
+
+  const handleTimeUpdate = useCallback(() => {
+    const v = videoRef.current;
+    if (!v || !info || !api) return;
+    const t = v.currentTime;
+    setCur(t);
+    if (
+      info.intro_start != null &&
+      info.intro_end != null &&
+      t >= info.intro_start &&
+      t < info.intro_end
+    ) {
       setSkip("intro");
-    } else if (info.outro_start !== null && t >= info.outro_start) {
+    } else if (info.outro_start != null && t >= info.outro_start) {
       setSkip("outro");
     } else {
       setSkip(null);
     }
-
-    if (!isNaN(dur) && dur - t < NEAR_END_S) setNearEnd(true);
-
-    if (t - lastSavedRef.current >= SAVE_INTERVAL_S) {
-      lastSavedRef.current = t;
+    if (t - lastSaved.current >= SAVE_INTERVAL_S) {
+      lastSaved.current = t;
       void api.recordWatch(episodeId, { position_seconds: t });
     }
   }, [api, episodeId, info]);
 
-  const doSkip = useCallback(() => {
-    if (!videoRef.current || !info) return;
-    if (skip === "intro" && info.intro_end !== null) {
-      videoRef.current.currentTime = info.intro_end;
-    } else if (skip === "outro") {
-      videoRef.current.currentTime = videoRef.current.duration;
-    }
-  }, [info, skip]);
-
   const handleEnded = useCallback(() => {
-    if (info && api) {
-      void api.recordWatch(episodeId, { watched: true });
-    }
+    if (api && info) void api.recordWatch(episodeId, { watched: true });
     setEnded(true);
   }, [api, episodeId, info]);
 
   useEffect(() => {
     if (!ended) {
-      if (countdownRef.current) clearInterval(countdownRef.current);
+      if (cdTimer.current) clearInterval(cdTimer.current);
       return;
     }
-    countdownRef.current = setInterval(() => {
-      setCountdown((c) => {
-        if (c <= 1) {
-          clearInterval(countdownRef.current!);
-          return 0;
-        }
-        return c - 1;
-      });
-    }, 1000);
+    cdTimer.current = setInterval(() => setCountdown((c) => (c <= 1 ? 0 : c - 1)), 1000);
     return () => {
-      if (countdownRef.current) clearInterval(countdownRef.current);
+      if (cdTimer.current) clearInterval(cdTimer.current);
     };
   }, [ended]);
 
   useEffect(() => {
-    if (countdown === 0) onBack();
-  }, [countdown, onBack]);
+    if (countdown === 0) {
+      if (nextEpisodeId !== null) onNext(nextEpisodeId);
+      else onBack();
+    }
+  }, [countdown, nextEpisodeId, onBack, onNext]);
+
+  useEffect(() => {
+    if (info) rootRef.current?.focus();
+  }, [info]);
+
+  const togglePlay = useCallback(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (v.paused) void v.play();
+    else v.pause();
+  }, []);
+
+  const cycleSubtitle = useCallback(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    const n = v.textTracks.length;
+    if (n === 0) {
+      flashToast("Nincs felirat");
+      return;
+    }
+    const next = subIdx + 1 >= n ? -1 : subIdx + 1;
+    for (let i = 0; i < n; i++) v.textTracks[i].mode = i === next ? "showing" : "disabled";
+    setSubIdx(next);
+    flashToast(next === -1 ? "Felirat: ki" : `Felirat: ${v.textTracks[next].label || `#${next + 1}`}`);
+  }, [subIdx]);
+
+  const doSkip = useCallback(() => {
+    const v = videoRef.current;
+    if (!v || !info) return;
+    if (skip === "intro" && info.intro_end != null) {
+      v.currentTime = info.intro_end;
+    } else if (skip === "outro") {
+      if (nextEpisodeId !== null) onNext(nextEpisodeId);
+      else v.currentTime = v.duration;
+    }
+  }, [info, skip, nextEpisodeId, onNext]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -125,7 +179,7 @@ export default function PlayerView({ episodeId, onBack }: Props): React.JSX.Elem
         case "Backspace":
         case "GoBack":
           e.preventDefault();
-          if (videoRef.current && !videoRef.current.paused) {
+          if (videoRef.current) {
             void api?.recordWatch(episodeId, { position_seconds: videoRef.current.currentTime });
           }
           onBack();
@@ -133,10 +187,8 @@ export default function PlayerView({ episodeId, onBack }: Props): React.JSX.Elem
         case "Enter":
         case " ":
           e.preventDefault();
-          if (videoRef.current) {
-            if (videoRef.current.paused) void videoRef.current.play();
-            else videoRef.current.pause();
-          }
+          if (ended && nextEpisodeId !== null) onNext(nextEpisodeId);
+          else togglePlay();
           break;
         case "ArrowRight":
           if (videoRef.current) videoRef.current.currentTime += 10;
@@ -144,9 +196,18 @@ export default function PlayerView({ episodeId, onBack }: Props): React.JSX.Elem
         case "ArrowLeft":
           if (videoRef.current) videoRef.current.currentTime -= 10;
           break;
+        case "ArrowUp":
+          e.preventDefault();
+          cycleSubtitle();
+          break;
+        case "ArrowDown":
+          e.preventDefault();
+          if (skip !== null) doSkip();
+          else if (nextEpisodeId !== null && dur - cur < NEAR_END_S) onNext(nextEpisodeId);
+          break;
       }
     },
-    [api, episodeId, onBack, showControls],
+    [api, episodeId, onBack, onNext, ended, nextEpisodeId, togglePlay, cycleSubtitle, skip, doSkip, dur, cur, showControls],
   );
 
   if (error) {
@@ -155,57 +216,42 @@ export default function PlayerView({ episodeId, onBack }: Props): React.JSX.Elem
         style={{
           position: "fixed",
           inset: 0,
-          background: "#05060B",
+          background: theme.bg,
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
           color: "#f87171",
+          gap: "1rem",
         }}
       >
         <p>Lejátszási hiba: {error}</p>
-        <button
-          onClick={onBack}
-          style={{
-            marginTop: "1rem",
-            padding: "0.5rem 1.5rem",
-            background: "#c084fc",
-            border: "none",
-            borderRadius: 6,
-            color: "#fff",
-            cursor: "pointer",
-          }}
-        >
+        <button className="spottable mv-focusable" onClick={onBack} style={pillStyle}>
           Vissza
         </button>
       </div>
     );
   }
 
-  const base = config?.serverUrl ?? "";
-  const token = config?.deviceToken ?? null;
-  // <video>/<track> can't send the bearer header — carry the token as ?token=.
   const streamUrl = info ? mediaUrl(base, token, info.stream_url) : undefined;
-  const vttTracks = info?.subtitle_tracks.filter((t) => t.format === "vtt") ?? [];
+  const tracks = info?.subtitle_tracks ?? [];
+  const pct = dur > 0 ? (cur / dur) * 100 : 0;
+  const fade = (visible: boolean): React.CSSProperties => ({
+    opacity: visible ? 1 : 0,
+    transition: "opacity 0.35s",
+    pointerEvents: visible ? "auto" : "none",
+  });
 
   return (
     <div
+      ref={rootRef}
       tabIndex={0}
       onKeyDown={handleKeyDown}
-      onMouseMove={showControls}
       style={{ position: "fixed", inset: 0, background: "#000", outline: "none" }}
     >
       {!info && (
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <Spinner component="div" />
+        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: theme.muted }}>
+          Betöltés…
         </div>
       )}
 
@@ -218,16 +264,21 @@ export default function PlayerView({ episodeId, onBack }: Props): React.JSX.Elem
           onLoadedMetadata={handleLoadedMetadata}
           onTimeUpdate={handleTimeUpdate}
           onEnded={handleEnded}
+          onPlay={() => setPaused(false)}
+          onPause={() => setPaused(true)}
         >
-          {vttTracks.map((tr) => (
-            <track
-              key={tr.id}
-              kind="subtitles"
-              label={tr.label}
-              src={mediaUrl(base, token, tr.url)}
-              srcLang={tr.language ?? undefined}
-            />
-          ))}
+          {tracks.map((tr) => {
+            const url = tr.format === "ass" ? `${tr.url}?as=vtt` : tr.url;
+            return (
+              <track
+                key={tr.id}
+                kind="subtitles"
+                label={tr.label}
+                src={mediaUrl(base, token, url)}
+                srcLang={tr.language ?? undefined}
+              />
+            );
+          })}
         </video>
       )}
 
@@ -238,66 +289,86 @@ export default function PlayerView({ episodeId, onBack }: Props): React.JSX.Elem
           top: 0,
           left: 0,
           right: 0,
-          padding: "1rem 1.5rem",
-          background: "linear-gradient(to bottom, rgba(0,0,0,0.7), transparent)",
-          display: "flex",
-          alignItems: "center",
-          gap: "1rem",
-          opacity: controlsActive ? 1 : 0,
-          transition: "opacity 0.4s",
-          pointerEvents: controlsActive ? "auto" : "none",
+          padding: "1.2rem 2rem",
+          background: "linear-gradient(to bottom, rgba(0,0,0,0.75), transparent)",
+          color: "#fff",
+          fontWeight: 700,
+          fontSize: "1.1rem",
+          ...fade(controls || ended),
         }}
       >
-        <button
-          onClick={onBack}
-          style={{ background: "transparent", border: "none", color: "#fff", fontSize: "1.2rem", cursor: "pointer" }}
-        >
-          ←
-        </button>
         {info && (
-          <span style={{ color: "#fff", fontWeight: 600 }}>
+          <span>
             {info.series_title} · {info.season_number}. évad · {info.episode_number}. rész
             {info.episode_title ? ` — ${info.episode_title}` : ""}
           </span>
         )}
       </div>
 
-      {/* Skip chip */}
-      {skip !== null && !ended && (
-        <button
-          onClick={doSkip}
-          style={{
-            position: "absolute",
-            right: "2rem",
-            bottom: "6rem",
-            padding: "0.6rem 1.2rem",
-            background: "rgba(192,132,252,0.9)",
-            border: "none",
-            borderRadius: 6,
-            color: "#fff",
-            fontWeight: 700,
-            cursor: "pointer",
-            fontSize: "0.9rem",
-          }}
-        >
-          {skip === "intro" ? "Intro kihagyása ▶" : "Outro kihagyása ▶"}
-        </button>
-      )}
-
-      {nearEnd && !ended && skip === null && (
+      {/* Subtitle toast */}
+      {toast && (
         <div
           style={{
             position: "absolute",
-            right: "2rem",
-            bottom: "6rem",
-            padding: "0.6rem 1rem",
-            background: "rgba(0,0,0,0.7)",
-            borderRadius: 6,
-            color: "#d4d4f0",
-            fontSize: "0.85rem",
+            top: "5rem",
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: "rgba(0,0,0,0.8)",
+            color: "#fff",
+            padding: "0.5rem 1.2rem",
+            borderRadius: 999,
+            fontSize: "0.95rem",
           }}
         >
-          Közeleg a vége…
+          {toast}
+        </div>
+      )}
+
+      {/* Skip / next chip */}
+      {skip !== null && !ended && (
+        <div
+          style={{
+            position: "absolute",
+            right: "2.5rem",
+            bottom: "7rem",
+            background: theme.gradient,
+            color: "#fff",
+            padding: "0.6rem 1.2rem",
+            borderRadius: theme.radius,
+            fontWeight: 700,
+            fontSize: "0.95rem",
+          }}
+        >
+          {skip === "intro" ? "Intro kihagyása ▼" : "Stáblista — következő rész ▼"}
+        </div>
+      )}
+
+      {/* Bottom controls: seek bar + key hints */}
+      {info && (
+        <div
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            bottom: 0,
+            padding: "2.5rem 2.5rem 1.5rem",
+            background: "linear-gradient(to top, rgba(0,0,0,0.85), transparent)",
+            ...fade(controls && !ended),
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "1rem", color: "#fff" }}>
+            <span style={{ fontSize: "0.85rem", fontVariantNumeric: "tabular-nums" }}>{fmt(cur)}</span>
+            <div style={{ flex: 1, height: 6, background: "rgba(255,255,255,0.25)", borderRadius: 999 }}>
+              <div style={{ width: `${pct}%`, height: "100%", background: theme.gradient, borderRadius: 999 }} />
+            </div>
+            <span style={{ fontSize: "0.85rem", fontVariantNumeric: "tabular-nums" }}>{fmt(dur)}</span>
+          </div>
+          <div style={{ marginTop: "0.8rem", color: theme.muted, fontSize: "0.8rem", display: "flex", gap: "1.5rem" }}>
+            <span>{paused ? "▶ Enter" : "⏸ Enter"}</span>
+            <span>◀▶ ±10 mp</span>
+            <span>▲ Felirat</span>
+            <span>▼ {skip !== null ? "Kihagyás" : "Következő"}</span>
+          </div>
         </div>
       )}
 
@@ -307,34 +378,41 @@ export default function PlayerView({ episodeId, onBack }: Props): React.JSX.Elem
           style={{
             position: "absolute",
             inset: 0,
-            background: "rgba(0,0,0,0.75)",
+            background: "rgba(5,6,11,0.8)",
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
             justifyContent: "center",
             color: "#fff",
+            gap: "1rem",
           }}
         >
-          <p style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "1rem" }}>Epizód vége</p>
-          <p style={{ opacity: 0.7, marginBottom: "2rem" }}>
-            Visszatérés {countdown} másodpercen belül…
+          <p style={{ fontSize: "1.6rem", fontWeight: 800 }}>Epizód vége</p>
+          <p style={{ color: theme.muted }}>
+            {nextEpisodeId !== null
+              ? `Következő rész ${countdown} mp múlva… (Enter)`
+              : `Vissza ${countdown} mp múlva…`}
           </p>
           <button
-            onClick={onBack}
-            style={{
-              padding: "0.6rem 1.5rem",
-              background: "#c084fc",
-              border: "none",
-              borderRadius: 6,
-              color: "#fff",
-              cursor: "pointer",
-              fontWeight: 700,
-            }}
+            className="spottable mv-focusable"
+            onClick={() => (nextEpisodeId !== null ? onNext(nextEpisodeId) : onBack())}
+            style={{ ...pillStyle, background: theme.gradient, border: "none" }}
           >
-            Vissza a sorozathoz
+            {nextEpisodeId !== null ? "Következő rész ▶" : "Vissza"}
           </button>
         </div>
       )}
     </div>
   );
 }
+
+const pillStyle: React.CSSProperties = {
+  background: "rgba(255,255,255,0.08)",
+  border: "1px solid rgba(255,255,255,0.15)",
+  borderRadius: 999,
+  color: "#fff",
+  padding: "0.6rem 1.5rem",
+  cursor: "pointer",
+  fontWeight: 700,
+  fontSize: "1rem",
+};

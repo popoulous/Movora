@@ -8,7 +8,7 @@ import shutil
 from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
 from fastapi.responses import FileResponse, Response
 from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session, selectinload
@@ -686,7 +686,12 @@ def _playback_source(
 
 @router.get("/episodes/{episode_id}/subtitles")
 def episode_subtitle(
-    episode_id: int, track: str, session: SessionDep, request: Request, user: CurrentUserDep
+    episode_id: int,
+    track: str,
+    session: SessionDep,
+    request: Request,
+    user: CurrentUserDep,
+    as_format: str | None = Query(default=None, alias="as"),
 ) -> Response:
     _require_episode_access(session, user, episode_id)
     media_file = _episode_media_file(session, episode_id)
@@ -696,10 +701,15 @@ def episode_subtitle(
         raise HTTPException(status_code=404, detail="subtitle track not found") from exc
     except RuntimeError as exc:  # ffmpeg missing -> embedded tracks unextractable
         raise HTTPException(status_code=503, detail=str(exc)) from exc
-    if fmt == "ass":
-        # A capable client (our JASSUB player) gets the soft ASS untouched.
+    # Clients that render ASS (our JASSUB web player) get the soft ASS untouched.
+    # Clients without an ASS renderer (the native webOS <track>) request ?as=vtt:
+    # the dialogue is flattened to WebVTT (styling dropped, text + timing kept).
+    if fmt == "ass" and as_format != "vtt":
         rendering = SoftAssOrSrtResolver().resolve(content, CapabilityProfile(supports_ass=True))
         return Response(rendering.content, media_type="text/plain; charset=utf-8")
+    if fmt == "ass":
+        srt = SoftAssOrSrtResolver().resolve(content, CapabilityProfile(supports_ass=False)).content
+        return Response(srt_to_vtt(srt), media_type="text/vtt; charset=utf-8")
     return Response(srt_to_vtt(content), media_type="text/vtt; charset=utf-8")
 
 
