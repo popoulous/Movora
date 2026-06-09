@@ -56,6 +56,20 @@ def read_token(token: str, secret: str) -> int | None:
         return None
 
 
+def generate_device_token() -> str:
+    """A long-lived opaque bearer token for a paired device (shown once)."""
+    return secrets.token_urlsafe(32)
+
+
+def hash_device_token(token: str) -> str:
+    """SHA-256 of a device token — only the hash is stored, looked up on each request.
+
+    Plain SHA-256 (not PBKDF2): device tokens are high-entropy random secrets, so
+    they don't need the slow key-stretching that low-entropy passwords do.
+    """
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
 def _sign(payload: str, secret: str) -> str:
     return hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
 

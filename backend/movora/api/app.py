@@ -7,12 +7,14 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from movora import __version__, settings_store
 from movora.api.auth_routes import router as auth_router
 from movora.api.deps import get_current_user
+from movora.api.device_routes import router as device_router
 from movora.api.routes import router
 from movora.config import INSECURE_SECRET_KEY, Settings, get_settings
 from movora.db.base import create_db_engine, create_session_factory, init_db
@@ -56,6 +58,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title=settings.app_name, version=__version__, lifespan=lifespan)
 
+    # Allow cross-origin clients that aren't served same-origin (the webOS TV app,
+    # which authenticates with a bearer token — not cookies). The web UI is served
+    # same-origin and never triggers CORS. allow_credentials stays False: with bearer
+    # auth no cookies cross origins, and "*" + credentials is invalid anyway.
+    origins = settings.cors_origin_list
+    if origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=origins,
+            allow_credentials=False,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+
     # Alembic owns schema migrations; init_db just ensures the tables exist so a
     # fresh dev/test database works without a manual migration step.
     engine = create_db_engine(settings.database_path)
@@ -70,6 +86,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
 
     app.include_router(auth_router)  # public: login gate + (admin-guarded) user management
+    app.include_router(device_router)  # auth enforced per-handler (CurrentUserDep)
     app.include_router(router, dependencies=[Depends(get_current_user)])  # everything else: auth
 
     @app.get("/health")

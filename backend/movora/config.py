@@ -26,6 +26,14 @@ class Settings(BaseSettings):
     cookie_secure: bool = False  # set True behind HTTPS (MOVORA_COOKIE_SECURE=true)
     tmdb_api_key: str | None = None  # free v3 key for film/series metadata (MOVORA_TMDB_API_KEY)
     rescan_interval_minutes: int = 60  # auto-rescan period (0 disables the timer)
+    # Cross-origin allow-list for clients NOT served same-origin (e.g. the webOS TV
+    # app). Comma-separated, "*" allows any. The web UI is same-origin and unaffected;
+    # every /api route still requires auth, so this never bypasses authentication.
+    cors_origins: str = "*"
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
 
 def get_settings() -> Settings:

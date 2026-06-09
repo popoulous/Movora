@@ -178,9 +178,43 @@ class MediaFile(Base):
     subtitles: Mapped[list[SubtitleTrack]] = relationship(
         back_populates="media_file", cascade="all, delete-orphan"
     )
+    variants: Mapped[list[MediaVariant]] = relationship(
+        back_populates="media_file", cascade="all, delete-orphan"
+    )
     tasks: Mapped[list[Task]] = relationship(
         back_populates="media_file", cascade="all, delete-orphan"
     )
+
+
+class VariantStatus(str, enum.Enum):
+    READY = "ready"  # a playable file exists on disk
+    PREPARING = "preparing"  # a PREPARE_VARIANT task is producing it (v2a phase 2)
+    STALE = "stale"  # the source changed; needs re-preparing
+    FAILED = "failed"
+
+
+class MediaVariant(Base):
+    """A playback-ready rendering of a MediaFile keyed to an EncodingRecipe.
+
+    The integration layer both clients read from (IMPLEMENTATION_PLAN §13.1): the
+    v1 normalized mp4 backfills to a MediaVariant(recipe_id="mp4-h264-aac-vtt@1").
+    A device's CompatibilitySelector picks the best ready variant for its profile.
+    """
+
+    __tablename__ = "media_variant"
+    __table_args__ = (UniqueConstraint("media_file_id", "recipe_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    media_file_id: Mapped[int] = mapped_column(ForeignKey("media_file.id"))
+    recipe_id: Mapped[str]  # e.g. "mp4-h264-aac-vtt@1" (see movora.recipes)
+    path: Mapped[str]
+    status: Mapped[VariantStatus] = mapped_column(default=VariantStatus.PREPARING)
+    quality_score: Mapped[int] = mapped_column(default=0)  # higher = closer to source
+    # mtime+size of the source when this variant was built; a mismatch on scan -> stale.
+    source_fingerprint: Mapped[str | None] = mapped_column(default=None)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    media_file: Mapped[MediaFile] = relationship(back_populates="variants")
 
 
 class SubtitleTrack(Base):
@@ -226,10 +260,33 @@ class User(Base):
         back_populates="user", cascade="all, delete-orphan"
     )
     libraries: Mapped[list[Library]] = relationship(secondary=user_library)
+    devices: Mapped[list[Device]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
 
     @property
     def library_ids(self) -> list[int]:
         return [library.id for library in self.libraries]
+
+
+class Device(Base):
+    """A paired client device (e.g. the webOS TV app) authenticating with a
+    long-lived bearer token (plan §13.1/§13.2). The token is shown once at creation;
+    only its SHA-256 hash is stored. ``capabilities`` is a JSON blob of declared
+    codec support, fed to the CompatibilitySelector at playback time.
+    """
+
+    __tablename__ = "device"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("user.id", ondelete="CASCADE"))
+    name: Mapped[str]
+    token_hash: Mapped[str] = mapped_column(unique=True)  # SHA-256 of the bearer token
+    capabilities: Mapped[str | None] = mapped_column(default=None)  # JSON: codecs/flags
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    last_seen_at: Mapped[datetime | None] = mapped_column(default=None)
+
+    user: Mapped[User] = relationship(back_populates="devices")
 
 
 class WatchState(Base):

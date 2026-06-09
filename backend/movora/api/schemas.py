@@ -53,6 +53,36 @@ class PasswordReset(BaseModel):  # admin sets another user's password (no curren
     new_password: str = Field(min_length=4)
 
 
+class DeviceCapabilities(BaseModel):
+    """A device's declared playback support, fed to the CompatibilitySelector."""
+
+    video_codecs: list[str] = []
+    audio_codecs: list[str] = []
+    supports_ass: bool = False
+    supports_srt: bool = True
+
+
+class DeviceCreate(BaseModel):
+    name: str
+    capabilities: DeviceCapabilities | None = None
+
+
+class DeviceCapabilitiesUpdate(BaseModel):
+    capabilities: DeviceCapabilities
+
+
+class DeviceRead(BaseModel):
+    id: int
+    name: str
+    capabilities: DeviceCapabilities | None = None
+    created_at: datetime
+    last_seen_at: datetime | None = None
+
+
+class DeviceCreated(DeviceRead):
+    token: str  # the bearer token, shown only once at creation
+
+
 class LibraryCreate(BaseModel):
     path: str
     name: str

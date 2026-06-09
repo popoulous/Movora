@@ -13,9 +13,16 @@ once at ingest, so playback stays Direct Play.
 from __future__ import annotations
 
 from movora.domain import CapabilityProfile
+from movora.recipes import DEFAULT_RECIPE
 
-# What a browser <video> Direct Plays: 8-bit H.264 video + AAC audio, in mp4.
-WEB_TARGET = CapabilityProfile(supports_ass=True, video_codecs=("h264",), audio_codecs=("aac",))
+# What a browser <video> Direct Plays: 8-bit H.264 video + AAC audio, in mp4. The
+# codec target is sourced from the default recipe (single source of truth); the
+# v1 behaviour is unchanged (h264 / aac, soft ASS allowed).
+WEB_TARGET = CapabilityProfile(
+    supports_ass=True,
+    video_codecs=(DEFAULT_RECIPE.video_codec,),
+    audio_codecs=(DEFAULT_RECIPE.audio_codec,),
+)
 _EIGHT_BIT_PIX_FMTS = frozenset({"yuv420p", "yuvj420p"})
 
 _VIDEO_QUALITY: dict[str, list[str]] = {
