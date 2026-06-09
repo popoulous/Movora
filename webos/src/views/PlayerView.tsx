@@ -37,12 +37,12 @@ const POSS: SubPos[] = ["low", "mid", "high"];
 const SIZE_VH: Record<SubSize, string> = { s: "2.6vh", m: "3.4vh", l: "4.4vh" };
 const BG_COLOR: Record<SubBg, string> = {
   none: "transparent",
-  box: "rgba(0,0,0,0.55)",
-  solid: "rgba(0,0,0,0.9)",
+  box: "rgba(0,0,0,0.5)",
+  solid: "#000000",
 };
 const POS_BASE: Record<SubPos, string> = { low: "-1vh", mid: "-7vh", high: "-14vh" };
 const SIZE_LABEL: Record<SubSize, string> = { s: "Kicsi", m: "Közepes", l: "Nagy" };
-const BG_LABEL: Record<SubBg, string> = { none: "Nincs", box: "Doboz", solid: "Tömör" };
+const BG_LABEL: Record<SubBg, string> = { none: "Nincs", box: "Áttetsző", solid: "Tömör" };
 const POS_LABEL: Record<SubPos, string> = { low: "Lent", mid: "Közép", high: "Fent" };
 
 function loadSubStyle(): SubStyle {
@@ -78,6 +78,7 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
   const [cur, setCur] = useState(0);
   const [dur, setDur] = useState(0);
   const [skip, setSkip] = useState<SkipZone>(null);
+  const [skipFocused, setSkipFocused] = useState(false);
   const [ended, setEnded] = useState(false);
   const [countdown, setCountdown] = useState(COUNTDOWN_START);
   const [subIdx, setSubIdx] = useState(-1);
@@ -164,6 +165,7 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
       setSkip("outro");
     } else {
       setSkip(null);
+      setSkipFocused(false); // the skip window passed
     }
     if (t - lastSaved.current >= SAVE_INTERVAL_S) {
       lastSaved.current = t;
@@ -209,6 +211,7 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
   useEffect(() => {
     if (panelOpen && panelRef.current) setPanelH(panelRef.current.offsetHeight);
   }, [panelOpen, flat.length]);
+
 
 
   const armPanelTimer = (): void => {
@@ -368,18 +371,26 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
       if (k === "Enter" || k === " ") {
         e.preventDefault();
         if (ended && nextEpisodeId !== null) onNext(nextEpisodeId);
-        else togglePlay();
+        else if (skipFocused) {
+          doSkip(); // the user chose to skip
+          setSkipFocused(false);
+        } else togglePlay();
       } else if (k === "ArrowLeft") {
-        seekBy(-10);
+        if (!skipFocused) seekBy(-10);
       } else if (k === "ArrowRight") {
-        seekBy(10);
+        if (!skipFocused) seekBy(10);
       } else if (k === "ArrowDown") {
         e.preventDefault();
-        if (skip !== null) doSkip(); // the on-video skip chip is reachable with Down
-        else openPanel();
+        // First Down focuses the skip chip (if shown); a second Down opens the panel.
+        if (skip !== null && !skipFocused) setSkipFocused(true);
+        else {
+          setSkipFocused(false);
+          openPanel();
+        }
       } else if (k === "ArrowUp") {
         e.preventDefault();
-        openPanel();
+        if (skipFocused) setSkipFocused(false);
+        else openPanel();
       }
       return;
     }
@@ -478,7 +489,7 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
   const tracks = info?.subtitle_tracks ?? [];
   const pct = dur > 0 ? (cur / dur) * 100 : 0;
   const subShift = panelOpen ? (panelH > 0 ? `-${panelH + 20}px` : "-46vh") : POS_BASE[subStyle.pos];
-  const cueCss = `video::cue { font-size: ${SIZE_VH[subStyle.size]}; background-color: ${BG_COLOR[subStyle.bg]}; color: #fff; text-shadow: 0 2px 4px rgba(0,0,0,0.85); }`;
+  const cueCss = `video::cue { font-size: ${SIZE_VH[subStyle.size]}; background-color: ${BG_COLOR[subStyle.bg]}; color: #fff; text-shadow: -1px -1px 2px #000, 1px -1px 2px #000, -1px 1px 2px #000, 1px 1px 2px #000, 0 2px 5px rgba(0,0,0,0.9); }`;
   const rootStyle = {
     position: "fixed",
     inset: 0,
@@ -520,9 +531,32 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
 
       {/* Skip chip on the video (when the panel is closed) */}
       {skip !== null && !ended && !panelOpen && (
-        <div onClick={doSkip} style={{ position: "absolute", right: "3rem", bottom: "3rem", display: "flex", alignItems: "center", gap: "0.5rem", background: theme.gradient, color: "#fff", padding: "0.7rem 1.3rem", borderRadius: theme.radius, fontWeight: 700, cursor: "pointer" }}>
+        <div
+          onClick={() => {
+            doSkip();
+            setSkipFocused(false);
+          }}
+          style={{
+            position: "absolute",
+            right: "3rem",
+            bottom: "3rem",
+            display: "flex",
+            alignItems: "center",
+            gap: "0.5rem",
+            background: theme.gradient,
+            color: "#fff",
+            padding: "0.7rem 1.3rem",
+            borderRadius: theme.radius,
+            fontWeight: 700,
+            cursor: "pointer",
+            border: `3px solid ${skipFocused ? "#fff" : "transparent"}`,
+            boxShadow: skipFocused ? "0 0 22px rgba(122,77,255,0.9)" : "none",
+            transform: skipFocused ? "scale(1.05)" : "none",
+            transition: "transform 0.12s ease, box-shadow 0.12s ease",
+          }}
+        >
           <Icon name="skip" size={18} />
-          {skip === "intro" ? "Intro kihagyása ▼" : "Következő rész ▼"}
+          {(skip === "intro" ? "Intro kihagyása" : "Következő rész") + (skipFocused ? " ⏎" : " ▼")}
         </div>
       )}
 
