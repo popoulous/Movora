@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { theme } from "../theme";
+import logo from "../assets/movora_logo.png";
 
 export interface NavTab {
   id: string;
@@ -30,13 +31,16 @@ export function TopNav({ tabs, activeId, focusIdx, onActivate }: Props): React.J
       style={{
         display: "flex",
         alignItems: "center",
-        gap: "2rem",
         padding: "1.1rem 2.5rem",
       }}
     >
-      <span style={{ fontSize: "1.5rem", fontWeight: 800, letterSpacing: "-0.02em" }}>
+      <span style={{ display: "flex", alignItems: "center", gap: "0.6rem", marginRight: "3.5rem" }}>
+        <img src={logo} alt="" style={{ width: 34, height: 34, display: "block" }} />
         <span
           style={{
+            fontSize: "1.5rem",
+            fontWeight: 800,
+            letterSpacing: "-0.02em",
             background: theme.gradient,
             WebkitBackgroundClip: "text",
             WebkitTextFillColor: "transparent",

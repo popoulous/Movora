@@ -23,8 +23,8 @@ const TABS: NavTab[] = [
   { id: "settings", label: "Beállítások" },
 ];
 
-const POSTER_W = 150;
-const HERO_W = 230;
+const POSTER_W = 185;
+const HERO_W = 260;
 
 export default function HomeView({ onSeries, onPlay, onLibrary, onSettings }: Props): React.JSX.Element {
   const { api, config } = useDevice();
@@ -150,7 +150,7 @@ export default function HomeView({ onSeries, onPlay, onLibrary, onSettings }: Pr
   const libsZ = (hero ? 2 : 1) + (recent.length ? 1 : 0);
 
   return (
-    <div className="mv-app" style={{ height: "100vh", overflowY: "auto", paddingBottom: "3.5rem" }}>
+    <div className="mv-app" style={{ height: "100vh", overflowY: "auto", paddingBottom: "5.5rem" }}>
       <TopNav tabs={TABS} activeId="home" focusIdx={navFocus} onActivate={openTab} />
 
       <div style={{ padding: "0.5rem 2.5rem" }}>

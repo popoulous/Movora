@@ -49,6 +49,7 @@ function AppInner(): React.JSX.Element {
         <LibraryView
           libraryId={activeScreen.libraryId}
           onSeries={(id) => push({ id: "series", seriesId: id })}
+          onPlay={(id) => push({ id: "player", episodeId: id })}
           onBack={back}
         />
       );
