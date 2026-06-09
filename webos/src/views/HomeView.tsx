@@ -3,7 +3,6 @@ import { type HomeData, type HomeSeries, type Library, mediaUrl } from "../api/c
 import { useDevice } from "../context/DeviceContext";
 import { useTvInput } from "../hooks";
 import { TopNav, type NavTab } from "../components/TopNav";
-import { StatusBar } from "../components/StatusBar";
 import { theme } from "../theme";
 import { aspectHeight } from "../util";
 
@@ -150,7 +149,7 @@ export default function HomeView({ onSeries, onPlay, onLibrary, onSettings }: Pr
   const libsZ = (hero ? 2 : 1) + (recent.length ? 1 : 0);
 
   return (
-    <div className="mv-app" style={{ height: "100vh", overflowY: "auto", paddingBottom: "5.5rem" }}>
+    <div className="mv-app" style={{ height: "100vh", overflowY: "auto", paddingBottom: "2rem" }}>
       <TopNav tabs={TABS} activeId="home" focusIdx={navFocus} onActivate={openTab} />
 
       <div style={{ padding: "0.5rem 2.5rem" }}>
@@ -249,8 +248,6 @@ export default function HomeView({ onSeries, onPlay, onLibrary, onSettings }: Pr
           </section>
         )}
       </div>
-
-      <StatusBar />
     </div>
   );
 }

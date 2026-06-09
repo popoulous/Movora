@@ -34,16 +34,15 @@ export function TopNav({ tabs, activeId, focusIdx, onActivate }: Props): React.J
         padding: "1.1rem 2.5rem",
       }}
     >
-      <span style={{ display: "flex", alignItems: "center", gap: "0.6rem", marginRight: "3.5rem" }}>
-        <img src={logo} alt="" style={{ width: 34, height: 34, display: "block" }} />
+      <span style={{ display: "flex", alignItems: "center", marginRight: "3.5rem" }}>
+        <img src={logo} alt="" style={{ width: 32, height: 32, display: "block", marginRight: "0.85rem" }} />
         <span
           style={{
             fontSize: "1.5rem",
+            lineHeight: 1,
             fontWeight: 800,
             letterSpacing: "-0.02em",
-            background: theme.gradient,
-            WebkitBackgroundClip: "text",
-            WebkitTextFillColor: "transparent",
+            color: "#fff",
           }}
         >
           Movora

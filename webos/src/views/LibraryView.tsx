@@ -3,7 +3,6 @@ import { type SeriesSummary, type SeriesDetail, type Library, mediaUrl } from ".
 import { useDevice } from "../context/DeviceContext";
 import { useTvInput } from "../hooks";
 import { TopNav, type NavTab } from "../components/TopNav";
-import { StatusBar } from "../components/StatusBar";
 import { theme } from "../theme";
 import { aspectHeight } from "../util";
 
@@ -216,8 +215,6 @@ export default function LibraryView({ libraryId, onSeries, onPlay, onBack }: Pro
           </div>
         </div>
       </div>
-
-      <StatusBar />
     </div>
   );
 }
