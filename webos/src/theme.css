@@ -52,3 +52,10 @@ body {
 .mv-row {
   scrollbar-width: none;
 }
+
+/* Lift the native <track> subtitles a little by default, and slide them above the
+   player panel while it's open (offset driven by --sub-shift on the player root). */
+video::-webkit-media-text-track-container {
+  transform: translateY(var(--sub-shift, -6vh));
+  transition: transform 0.3s ease;
+}

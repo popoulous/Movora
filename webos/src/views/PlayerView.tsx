@@ -21,6 +21,45 @@ const SUB_PREF_KEY = "movora_sub_pref";
 const EP_W = 200;
 const EP_H = aspectHeight(EP_W, "16/9");
 
+type SubSize = "s" | "m" | "l";
+type SubBg = "none" | "box" | "solid";
+type SubPos = "low" | "mid" | "high";
+interface SubStyle {
+  size: SubSize;
+  bg: SubBg;
+  pos: SubPos;
+}
+
+const SUB_STYLE_KEY = "movora_sub_style";
+const SIZES: SubSize[] = ["s", "m", "l"];
+const BGS: SubBg[] = ["none", "box", "solid"];
+const POSS: SubPos[] = ["low", "mid", "high"];
+const SIZE_VH: Record<SubSize, string> = { s: "2.6vh", m: "3.4vh", l: "4.4vh" };
+const BG_COLOR: Record<SubBg, string> = {
+  none: "transparent",
+  box: "rgba(0,0,0,0.55)",
+  solid: "rgba(0,0,0,0.9)",
+};
+const POS_BASE: Record<SubPos, string> = { low: "-1vh", mid: "-7vh", high: "-14vh" };
+const SIZE_LABEL: Record<SubSize, string> = { s: "Kicsi", m: "Közepes", l: "Nagy" };
+const BG_LABEL: Record<SubBg, string> = { none: "Nincs", box: "Doboz", solid: "Tömör" };
+const POS_LABEL: Record<SubPos, string> = { low: "Lent", mid: "Közép", high: "Fent" };
+
+function loadSubStyle(): SubStyle {
+  try {
+    const raw = localStorage.getItem(SUB_STYLE_KEY);
+    if (raw) return { size: "m", bg: "box", pos: "mid", ...JSON.parse(raw) };
+  } catch {
+    /* ignore */
+  }
+  return { size: "m", bg: "box", pos: "mid" };
+}
+
+function cycle<T>(arr: T[], cur: T, dir: number): T {
+  const i = arr.indexOf(cur);
+  return arr[(i + dir + arr.length) % arr.length];
+}
+
 function fmt(sec: number): string {
   if (!isFinite(sec) || sec < 0) return "0:00";
   const s = Math.floor(sec % 60);
@@ -44,6 +83,10 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
   const [subIdx, setSubIdx] = useState(-1);
   const [toast, setToast] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [panelH, setPanelH] = useState(0);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [setFocus, setSetFocus] = useState(0); // which setting row is focused
+  const [subStyle, setSubStyle] = useState<SubStyle>(loadSubStyle);
   const [row, setRow] = useState<Row>("controls");
   const [col, setCol] = useState(2); // default: play/pause
   const [epFocus, setEpFocus] = useState(0);
@@ -51,6 +94,7 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
   const videoRef = useRef<HTMLVideoElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const lastSaved = useRef(0);
   const cdTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const panelTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -161,6 +205,11 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
     if (el instanceof HTMLElement) el.scrollIntoView({ inline: "center", block: "nearest" });
   }, [panelOpen, row, epFocus]);
 
+  // Measure the panel so subtitles can slide just above it.
+  useEffect(() => {
+    if (panelOpen && panelRef.current) setPanelH(panelRef.current.offsetHeight);
+  }, [panelOpen, flat.length]);
+
 
   const armPanelTimer = (): void => {
     if (panelTimer.current) clearTimeout(panelTimer.current);
@@ -178,6 +227,33 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
   const closePanel = (): void => {
     if (panelTimer.current) clearTimeout(panelTimer.current);
     setPanelOpen(false);
+    setSettingsOpen(false);
+  };
+
+  const persistStyle = (next: SubStyle): SubStyle => {
+    localStorage.setItem(SUB_STYLE_KEY, JSON.stringify(next));
+    return next;
+  };
+
+  const changeSetting = (rowIdx: number, dir: number): void => {
+    setSubStyle((s) => {
+      const next: SubStyle = { ...s };
+      if (rowIdx === 0) next.size = cycle(SIZES, s.size, dir);
+      else if (rowIdx === 1) next.bg = cycle(BGS, s.bg, dir);
+      else next.pos = cycle(POSS, s.pos, dir);
+      return persistStyle(next);
+    });
+  };
+
+  const applySetting = (rowIdx: number, value: string): void => {
+    setSetFocus(rowIdx);
+    setSubStyle((s) => {
+      const next: SubStyle = { ...s };
+      if (rowIdx === 0) next.size = value as SubSize;
+      else if (rowIdx === 1) next.bg = value as SubBg;
+      else next.pos = value as SubPos;
+      return persistStyle(next);
+    });
   };
 
   const togglePlay = (): void => {
@@ -231,6 +307,7 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
     else if (id === "next") {
       if (nextEpisodeId !== null) onNext(nextEpisodeId);
     } else if (id === "skip") doSkip();
+    else if (id === "set") setSettingsOpen(true);
   };
 
   // The transport buttons, in ←/→ focus order. Skip appears only inside its window.
@@ -241,6 +318,7 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
     { id: "play", icon: paused ? "play" : "pause", big: true },
     { id: "next", icon: "next" },
     ...(skip !== null ? [{ id: "skip", icon: "skip" }] : []),
+    { id: "set", icon: "settings" },
   ];
 
   const playEpisode = (ep: Episode | undefined): void => {
@@ -256,6 +334,27 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
     if (k === "Escape" || k === "Backspace" || k === "GoBack" || e.keyCode === 461) {
       e.preventDefault();
       history.back();
+      return;
+    }
+
+    if (settingsOpen) {
+      armPanelTimer();
+      if (k === "ArrowUp") {
+        e.preventDefault();
+        setSetFocus((f) => Math.max(0, f - 1));
+      } else if (k === "ArrowDown") {
+        e.preventDefault();
+        setSetFocus((f) => Math.min(2, f + 1));
+      } else if (k === "ArrowLeft") {
+        e.preventDefault();
+        changeSetting(setFocus, -1);
+      } else if (k === "ArrowRight") {
+        e.preventDefault();
+        changeSetting(setFocus, 1);
+      } else if (k === "Enter" || k === " ") {
+        e.preventDefault();
+        setSettingsOpen(false);
+      }
       return;
     }
 
@@ -325,7 +424,10 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
   useEffect(() => {
     handlerRef.current = handleKeyDown;
     popRef.current = () => {
-      if (panelOpen) {
+      if (settingsOpen) {
+        setSettingsOpen(false);
+        history.pushState({ mvPlayer: true }, "");
+      } else if (panelOpen) {
         setPanelOpen(false);
         history.pushState({ mvPlayer: true }, "");
       } else {
@@ -364,9 +466,19 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
   const streamUrl = info ? mediaUrl(base, token, info.stream_url) : undefined;
   const tracks = info?.subtitle_tracks ?? [];
   const pct = dur > 0 ? (cur / dur) * 100 : 0;
+  const subShift = panelOpen ? (panelH > 0 ? `-${panelH + 20}px` : "-46vh") : POS_BASE[subStyle.pos];
+  const cueCss = `video::cue { font-size: ${SIZE_VH[subStyle.size]}; background-color: ${BG_COLOR[subStyle.bg]}; color: #fff; text-shadow: 0 2px 4px rgba(0,0,0,0.85); }`;
+  const rootStyle = {
+    position: "fixed",
+    inset: 0,
+    background: "#000",
+    outline: "none",
+    "--sub-shift": subShift,
+  } as React.CSSProperties;
 
   return (
-    <div ref={rootRef} style={{ position: "fixed", inset: 0, background: "#000", outline: "none" }}>
+    <div ref={rootRef} style={rootStyle}>
+      <style>{cueCss}</style>
       {!info && (
         <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: theme.muted }}>Betöltés…</div>
       )}
@@ -406,6 +518,7 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
       {/* Bottom panel (▼) — Plex-style */}
       {info && panelOpen && (
         <div
+          ref={panelRef}
           style={{
             position: "absolute",
             left: 0,
@@ -522,6 +635,59 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* Subtitle settings overlay (gear button) */}
+      {info && settingsOpen && (
+        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(5,6,11,0.72)" }}>
+          <div style={{ background: "rgba(15,16,26,0.98)", border: `1px solid ${theme.border}`, borderRadius: 16, padding: "1.8rem 2.2rem", minWidth: 480 }}>
+            <div style={{ fontSize: "1.2rem", fontWeight: 800, color: "#fff", marginBottom: "1.3rem" }}>Felirat beállítások</div>
+            {[
+              { label: "Méret", options: SIZES.map((v) => ({ v, l: SIZE_LABEL[v] })), cur: subStyle.size as string },
+              { label: "Háttér", options: BGS.map((v) => ({ v, l: BG_LABEL[v] })), cur: subStyle.bg as string },
+              { label: "Pozíció", options: POSS.map((v) => ({ v, l: POS_LABEL[v] })), cur: subStyle.pos as string },
+            ].map((def, ri) => (
+              <div
+                key={def.label}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  marginBottom: "0.7rem",
+                  padding: "0.5rem 0.7rem",
+                  borderRadius: 10,
+                  border: `2px solid ${setFocus === ri ? theme.accent : "transparent"}`,
+                  background: setFocus === ri ? "rgba(122,77,255,0.12)" : "transparent",
+                }}
+              >
+                <span style={{ width: 110, color: theme.muted, fontSize: "0.95rem" }}>{def.label}</span>
+                <div style={{ display: "flex" }}>
+                  {def.options.map((opt) => {
+                    const sel = opt.v === def.cur;
+                    return (
+                      <span
+                        key={opt.v}
+                        onClick={() => applySetting(ri, opt.v)}
+                        style={{
+                          marginRight: "0.6rem",
+                          padding: "0.35rem 0.95rem",
+                          borderRadius: 999,
+                          fontSize: "0.9rem",
+                          fontWeight: 600,
+                          cursor: "pointer",
+                          color: sel ? "#fff" : theme.muted,
+                          background: sel ? theme.gradient : "rgba(255,255,255,0.08)",
+                        }}
+                      >
+                        {opt.l}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+            <div style={{ marginTop: "0.9rem", color: theme.muted, fontSize: "0.8rem" }}>▲▼ Sor · ◀▶ Érték · Back Bezár</div>
           </div>
         </div>
       )}
