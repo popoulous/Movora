@@ -239,6 +239,10 @@ __marimo__/
 # TypeScript incremental build cache
 frontend/tsconfig.tsbuildinfo
 
+# webOS app build output
+webos/dist/
+webos/node_modules/
+
 # Local dev launcher scripts (Windows)
 /dev-backend.bat
 /dev-frontend.bat

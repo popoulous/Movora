@@ -1,0 +1,12 @@
+{
+  "id": "hu.movora.app",
+  "version": "0.1.0",
+  "vendor": "Movora",
+  "type": "web",
+  "main": "index.html",
+  "title": "Movora",
+  "icon": "icon.png",
+  "bgColor": "#05060B",
+  "transparent": false,
+  "requiredPermissions": ["time.query", "network.operation"]
+}
