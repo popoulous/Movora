@@ -17,6 +17,7 @@ type Row = "scrub" | "controls" | "episodes";
 const SAVE_INTERVAL_S = 10;
 const COUNTDOWN_START = 10;
 const PANEL_TIMEOUT = 6000;
+const SUB_PREF_KEY = "movora_sub_pref";
 const EP_W = 200;
 const EP_H = aspectHeight(EP_W, "16/9");
 
@@ -44,7 +45,7 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
   const [toast, setToast] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [row, setRow] = useState<Row>("controls");
-  const [col, setCol] = useState(3); // default: play/pause
+  const [col, setCol] = useState(2); // default: play/pause
   const [epFocus, setEpFocus] = useState(0);
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -53,6 +54,8 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
   const lastSaved = useRef(0);
   const cdTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const panelTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handlerRef = useRef<(e: KeyboardEvent) => void>(() => undefined);
+  const popRef = useRef<() => void>(() => undefined);
 
   const base = config?.serverUrl ?? "";
   const token = config?.deviceToken ?? null;
@@ -90,7 +93,20 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
     if (!v || !info) return;
     setDur(v.duration);
     if (info.resume_position > 5) v.currentTime = info.resume_position;
-    for (let i = 0; i < v.textTracks.length; i++) v.textTracks[i].mode = "disabled";
+    // Re-apply the remembered subtitle choice on every episode.
+    const pref = localStorage.getItem(SUB_PREF_KEY);
+    let chosen = -1;
+    if (pref && pref !== "off") {
+      for (let i = 0; i < v.textTracks.length; i++) {
+        const tt = v.textTracks[i];
+        if (tt.language === pref || tt.label === pref) {
+          chosen = i;
+          break;
+        }
+      }
+    }
+    for (let i = 0; i < v.textTracks.length; i++) v.textTracks[i].mode = i === chosen ? "showing" : "disabled";
+    setSubIdx(chosen);
   };
 
   const handleTimeUpdate = (): void => {
@@ -145,6 +161,7 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
     if (el instanceof HTMLElement) el.scrollIntoView({ inline: "center", block: "nearest" });
   }, [panelOpen, row, epFocus]);
 
+
   const armPanelTimer = (): void => {
     if (panelTimer.current) clearTimeout(panelTimer.current);
     panelTimer.current = setTimeout(() => setPanelOpen(false), PANEL_TIMEOUT);
@@ -152,7 +169,7 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
 
   const openPanel = (): void => {
     setRow("controls");
-    setCol(3);
+    setCol(2);
     setEpFocus(curIdx >= 0 ? curIdx : 0);
     setPanelOpen(true);
     armPanelTimer();
@@ -191,7 +208,10 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
     const next = subIdx + 1 >= n ? -1 : subIdx + 1;
     for (let i = 0; i < n; i++) v.textTracks[i].mode = i === next ? "showing" : "disabled";
     setSubIdx(next);
-    flashToast(next === -1 ? "Felirat: ki" : `Felirat: ${v.textTracks[next].label || `#${next + 1}`}`);
+    // Remember the choice (by language/label) so the next episode applies it too.
+    const tt = next === -1 ? null : v.textTracks[next];
+    localStorage.setItem(SUB_PREF_KEY, next === -1 ? "off" : tt?.language || tt?.label || String(next));
+    flashToast(next === -1 ? "Felirat: ki" : `Felirat: ${tt?.label || `#${next + 1}`}`);
   };
 
   const doSkip = (): void => {
@@ -218,9 +238,7 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
   const controls: Ctrl[] = [
     { id: "sub", icon: "subtitles", on: subIdx >= 0 },
     { id: "prev", icon: "prev" },
-    { id: "rew", icon: "rewind" },
     { id: "play", icon: paused ? "play" : "pause", big: true },
-    { id: "fwd", icon: "forward" },
     { id: "next", icon: "next" },
     ...(skip !== null ? [{ id: "skip", icon: "skip" }] : []),
   ];
@@ -231,17 +249,18 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
     else onNext(ep.id);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent): void => {
+  const handleKeyDown = (e: KeyboardEvent): void => {
     const k = e.key;
-    // webOS remote Back is keyCode 461 (and may not surface a useful e.key).
-    const isBack = k === "Escape" || k === "Backspace" || k === "GoBack" || e.keyCode === 461;
+    // Route every Back through history.back() -> our popstate handler (on webOS the
+    // remote Back fires history.back() rather than a keydown). keyCode 461 = Back.
+    if (k === "Escape" || k === "Backspace" || k === "GoBack" || e.keyCode === 461) {
+      e.preventDefault();
+      history.back();
+      return;
+    }
 
     if (!panelOpen) {
-      if (isBack) {
-        e.preventDefault();
-        if (videoRef.current) void api?.recordWatch(episodeId, { position_seconds: videoRef.current.currentTime });
-        onBack();
-      } else if (k === "Enter" || k === " ") {
+      if (k === "Enter" || k === " ") {
         e.preventDefault();
         if (ended && nextEpisodeId !== null) onNext(nextEpisodeId);
         else togglePlay();
@@ -258,11 +277,6 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
 
     // Panel open
     armPanelTimer();
-    if (isBack) {
-      e.preventDefault();
-      closePanel();
-      return;
-    }
     if (k === "ArrowUp") {
       e.preventDefault();
       if (row === "episodes") setRow("controls");
@@ -307,6 +321,37 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
     seekTo(((e.clientX - rect.left) / rect.width) * dur);
   };
 
+  // Refresh the handlers the document-level listeners call (avoids stale closures).
+  useEffect(() => {
+    handlerRef.current = handleKeyDown;
+    popRef.current = () => {
+      if (panelOpen) {
+        setPanelOpen(false);
+        history.pushState({ mvPlayer: true }, "");
+      } else {
+        if (videoRef.current) {
+          void api?.recordWatch(episodeId, { position_seconds: videoRef.current.currentTime });
+        }
+        onBack();
+      }
+    };
+  });
+
+  // A focused <div> is unreliable on webOS, so capture keys at the document level;
+  // and the remote Back fires history.back() (not a keydown), so handle it via
+  // popstate, with a pushed entry to consume instead of exiting the app.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => handlerRef.current(e);
+    const onPop = (): void => popRef.current();
+    document.addEventListener("keydown", onKey, true);
+    window.addEventListener("popstate", onPop);
+    history.pushState({ mvPlayer: true }, "");
+    return () => {
+      document.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("popstate", onPop);
+    };
+  }, []);
+
   if (error) {
     return (
       <div style={{ position: "fixed", inset: 0, background: theme.bg, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#f87171", gap: "1rem" }}>
@@ -321,7 +366,7 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
   const pct = dur > 0 ? (cur / dur) * 100 : 0;
 
   return (
-    <div ref={rootRef} tabIndex={0} onKeyDown={handleKeyDown} style={{ position: "fixed", inset: 0, background: "#000", outline: "none" }}>
+    <div ref={rootRef} style={{ position: "fixed", inset: 0, background: "#000", outline: "none" }}>
       {!info && (
         <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: theme.muted }}>Betöltés…</div>
       )}
@@ -379,9 +424,9 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
             </div>
           </div>
 
-          {/* Scrubber */}
-          <div style={{ display: "flex", alignItems: "center", gap: "1rem", color: "#fff", marginBottom: "1.2rem" }}>
-            <span style={{ fontSize: "0.9rem", fontVariantNumeric: "tabular-nums", width: 60, textAlign: "right" }}>{fmt(cur)}</span>
+          {/* Scrubber (margins, not flex gap — gap is unreliable on webOS Chrome 87) */}
+          <div style={{ display: "flex", alignItems: "center", color: "#fff", marginBottom: "1.5rem", height: 24 }}>
+            <span style={{ fontSize: "0.95rem", fontVariantNumeric: "tabular-nums", width: 74, textAlign: "right", marginRight: "1.3rem" }}>{fmt(cur)}</span>
             <div
               ref={barRef}
               onClick={handleBarClick}
@@ -390,14 +435,14 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
               <div style={{ width: `${pct}%`, height: "100%", background: theme.gradient, borderRadius: 999 }} />
               <div style={{ position: "absolute", left: `${pct}%`, top: "50%", transform: "translate(-50%,-50%)", width: row === "scrub" ? 20 : 14, height: row === "scrub" ? 20 : 14, borderRadius: "50%", background: "#fff", boxShadow: "0 0 8px rgba(122,77,255,0.8)" }} />
             </div>
-            <span style={{ fontSize: "0.9rem", fontVariantNumeric: "tabular-nums", width: 60 }}>{fmt(dur)}</span>
+            <span style={{ fontSize: "0.95rem", fontVariantNumeric: "tabular-nums", width: 74, marginLeft: "1.3rem" }}>{fmt(dur)}</span>
           </div>
 
-          {/* Transport controls */}
-          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "0.9rem", marginBottom: "1.3rem" }}>
+          {/* Transport controls — fixed box size + margins so focus never reflows */}
+          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", marginBottom: "1.5rem", height: 66 }}>
             {controls.map((c, i) => {
               const active = row === "controls" && Math.min(col, controls.length - 1) === i;
-              const size = c.big ? 64 : 50;
+              const size = c.big ? 62 : 50;
               return (
                 <div
                   key={c.id}
@@ -410,6 +455,9 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
                   style={{
                     width: size,
                     height: size,
+                    flexShrink: 0,
+                    margin: "0 0.55rem",
+                    boxSizing: "border-box",
                     borderRadius: "50%",
                     display: "flex",
                     alignItems: "center",
@@ -417,13 +465,12 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
                     cursor: "pointer",
                     color: active ? "#fff" : c.on ? theme.accent : "#e8e8f0",
                     background: active ? theme.gradient : "rgba(255,255,255,0.1)",
-                    border: active ? "none" : "1px solid rgba(255,255,255,0.16)",
+                    border: `2px solid ${active ? "transparent" : "rgba(255,255,255,0.18)"}`,
                     boxShadow: active ? "0 0 20px rgba(122,77,255,0.7)" : "none",
-                    transform: active ? "scale(1.06)" : "none",
-                    transition: "transform 0.12s ease, background 0.12s ease",
+                    transition: "background 0.12s ease, box-shadow 0.12s ease, color 0.12s ease",
                   }}
                 >
-                  <Icon name={c.icon} size={c.big ? 30 : 22} />
+                  <Icon name={c.icon} size={c.big ? 28 : 22} />
                 </div>
               );
             })}
