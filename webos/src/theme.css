@@ -20,24 +20,32 @@ body {
     #05060b;
 }
 
-/* Any focusable card/button gets a bright ring + lift when the D-pad lands on it. */
+/* D-pad focus ring. Drawn as an inset ::after overlay ABOVE the card content and
+   INSIDE the card bounds, so it isn't hidden by the poster image nor clipped by a
+   row's overflow (an outer box-shadow would be, on webOS Chrome 87). */
 .mv-focusable {
-  transition:
-    transform 0.12s ease,
-    box-shadow 0.12s ease,
-    background 0.12s ease;
+  position: relative;
+  transition: background 0.12s ease;
 }
-.mv-focusable:focus,
-.mv-focusable:focus-visible {
+.mv-focusable:focus {
   outline: none;
-  box-shadow:
-    0 0 0 3px rgba(122, 77, 255, 0.95),
-    0 12px 36px rgba(168, 85, 247, 0.45);
-  transform: scale(1.05);
-  z-index: 3;
+}
+.mv-focusable:focus::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 3px solid #7a4dff;
+  border-radius: inherit;
+  box-shadow: 0 0 16px rgba(122, 77, 255, 0.6);
+  pointer-events: none;
+  z-index: 5;
 }
 
-/* Hide scrollbars on the horizontal rows (still scrollable / spotlight-navigable). */
+/* Horizontal row spacing without relying on flexbox `gap` (unreliable on this
+   webOS Chromium build) — and hide the scrollbar. */
+.mv-row > * {
+  margin-right: 1rem;
+}
 .mv-row::-webkit-scrollbar {
   display: none;
 }

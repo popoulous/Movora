@@ -20,7 +20,7 @@ function Row({ title, children }: { title: string; children: React.ReactNode }):
       <h2 style={{ fontSize: "1.1rem", fontWeight: 700, margin: "0 0 0.9rem", color: theme.text }}>
         {title}
       </h2>
-      <div className="mv-row" style={{ display: "flex", gap: "1rem", overflowX: "auto", padding: "0.5rem 0.25rem" }}>
+      <div className="mv-row" style={{ display: "flex", overflowX: "auto", padding: "0.5rem 0" }}>
         {children}
       </div>
     </section>
