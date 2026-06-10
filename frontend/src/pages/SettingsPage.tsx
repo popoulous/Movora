@@ -3,7 +3,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useActivity } from "../ActivityContext";
-import { api, type Library, type ServerSettings, type User } from "../api";
+import { api, type Device, type Library, type ServerSettings, type User } from "../api";
 import { useAuth } from "../AuthContext";
 import { getTvOverride, setTvModeOverride, useTvMode } from "../hooks/useTvMode";
 
@@ -234,8 +234,75 @@ export function SettingsPage(): JSX.Element {
 
       <PairDeviceSection t={t} />
 
+      <DevicesSection t={t} />
+
       {user?.role === "admin" && <UsersSection currentUserId={user.id} t={t} />}
     </div>
+  );
+}
+
+function DevicesSection({
+  t,
+}: {
+  t: ReturnType<typeof useTranslation>["t"];
+}): JSX.Element {
+  const [devices, setDevices] = useState<Device[]>([]);
+  const [loaded, setLoaded] = useState(false);
+
+  const reload = (): void => {
+    api
+      .listDevices()
+      .then(setDevices)
+      .catch(() => undefined)
+      .finally(() => setLoaded(true));
+  };
+  useEffect(() => {
+    reload();
+  }, []);
+
+  const revoke = (device: Device): void => {
+    if (!window.confirm(t("settings.deviceDeleteConfirm", { name: device.name }))) return;
+    api.revokeDevice(device.id).then(reload).catch(() => undefined);
+  };
+
+  const lastSeen = (device: Device): string =>
+    device.last_seen_at !== null
+      ? new Date(device.last_seen_at).toLocaleString()
+      : t("settings.deviceNever");
+
+  return (
+    <section className="space-y-3">
+      <h2 className="text-xs font-semibold tracking-wide text-neutral-500 uppercase">
+        {t("settings.devicesTitle")}
+      </h2>
+      <p className="text-xs leading-relaxed text-neutral-400">{t("settings.devicesDesc")}</p>
+      {loaded && devices.length === 0 ? (
+        <p className="text-xs text-neutral-500">{t("settings.devicesEmpty")}</p>
+      ) : (
+        <div className="space-y-1.5">
+          {devices.map((device) => (
+            <div
+              key={device.id}
+              className="flex items-center gap-3 rounded-xl bg-white/[0.03] px-4 py-2.5 ring-1 ring-white/10"
+            >
+              <span className="min-w-0 flex-1 truncate text-sm text-neutral-100">
+                {device.name}
+              </span>
+              <span className="shrink-0 text-xs text-neutral-500">
+                {t("settings.deviceLastSeen", { when: lastSeen(device) })}
+              </span>
+              <button
+                onClick={() => revoke(device)}
+                title={t("settings.deviceDelete")}
+                className="shrink-0 rounded-lg p-1.5 text-neutral-500 transition hover:bg-red-500/15 hover:text-red-300"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 

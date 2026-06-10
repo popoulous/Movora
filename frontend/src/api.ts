@@ -205,6 +205,14 @@ export interface Task {
   episode_title: string | null;
 }
 
+export interface Device {
+  id: number;
+  name: string;
+  capabilities: Record<string, unknown> | null;
+  created_at: string;
+  last_seen_at: string | null;
+}
+
 // A 401 mid-session means the cookie expired; let the app drop back to the login gate.
 function checkOk(response: Response): void {
   if (response.status === 401) {
@@ -372,4 +380,7 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ code }),
     }).then(asJson<{ id: number; name: string }>),
+  listDevices: (): Promise<Device[]> => fetch("/api/devices").then(asJson<Device[]>),
+  revokeDevice: (id: number): Promise<void> =>
+    fetch(`/api/devices/${id}`, { method: "DELETE" }).then(throwIfNotOk),
 };
