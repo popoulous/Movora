@@ -95,6 +95,7 @@ export interface ProbeResult {
   videoBytes: number; // decoded video bytes (0 if the platform doesn't expose the counter)
   audioBytes: number; // decoded audio bytes (lets us tell an unsupported audio codec apart)
   hasAudio: boolean | null; // audio probe: a real signal was heard (null if not measured)
+  audioRms: number | null; // measured audio RMS (0..~128); diagnostic for the signal test
   cues: number | null; // subtitle probe: parsed cue count (null if N/A)
 }
 
@@ -129,6 +130,7 @@ export function probePlayback(url: string, timeoutMs = 8000): Promise<ProbeResul
       videoBytes: v.webkitVideoDecodedByteCount ?? 0,
       audioBytes: v.webkitAudioDecodedByteCount ?? 0,
       hasAudio: null,
+      audioRms: null,
       cues: null,
     });
     const finish = (played: boolean): void => {
@@ -159,41 +161,64 @@ export function probePlayback(url: string, timeoutMs = 8000): Promise<ProbeResul
   });
 }
 
-// Audio probe: route the element through Web Audio and look for a real signal.
-// This catches the "video plays but there's no sound" case — an unsupported audio
-// codec the player silently drops. Output is kept silent via a zero-gain node.
-export function probeAudio(url: string, timeoutMs = 8000): Promise<ProbeResult> {
+// A single AudioContext, resumed on user input. TV browsers gate AudioContext
+// behind a user gesture (autoplay policy); without a running context the analyser
+// only ever sees silence — which looked like "no audio everywhere". Call
+// resumeAudioContext() from a keydown handler so it is running before we measure.
+let sharedAudioCtx: AudioContext | null = null;
+function audioCtor(): typeof AudioContext | undefined {
+  const w = window as unknown as {
+    AudioContext?: typeof AudioContext;
+    webkitAudioContext?: typeof AudioContext;
+  };
+  return w.AudioContext ?? w.webkitAudioContext;
+}
+export function resumeAudioContext(): AudioContext | null {
+  const Ctor = audioCtor();
+  if (Ctor === undefined) return null;
+  if (sharedAudioCtx === null) {
+    try {
+      sharedAudioCtx = new Ctor();
+    } catch {
+      sharedAudioCtx = null;
+      return null;
+    }
+  }
+  void sharedAudioCtx.resume();
+  return sharedAudioCtx;
+}
+
+// Audio probe: route the element through the shared Web Audio context and measure
+// the real signal (RMS). This catches "video plays but there's no sound" — an
+// unsupported audio codec the player silently drops. Output is kept silent (gain 0).
+export function probeAudio(url: string, timeoutMs = 7000): Promise<ProbeResult> {
   return new Promise((resolve) => {
+    const ctx = resumeAudioContext();
     const v = document.createElement("video") as HTMLVideoElement & {
       webkitVideoDecodedByteCount?: number;
       webkitAudioDecodedByteCount?: number;
     };
     v.crossOrigin = "anonymous";
     v.preload = "auto";
-    const w = window as unknown as {
-      AudioContext?: typeof AudioContext;
-      webkitAudioContext?: typeof AudioContext;
-    };
-    const AC = w.AudioContext ?? w.webkitAudioContext;
-    let ctx: AudioContext | null = null;
     let analyser: AnalyserNode | null = null;
-    let maxDev = 0;
+    let srcNode: MediaElementAudioSourceNode | null = null;
+    let maxRms = 0;
     let done = false;
     let timer = 0;
     let tick = 0;
-    const finish = (played: boolean, hasAudio: boolean | null): void => {
+    const finish = (played: boolean, hasAudio: boolean | null, rms: number | null): void => {
       if (done) return;
       done = true;
       window.clearTimeout(timer);
       window.clearTimeout(tick);
-      v.removeAttribute("src");
       try {
-        v.load();
+        srcNode?.disconnect();
       } catch {
         /* ignore */
       }
+      v.removeAttribute("src");
       try {
-        void ctx?.close();
+        v.load();
       } catch {
         /* ignore */
       }
@@ -202,6 +227,7 @@ export function probeAudio(url: string, timeoutMs = 8000): Promise<ProbeResult> 
         videoBytes: v.webkitVideoDecodedByteCount ?? 0,
         audioBytes: v.webkitAudioDecodedByteCount ?? 0,
         hasAudio,
+        audioRms: rms,
         cues: null,
       });
     };
@@ -209,51 +235,50 @@ export function probeAudio(url: string, timeoutMs = 8000): Promise<ProbeResult> 
       if (analyser === null) return;
       const buf = new Uint8Array(analyser.fftSize);
       analyser.getByteTimeDomainData(buf);
+      let sum = 0;
       for (let i = 0; i < buf.length; i += 1) {
-        const d = Math.abs(buf[i] - 128);
-        if (d > maxDev) maxDev = d;
+        const c = buf[i] - 128;
+        sum += c * c;
       }
+      const rms = Math.sqrt(sum / buf.length);
+      if (rms > maxRms) maxRms = rms;
     };
     const onPlaying = (): void => {
-      if (ctx !== null) return;
-      if (AC === undefined) {
-        tick = window.setTimeout(
-          () => finish(true, (v.webkitAudioDecodedByteCount ?? 0) > 0 ? true : null),
-          900,
-        );
+      if (analyser !== null) return;
+      if (ctx === null) {
+        tick = window.setTimeout(() => finish(true, null, null), 800);
         return;
       }
       try {
-        ctx = new AC();
-        const node = ctx.createMediaElementSource(v);
+        srcNode = ctx.createMediaElementSource(v);
         analyser = ctx.createAnalyser();
         analyser.fftSize = 1024;
         const gain = ctx.createGain();
-        gain.gain.value = 0;
-        node.connect(analyser);
+        gain.gain.value = 0; // keep the test silent
+        srcNode.connect(analyser);
         analyser.connect(gain);
         gain.connect(ctx.destination);
         void ctx.resume();
       } catch {
-        finish(true, null);
+        finish(true, null, null);
         return;
       }
       let n = 0;
       const loop = (): void => {
         measure();
         n += 1;
-        if (n >= 8) finish(true, maxDev > 2);
-        else tick = window.setTimeout(loop, 110);
+        if (n >= 7) finish(true, maxRms > 2, maxRms);
+        else tick = window.setTimeout(loop, 90);
       };
-      tick = window.setTimeout(loop, 110);
+      tick = window.setTimeout(loop, 120);
     };
     v.addEventListener("playing", onPlaying);
-    v.addEventListener("error", () => finish(false, null));
+    v.addEventListener("error", () => finish(false, null, null));
     v.src = url;
     const p = v.play();
     if (p !== undefined && typeof p.catch === "function") p.catch(() => undefined);
     timer = window.setTimeout(
-      () => finish(v.readyState >= 2, analyser !== null ? maxDev > 2 : null),
+      () => finish(v.readyState >= 2, analyser !== null ? maxRms > 2 : null, analyser !== null ? maxRms : null),
       timeoutMs,
     );
   });
@@ -296,7 +321,7 @@ export function probeSubtitle(url: string, timeoutMs = 5000): Promise<ProbeResul
       } catch {
         /* ignore */
       }
-      resolve({ played: cues > 0, videoBytes: 0, audioBytes: 0, hasAudio: null, cues });
+      resolve({ played: cues > 0, videoBytes: 0, audioBytes: 0, hasAudio: null, audioRms: null, cues });
     };
     track.addEventListener("load", () => finish(cueCount()));
     track.addEventListener("error", () => finish(0));

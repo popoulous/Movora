@@ -7,6 +7,7 @@ import {
   probeAudio,
   probePlayback,
   probeSubtitle,
+  resumeAudioContext,
   sampleUrl,
   type ProbeResult,
   type ServerSample,
@@ -37,8 +38,9 @@ function verdict(category: string, s: ProbeState): { text: string; color: string
   }
   if (!s.played) return { text: "✗ Nem megy", color: "#f87171" };
   if (category === "audio") {
-    if (s.hasAudio === true) return { text: "✓ Hang OK", color: "#4ade80" };
-    if (s.hasAudio === false) return { text: "✗ Nincs hang", color: "#f87171" };
+    const rms = s.audioRms !== null ? ` (rms ${Math.round(s.audioRms)})` : "";
+    if (s.hasAudio === true) return { text: `✓ Hang OK${rms}`, color: "#4ade80" };
+    if (s.hasAudio === false) return { text: `✗ Nincs hang${rms}`, color: "#f87171" };
     return { text: "✓ Lejátszható (hang nem mérhető)", color: "#fbbf24" };
   }
   return { text: "✓ Megy", color: "#4ade80" };
@@ -82,6 +84,7 @@ export default function CapabilityView({ onBack }: Props): React.JSX.Element {
     if (!base) return undefined;
     let cancelled = false;
     void (async () => {
+      resumeAudioContext(); // best-effort: the Enter that opened this screen is the gesture
       const list = await fetchSamples(base);
       if (cancelled) return;
       setSamples(list);
@@ -110,6 +113,7 @@ export default function CapabilityView({ onBack }: Props): React.JSX.Element {
             video_bytes: r.videoBytes,
             audio_bytes: r.audioBytes,
             has_audio: r.hasAudio,
+            audio_rms: r.audioRms,
             cues: r.cues,
           };
         }
@@ -135,6 +139,7 @@ export default function CapabilityView({ onBack }: Props): React.JSX.Element {
   }, [base, api]);
 
   const onKey = (e: KeyboardEvent): void => {
+    resumeAudioContext(); // any remote key counts as the gesture that unlocks audio
     if (e.key === "ArrowDown") {
       e.preventDefault();
       scrollRef.current?.scrollBy({ top: 240, behavior: "smooth" });

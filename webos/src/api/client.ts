@@ -144,6 +144,7 @@ export interface CapabilityProbeOutcome {
   video_bytes: number;
   audio_bytes: number;
   has_audio: boolean | null;
+  audio_rms: number | null;
   cues: number | null;
 }
 
