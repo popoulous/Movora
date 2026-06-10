@@ -1,0 +1,105 @@
+{
+  "name": "Movora Demo Capability Samples",
+  "version": 3,
+  "description": "Calm synthetic Movora-branded codec probe clips. No copyrighted footage, no third-party artwork, no music samples. The base clips are generated externally; the MKV/AC-3/E-AC-3/DTS/FLAC/Opus variants are derived from them with ffmpeg (see README.md).",
+  "samples": [
+    {
+      "id": "h264_high_l41_720p_aac",
+      "category": "video",
+      "filename": "movora_demo_h264_high_l41_720p_aac.mp4",
+      "label": "H.264 High L4.1 / AAC / 720p (MP4)",
+      "mime": "video/mp4; codecs=\"avc1.640029, mp4a.40.2\""
+    },
+    {
+      "id": "h264_baseline_l31_720p_aac",
+      "category": "video",
+      "filename": "movora_demo_h264_baseline_l31_720p_aac.mp4",
+      "label": "H.264 Baseline L3.1 / AAC / 720p (MP4)",
+      "mime": "video/mp4; codecs=\"avc1.42E01F, mp4a.40.2\""
+    },
+    {
+      "id": "h264_high_l41_1080p_aac",
+      "category": "video",
+      "filename": "movora_demo_h264_high_l41_1080p_aac.mp4",
+      "label": "H.264 High L4.1 / AAC / 1080p (MP4)",
+      "mime": "video/mp4; codecs=\"avc1.640029, mp4a.40.2\""
+    },
+    {
+      "id": "hevc8_720p_aac",
+      "category": "video",
+      "filename": "movora_demo_hevc8_720p_aac.mp4",
+      "label": "HEVC Main 8-bit / AAC / 720p (MP4)",
+      "mime": "video/mp4; codecs=\"hvc1.1.6.L93.B0, mp4a.40.2\""
+    },
+    {
+      "id": "hevc10_720p_aac",
+      "category": "video",
+      "filename": "movora_demo_hevc10_720p_aac.mp4",
+      "label": "HEVC Main10 10-bit / AAC / 720p (MP4)",
+      "mime": "video/mp4; codecs=\"hvc1.2.4.L93.B0, mp4a.40.2\""
+    },
+    {
+      "id": "av1_540p_aac",
+      "category": "video",
+      "filename": "movora_demo_av1_540p_aac.mp4",
+      "label": "AV1 8-bit / AAC / 540p (MP4)",
+      "mime": "video/mp4; codecs=\"av01.0.05M.08, mp4a.40.2\""
+    },
+    {
+      "id": "h264_high_l41_720p_aac_mkv",
+      "category": "container",
+      "filename": "movora_demo_h264_high_l41_720p_aac_mkv.mkv",
+      "label": "H.264 High / AAC in Matroska (MKV)",
+      "mime": "video/x-matroska; codecs=\"avc1.640029, mp4a.40.2\""
+    },
+    {
+      "id": "hevc10_720p_aac_mkv",
+      "category": "container",
+      "filename": "movora_demo_hevc10_720p_aac_mkv.mkv",
+      "label": "HEVC Main10 / AAC in Matroska (MKV)",
+      "mime": "video/x-matroska; codecs=\"hvc1.2.4.L93.B0, mp4a.40.2\""
+    },
+    {
+      "id": "h264_ac3",
+      "category": "audio",
+      "filename": "movora_demo_h264_ac3.mp4",
+      "label": "Dolby Digital (AC-3) / H.264 (MP4)",
+      "mime": "video/mp4; codecs=\"avc1.640029, ac-3\""
+    },
+    {
+      "id": "h264_eac3",
+      "category": "audio",
+      "filename": "movora_demo_h264_eac3.mp4",
+      "label": "Dolby Digital+ (E-AC-3) / H.264 (MP4)",
+      "mime": "video/mp4; codecs=\"avc1.640029, ec-3\""
+    },
+    {
+      "id": "h264_dts",
+      "category": "audio",
+      "filename": "movora_demo_h264_dts_mkv.mkv",
+      "label": "DTS (DCA) / H.264 in Matroska (MKV)",
+      "mime": "video/x-matroska; codecs=\"avc1.640029, dts\""
+    },
+    {
+      "id": "h264_flac",
+      "category": "audio",
+      "filename": "movora_demo_h264_flac.mp4",
+      "label": "FLAC / H.264 (MP4)",
+      "mime": "video/mp4; codecs=\"avc1.640029, flac\""
+    },
+    {
+      "id": "h264_opus",
+      "category": "audio",
+      "filename": "movora_demo_h264_opus_mkv.mkv",
+      "label": "Opus / H.264 in Matroska (MKV)",
+      "mime": "video/x-matroska; codecs=\"avc1.640029, opus\""
+    },
+    {
+      "id": "vtt_subtitle_test",
+      "category": "subtitle",
+      "filename": "movora_demo_subtitle_test.vtt",
+      "label": "WebVTT subtitle sidecar",
+      "mime": "text/vtt"
+    }
+  ]
+}
