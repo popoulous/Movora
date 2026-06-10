@@ -7,6 +7,7 @@ import LibraryView from "../views/LibraryView";
 import SeriesView from "../views/SeriesView";
 import PlayerView from "../views/PlayerView";
 import SettingsView from "../views/SettingsView";
+import CapabilityView from "../views/CapabilityView";
 import "../theme.css";
 
 type Screen =
@@ -15,7 +16,8 @@ type Screen =
   | { id: "library"; libraryId: number }
   | { id: "series"; seriesId: number }
   | { id: "player"; episodeId: number }
-  | { id: "settings" };
+  | { id: "settings" }
+  | { id: "capability" };
 
 function AppInner(): React.JSX.Element {
   const { config } = useDevice();
@@ -76,7 +78,9 @@ function AppInner(): React.JSX.Element {
         />
       );
     case "settings":
-      return <SettingsView onBack={back} />;
+      return <SettingsView onBack={back} onCapability={() => push({ id: "capability" })} />;
+    case "capability":
+      return <CapabilityView onBack={back} />;
   }
 }
 

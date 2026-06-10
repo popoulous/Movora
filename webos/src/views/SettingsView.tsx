@@ -6,9 +6,10 @@ import { discoverServer } from "../discovery";
 
 interface Props {
   onBack: () => void;
+  onCapability: () => void;
 }
 
-export default function SettingsView({ onBack }: Props): React.JSX.Element {
+export default function SettingsView({ onBack, onCapability }: Props): React.JSX.Element {
   const { config, save, clear } = useDevice();
   const [rescanning, setRescanning] = useState(false);
   const [rescanMsg, setRescanMsg] = useState<string | null>(null);
@@ -68,10 +69,11 @@ export default function SettingsView({ onBack }: Props): React.JSX.Element {
           </tbody>
         </table>
 
-        <div style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: "1rem", alignItems: "center", flexWrap: "wrap" }}>
           <Button onClick={handleRescan} disabled={rescanning}>
             {rescanning ? "Keresés…" : "Szerver újrakeresése"}
           </Button>
+          <Button onClick={onCapability}>Képességteszt</Button>
           <Button onClick={handleUnpair}>Szétválasztás (unpair)</Button>
         </div>
         {rescanMsg !== null && (
