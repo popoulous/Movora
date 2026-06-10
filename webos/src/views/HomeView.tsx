@@ -14,7 +14,7 @@ interface Props {
 }
 
 const POSTER_W = 185;
-const HERO_W = 260;
+const CONT_W = 280;
 
 export default function HomeView({ onSeries, onPlay, onLibrary, onSettings }: Props): React.JSX.Element {
   const { api, config } = useDevice();
@@ -40,7 +40,7 @@ export default function HomeView({ onSeries, onPlay, onLibrary, onSettings }: Pr
     mediaUrl(config?.serverUrl ?? "", config?.deviceToken ?? null, url);
   const label = (s: HomeSeries): string => s.display_title ?? s.title;
 
-  const hero: HomeSeries | null = data?.continue_watching[0] ?? null;
+  const cont = data?.continue_watching ?? [];
   const recent = data?.recently_added ?? [];
 
   // Top nav: Home + one tab per actual library + Settings.
@@ -52,7 +52,7 @@ export default function HomeView({ onSeries, onPlay, onLibrary, onSettings }: Pr
 
   // Ordered focus zones (only those with content).
   const zones: { id: string; len: number }[] = [{ id: "nav", len: navTabs.length }];
-  if (hero) zones.push({ id: "hero", len: 1 });
+  if (cont.length) zones.push({ id: "continue", len: cont.length });
   if (recent.length) zones.push({ id: "recent", len: recent.length });
   if (libraries.length) zones.push({ id: "libs", len: libraries.length });
 
@@ -72,9 +72,10 @@ export default function HomeView({ onSeries, onPlay, onLibrary, onSettings }: Pr
 
   const activate = (): void => {
     if (zone.id === "nav") openTab(navTabs[focus.i].id);
-    else if (zone.id === "hero" && hero) {
-      if (hero.continue_episode_id !== null) onPlay(hero.continue_episode_id);
-      else onSeries(hero.id);
+    else if (zone.id === "continue") {
+      const it = cont[focus.i];
+      if (it.continue_episode_id !== null) onPlay(it.continue_episode_id);
+      else onSeries(it.id);
     } else if (zone.id === "recent") onSeries(recent[focus.i].id);
     else if (zone.id === "libs") onLibrary(libraries[focus.i].id);
   };
@@ -146,9 +147,9 @@ export default function HomeView({ onSeries, onPlay, onLibrary, onSettings }: Pr
     );
   };
 
-  const heroZ = 1;
-  const recentZ = hero ? 2 : 1;
-  const libsZ = (hero ? 2 : 1) + (recent.length ? 1 : 0);
+  const contZ = 1;
+  const recentZ = 1 + (cont.length ? 1 : 0);
+  const libsZ = recentZ + (recent.length ? 1 : 0);
 
   return (
     <div className="mv-app" style={{ height: "100vh", overflowY: "auto", paddingBottom: "2rem" }}>
@@ -158,51 +159,31 @@ export default function HomeView({ onSeries, onPlay, onLibrary, onSettings }: Pr
         {!data && !error && <p style={{ color: theme.muted }}>Betöltés…</p>}
         {error && <p style={{ color: "#f87171" }}>Betöltési hiba: {error}</p>}
 
-        {/* Continue hero */}
-        {hero && (
+        {/* Continue watching — a row of resumable cards. */}
+        {cont.length > 0 && (
           <section style={{ marginBottom: "2rem" }}>
             <h2 style={{ fontSize: "1.05rem", fontWeight: 700, margin: "0 0 0.8rem", color: theme.text }}>Folytatás</h2>
-            <div
-              data-f={`${heroZ}-0`}
-              style={{
-                display: "flex",
-                gap: "1.5rem",
-                alignItems: "center",
-                background: focus.z === heroZ ? "rgba(122,77,255,0.12)" : theme.surface,
-                border: `3px solid ${focus.z === heroZ ? theme.accent : "transparent"}`,
-                borderRadius: 16,
-                padding: "1.2rem",
-                boxShadow: focus.z === heroZ ? "0 0 22px rgba(122,77,255,0.5)" : "none",
-              }}
-            >
-              <div style={{ width: HERO_W, flexShrink: 0 }}>
-                {img(hero.continue_thumbnail_url ?? hero.cover_image_url) && (
-                  <img src={img(hero.continue_thumbnail_url ?? hero.cover_image_url)} alt="" style={{ width: "100%", height: aspectHeight(HERO_W, "16/9"), objectFit: "cover", borderRadius: 10, display: "block" }} />
-                )}
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "#fff" }}>{label(hero)}</div>
-                <div style={{ color: theme.muted, fontSize: "0.9rem", margin: "0.3rem 0 0.6rem" }}>
-                  {hero.continue_season_number !== null
-                    ? `${hero.continue_season_number}. évad · ${hero.continue_episode_number}. rész`
-                    : hero.year}
-                </div>
-                <span
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "0.5rem",
-                    background: theme.gradient,
-                    color: "#fff",
-                    padding: "0.6rem 1.4rem",
-                    borderRadius: 999,
-                    fontWeight: 700,
-                    boxShadow: focus.z === heroZ ? "0 0 18px rgba(122,77,255,0.8)" : "none",
-                  }}
-                >
-                  ▶ Folytatás
-                </span>
-              </div>
+            <div className="mv-row" style={{ display: "flex", overflowX: "auto", padding: "0.4rem 0" }}>
+              {cont.map((s, i) => {
+                const sub =
+                  s.continue_season_number !== null
+                    ? `${s.continue_season_number}. évad ${s.continue_episode_number}. rész`
+                    : s.continue_episode_number !== null
+                      ? `${s.continue_episode_number}. rész`
+                      : s.year
+                        ? String(s.year)
+                        : undefined;
+                return posterCard(
+                  contZ,
+                  i,
+                  label(s),
+                  s.continue_thumbnail_url ?? s.cover_image_url,
+                  sub,
+                  "16/9",
+                  CONT_W,
+                  s.continue_percent,
+                );
+              })}
             </div>
           </section>
         )}
@@ -251,7 +232,7 @@ export default function HomeView({ onSeries, onPlay, onLibrary, onSettings }: Pr
         )}
 
         {/* Nothing anywhere yet */}
-        {data && libsLoaded && !hero && recent.length === 0 && libraries.length === 0 && !error && (
+        {data && libsLoaded && cont.length === 0 && recent.length === 0 && libraries.length === 0 && !error && (
           <div style={{ padding: "4rem 0", textAlign: "center", color: theme.muted }}>
             <div style={{ fontSize: "1.2rem", fontWeight: 700, color: theme.text }}>
               Még nincs tartalom
