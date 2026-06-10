@@ -42,19 +42,29 @@ export interface Season {
   episodes: Episode[];
 }
 
+export interface Recommendation {
+  title: string;
+  cover_image_url: string | null;
+  score: number | null; // 0-100
+  target_series_id: number | null; // the matching in-library series, if any
+}
+
 export interface SeriesDetail {
   id: number;
   title: string;
   display_title: string | null;
   native_title: string | null;
   year: number | null;
+  end_year: number | null;
   format: string | null;
-  score: number | null;
+  episode_duration: number | null; // minutes
+  score: number | null; // 0-100
   cover_image_url: string | null;
   banner_image_url: string | null;
   description: string | null;
   genres: string | null;
   seasons: Season[];
+  recommendations: Recommendation[];
   watch: {
     status: WatchStatus;
     episodes_watched: number;

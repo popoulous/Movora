@@ -60,6 +60,10 @@ function AppInner(): React.JSX.Element {
         <SeriesView
           seriesId={activeScreen.seriesId}
           onPlay={(id) => push({ id: "player", episodeId: id })}
+          onSeries={(id) => push({ id: "series", seriesId: id })}
+          onLibrary={(id) => push({ id: "library", libraryId: id })}
+          onHome={() => reset({ id: "home" })}
+          onSettings={() => push({ id: "settings" })}
           onBack={back}
         />
       );
