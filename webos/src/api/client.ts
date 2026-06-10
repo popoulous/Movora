@@ -138,6 +138,23 @@ export interface PairApproved {
   device_token: string;
 }
 
+// The device's own real playback-probe results, posted back to the server.
+export interface CapabilityProbeOutcome {
+  played: boolean;
+  video_bytes: number;
+  audio_bytes: number;
+  has_audio: boolean | null;
+  cues: number | null;
+}
+
+export interface CapabilityReportBody {
+  probe: Record<string, CapabilityProbeOutcome>;
+  supports_ass: boolean;
+  supports_srt: boolean;
+  supports_vtt: boolean;
+  user_agent: string;
+}
+
 // ---------------------------------------------------------------------------
 
 // Resolve an image/media URL for an <img>/<video>/<track> element. Those requests
@@ -219,6 +236,13 @@ export function createApiClient(baseUrl: string, token: string | null) {
       fetch(`${base}/api/devices/pair/${code}/status`, { headers: authHeaders() }).then(
         asJson<{ status: PairStatus; device_token?: string }>
       ),
+
+    reportCapabilities: (body: CapabilityReportBody) =>
+      fetch(`${base}/api/devices/me/capabilities`, {
+        method: "POST",
+        headers: jsonHeaders(),
+        body: JSON.stringify(body),
+      }).then(checkOk),
   };
 }
 

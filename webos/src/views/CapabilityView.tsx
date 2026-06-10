@@ -4,11 +4,14 @@ import { useDevice } from "../context/DeviceContext";
 import { theme } from "../theme";
 import {
   fetchSamples,
+  probeAudio,
   probePlayback,
+  probeSubtitle,
   sampleUrl,
   type ProbeResult,
   type ServerSample,
 } from "../capabilities";
+import { type CapabilityProbeOutcome, type CapabilityReportBody } from "../api/client";
 
 interface Props {
   onBack: () => void;
@@ -19,17 +22,24 @@ type ProbeState = "pending" | "playing" | ProbeResult;
 const CAT_LABEL: Record<string, string> = {
   video: "Videó codecek / felbontás",
   container: "Konténerek",
-  audio: "Audió codecek",
+  audio: "Audió codecek (van-e tényleg hang)",
+  subtitle: "Feliratok",
 };
+const CATEGORIES = ["video", "container", "audio", "subtitle"];
 
 function verdict(category: string, s: ProbeState): { text: string; color: string } {
   if (s === "pending") return { text: "…", color: theme.muted };
   if (s === "playing") return { text: "▶ próba…", color: "#c084fc" };
+  if (category === "subtitle") {
+    return (s.cues ?? 0) > 0
+      ? { text: `✓ Renderelhető (${s.cues} sor)`, color: "#4ade80" }
+      : { text: "✗ Konvertálás kell", color: "#fbbf24" };
+  }
   if (!s.played) return { text: "✗ Nem megy", color: "#f87171" };
   if (category === "audio") {
-    if (s.audioBytes > 0) return { text: "✓ Audió OK", color: "#4ade80" };
-    if (s.videoBytes > 0) return { text: "⚠ Videó OK, audió kérdéses", color: "#fbbf24" };
-    return { text: "✓ Lejátszható", color: "#4ade80" };
+    if (s.hasAudio === true) return { text: "✓ Hang OK", color: "#4ade80" };
+    if (s.hasAudio === false) return { text: "✗ Nincs hang", color: "#f87171" };
+    return { text: "✓ Lejátszható (hang nem mérhető)", color: "#fbbf24" };
   }
   return { text: "✓ Megy", color: "#4ade80" };
 }
@@ -59,14 +69,15 @@ function Row({ label, sub, right }: { label: string; sub?: string; right: { text
 }
 
 export default function CapabilityView({ onBack }: Props): React.JSX.Element {
-  const { config } = useDevice();
+  const { config, api } = useDevice();
   const base = config?.serverUrl ?? "";
   const [samples, setSamples] = useState<ServerSample[]>([]);
   const [results, setResults] = useState<Record<string, ProbeState>>({});
+  const [sent, setSent] = useState<"idle" | "ok" | "error">("idle");
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Real playback probe: load each server sample and see what actually decodes.
-  // Sequential so the TV plays one clip at a time; results stream in.
+  // Real probe: play each sample (video/container), measure real audio output
+  // (audio), or parse cues (subtitle). Sequential; then report the profile back.
   useEffect(() => {
     if (!base) return undefined;
     let cancelled = false;
@@ -74,19 +85,54 @@ export default function CapabilityView({ onBack }: Props): React.JSX.Element {
       const list = await fetchSamples(base);
       if (cancelled) return;
       setSamples(list);
+      const collected: Record<string, ProbeResult> = {};
       for (const s of list) {
         if (cancelled) return;
-        if (s.category === "subtitle") continue; // not a <video> source
         setResults((r) => ({ ...r, [s.id]: "playing" }));
-        const res = await probePlayback(sampleUrl(base, s.id));
+        const url = sampleUrl(base, s.id);
+        const res =
+          s.category === "audio"
+            ? await probeAudio(url)
+            : s.category === "subtitle"
+              ? await probeSubtitle(url)
+              : await probePlayback(url);
         if (cancelled) return;
+        collected[s.id] = res;
         setResults((r) => ({ ...r, [s.id]: res }));
+      }
+      if (cancelled || !api) return;
+      const probe: Record<string, CapabilityProbeOutcome> = {};
+      for (const s of list) {
+        const r = collected[s.id];
+        if (r) {
+          probe[s.id] = {
+            played: r.played,
+            video_bytes: r.videoBytes,
+            audio_bytes: r.audioBytes,
+            has_audio: r.hasAudio,
+            cues: r.cues,
+          };
+        }
+      }
+      const cues = (id: string): boolean => (collected[id]?.cues ?? 0) > 0;
+      const body: CapabilityReportBody = {
+        probe,
+        supports_vtt: cues("vtt_subtitle_test"),
+        supports_srt: cues("srt_subtitle_test"),
+        supports_ass: cues("ass_subtitle_test"),
+        user_agent: navigator.userAgent,
+      };
+      try {
+        await api.reportCapabilities(body);
+        if (!cancelled) setSent("ok");
+      } catch {
+        if (!cancelled) setSent("error");
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [base]);
+  }, [base, api]);
 
   const onKey = (e: KeyboardEvent): void => {
     if (e.key === "ArrowDown") {
@@ -99,9 +145,7 @@ export default function CapabilityView({ onBack }: Props): React.JSX.Element {
   };
   useTvInput(onKey, onBack);
 
-  const categories = ["video", "container", "audio"];
-  const probed = samples.filter((s) => s.category !== "subtitle");
-  const doneCount = probed.filter((s) => {
+  const doneCount = samples.filter((s) => {
     const r = results[s.id];
     return r !== undefined && r !== "playing";
   }).length;
@@ -110,18 +154,20 @@ export default function CapabilityView({ onBack }: Props): React.JSX.Element {
     <div ref={scrollRef} className="mv-app" style={{ height: "100vh", overflowY: "auto", padding: "2rem 2.5rem 3rem" }}>
       <div style={{ color: theme.muted, fontSize: "0.95rem", marginBottom: "0.5rem" }}>← Vissza</div>
       <h1 style={{ fontSize: "1.8rem", fontWeight: 800, margin: "0 0 0.4rem", color: "#fff" }}>
-        Képességteszt {probed.length > 0 ? `(${doneCount}/${probed.length})` : ""}
+        Képességteszt {samples.length > 0 ? `(${doneCount}/${samples.length})` : ""}
       </h1>
-      <p style={{ color: theme.muted, fontSize: "0.85rem", margin: "0 0 1.4rem", maxWidth: 860 }}>
-        A TV ténylegesen lejátssza a szerver minta-klipjeit, és az alapján mondja meg, mit tud dekódolni.
-        Tartalmaz valós eseteket: anime Hi10P, 4K HEVC/HDR remux, többcsatornás és veszteségmentes audió.
-        Ez alapján a szerver eszköz-tudatosan választhat forrást/optimalizálást.
+      <p style={{ color: theme.muted, fontSize: "0.85rem", margin: "0 0 1rem", maxWidth: 880 }}>
+        A TV ténylegesen lejátssza a szerver minta-klipjeit. A videónál a dekódolást, az audiónál a
+        <b style={{ color: theme.text }}> tényleges hangot</b> (Web Audio jel) — így a „kép megy, de nincs hang"
+        eset is kiderül —, a feliratnál a natív renderelést méri. A végén elküldi a profilt a szervernek.
       </p>
 
       {!base && <p style={{ color: "#fbbf24", fontSize: "0.9rem" }}>Nincs szerverkapcsolat — előbb párosíts.</p>}
       {base && samples.length === 0 && <p style={{ color: theme.muted, fontSize: "0.9rem" }}>Minták betöltése…</p>}
+      {sent === "ok" && <p style={{ color: "#4ade80", fontSize: "0.9rem", fontWeight: 700 }}>✓ Profil elküldve a szervernek</p>}
+      {sent === "error" && <p style={{ color: "#f87171", fontSize: "0.9rem" }}>A profil küldése nem sikerült.</p>}
 
-      {categories.map((cat) => {
+      {CATEGORIES.map((cat) => {
         const items = samples.filter((s) => s.category === cat);
         if (items.length === 0) return null;
         return (
@@ -134,9 +180,7 @@ export default function CapabilityView({ onBack }: Props): React.JSX.Element {
         );
       })}
 
-      <p style={{ color: theme.muted, fontSize: "0.78rem", marginTop: "1.2rem", maxWidth: 860 }}>
-        Felirat: a natív lejátszó VTT-t renderel; az ASS-t a szerver VTT-vé alakítja. ▲▼ Görgetés · Back Vissza
-      </p>
+      <div style={{ color: theme.muted, fontSize: "0.78rem", marginTop: "1rem" }}>▲▼ Görgetés · Back Vissza</div>
     </div>
   );
 }
