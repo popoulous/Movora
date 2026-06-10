@@ -78,6 +78,7 @@ class ProbeOutcome(BaseModel):
     video_bytes: int = 0
     audio_bytes: int = 0
     has_audio: bool | None = None  # audio probe: real signal detected (None if unmeasured)
+    audio_rms: float | None = None  # measured audio RMS (diagnostic for the signal test)
     cues: int | None = None  # subtitle probe: parsed cue count (None if N/A)
 
 
