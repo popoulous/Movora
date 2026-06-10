@@ -80,6 +80,81 @@ function distinctBases(checks: CapCheck[], defs: { id: string; base: string }[])
   return [...bases];
 }
 
+// --- Real HTTP playback probe (ground truth; canPlayType is only advisory) ------
+
+export interface ServerSample {
+  id: string;
+  category: string; // video | container | audio | subtitle
+  label: string;
+  mime: string;
+  filename: string;
+}
+
+export interface ProbeResult {
+  played: boolean; // the element reached a playable state without erroring
+  videoBytes: number; // decoded video bytes (0 if the platform doesn't expose the counter)
+  audioBytes: number; // decoded audio bytes (lets us tell an unsupported audio codec apart)
+}
+
+export async function fetchSamples(base: string): Promise<ServerSample[]> {
+  const root = base.replace(/\/$/, "");
+  const res = await fetch(`${root}/api/capabilities/samples`);
+  if (!res.ok) return [];
+  return (await res.json()) as ServerSample[];
+}
+
+export function sampleUrl(base: string, id: string): string {
+  return `${base.replace(/\/$/, "")}/api/capabilities/samples/${id}`;
+}
+
+// Actually load + play the clip and report whether it decodes. We wait briefly
+// after playback starts so the (non-standard but Chrome-87-present) decoded-byte
+// counters can populate — that's what tells "video plays but audio codec failed"
+// apart from a clean success.
+export function probePlayback(url: string, timeoutMs = 8000): Promise<ProbeResult> {
+  return new Promise((resolve) => {
+    const v = document.createElement("video") as HTMLVideoElement & {
+      webkitVideoDecodedByteCount?: number;
+      webkitAudioDecodedByteCount?: number;
+    };
+    v.muted = true;
+    v.preload = "auto";
+    let done = false;
+    let timer = 0;
+    let settle = 0;
+    const result = (played: boolean): ProbeResult => ({
+      played,
+      videoBytes: v.webkitVideoDecodedByteCount ?? 0,
+      audioBytes: v.webkitAudioDecodedByteCount ?? 0,
+    });
+    const finish = (played: boolean): void => {
+      if (done) return;
+      done = true;
+      window.clearTimeout(timer);
+      window.clearTimeout(settle);
+      const r = result(played);
+      v.removeAttribute("src");
+      try {
+        v.load();
+      } catch {
+        /* ignore */
+      }
+      resolve(r);
+    };
+    const onPlayable = (): void => {
+      window.clearTimeout(settle);
+      settle = window.setTimeout(() => finish(true), 700);
+    };
+    v.addEventListener("loadeddata", onPlayable);
+    v.addEventListener("playing", onPlayable);
+    v.addEventListener("error", () => finish(false));
+    v.src = url;
+    const p = v.play();
+    if (p !== undefined && typeof p.catch === "function") p.catch(() => undefined);
+    timer = window.setTimeout(() => finish(v.readyState >= 2), timeoutMs);
+  });
+}
+
 export function detectCapabilities(): CapReport {
   const video = VIDEO.map((x) => check(x.id, x.label, x.mime));
   const audio = AUDIO.map((x) => check(x.id, x.label, x.mime));
