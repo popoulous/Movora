@@ -3,11 +3,9 @@ import { useTvInput } from "../hooks";
 import { useDevice } from "../context/DeviceContext";
 import { theme } from "../theme";
 import {
-  detectCapabilities,
   fetchSamples,
   probePlayback,
   sampleUrl,
-  type CapCheck,
   type ProbeResult,
   type ServerSample,
 } from "../capabilities";
@@ -19,12 +17,12 @@ interface Props {
 type ProbeState = "pending" | "playing" | ProbeResult;
 
 const CAT_LABEL: Record<string, string> = {
-  video: "Videó codecek",
+  video: "Videó codecek / felbontás",
   container: "Konténerek",
   audio: "Audió codecek",
 };
 
-function probeVerdict(category: string, s: ProbeState): { text: string; color: string } {
+function verdict(category: string, s: ProbeState): { text: string; color: string } {
   if (s === "pending") return { text: "…", color: theme.muted };
   if (s === "playing") return { text: "▶ próba…", color: "#c084fc" };
   if (!s.played) return { text: "✗ Nem megy", color: "#f87171" };
@@ -34,12 +32,6 @@ function probeVerdict(category: string, s: ProbeState): { text: string; color: s
     return { text: "✓ Lejátszható", color: "#4ade80" };
   }
   return { text: "✓ Megy", color: "#4ade80" };
-}
-
-function canPlayVerdict(c: CapCheck): { text: string; color: string } {
-  if (!c.supported) return { text: "✗", color: "#f87171" };
-  const detail = c.canPlay === "probably" ? "biztosan" : c.canPlay === "maybe" ? "talán" : "MSE";
-  return { text: `✓ ${detail}`, color: "#4ade80" };
 }
 
 function Row({ label, sub, right }: { label: string; sub?: string; right: { text: string; color: string } }): React.JSX.Element {
@@ -69,7 +61,6 @@ function Row({ label, sub, right }: { label: string; sub?: string; right: { text
 export default function CapabilityView({ onBack }: Props): React.JSX.Element {
   const { config } = useDevice();
   const base = config?.serverUrl ?? "";
-  const [report] = useState(detectCapabilities);
   const [samples, setSamples] = useState<ServerSample[]>([]);
   const [results, setResults] = useState<Record<string, ProbeState>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -100,10 +91,10 @@ export default function CapabilityView({ onBack }: Props): React.JSX.Element {
   const onKey = (e: KeyboardEvent): void => {
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      scrollRef.current?.scrollBy({ top: 220, behavior: "smooth" });
+      scrollRef.current?.scrollBy({ top: 240, behavior: "smooth" });
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      scrollRef.current?.scrollBy({ top: -220, behavior: "smooth" });
+      scrollRef.current?.scrollBy({ top: -240, behavior: "smooth" });
     }
   };
   useTvInput(onKey, onBack);
@@ -118,49 +109,34 @@ export default function CapabilityView({ onBack }: Props): React.JSX.Element {
   return (
     <div ref={scrollRef} className="mv-app" style={{ height: "100vh", overflowY: "auto", padding: "2rem 2.5rem 3rem" }}>
       <div style={{ color: theme.muted, fontSize: "0.95rem", marginBottom: "0.5rem" }}>← Vissza</div>
-      <h1 style={{ fontSize: "1.8rem", fontWeight: 800, margin: "0 0 0.4rem", color: "#fff" }}>Képességteszt</h1>
-      <p style={{ color: theme.muted, fontSize: "0.85rem", margin: "0 0 1.4rem", maxWidth: 820 }}>
-        A TV ténylegesen lejátssza a szerver minta-klipjeit, hogy kiderüljön, mit tud dekódolni
-        (ez a megbízható próba; a `canPlayType` lentebb csak tájékoztató). Ez alapján a szerver
-        eszköz-tudatosan választhat forrást/optimalizálást. (ASS-feliratot a natív lejátszó nem renderel → VTT-t kap.)
+      <h1 style={{ fontSize: "1.8rem", fontWeight: 800, margin: "0 0 0.4rem", color: "#fff" }}>
+        Képességteszt {probed.length > 0 ? `(${doneCount}/${probed.length})` : ""}
+      </h1>
+      <p style={{ color: theme.muted, fontSize: "0.85rem", margin: "0 0 1.4rem", maxWidth: 860 }}>
+        A TV ténylegesen lejátssza a szerver minta-klipjeit, és az alapján mondja meg, mit tud dekódolni.
+        Tartalmaz valós eseteket: anime Hi10P, 4K HEVC/HDR remux, többcsatornás és veszteségmentes audió.
+        Ez alapján a szerver eszköz-tudatosan választhat forrást/optimalizálást.
       </p>
 
-      {/* Real playback probe */}
-      <h2 style={{ fontSize: "1.05rem", fontWeight: 800, color: "#fff", margin: "0 0 0.3rem" }}>
-        Valódi lejátszás-próba {probed.length > 0 ? `(${doneCount}/${probed.length})` : ""}
-      </h2>
-      {!base && <p style={{ color: "#fbbf24", fontSize: "0.85rem" }}>Nincs szerverkapcsolat — előbb párosíts.</p>}
-      {base && samples.length === 0 && <p style={{ color: theme.muted, fontSize: "0.85rem" }}>Minták betöltése…</p>}
+      {!base && <p style={{ color: "#fbbf24", fontSize: "0.9rem" }}>Nincs szerverkapcsolat — előbb párosíts.</p>}
+      {base && samples.length === 0 && <p style={{ color: theme.muted, fontSize: "0.9rem" }}>Minták betöltése…</p>}
 
       {categories.map((cat) => {
         const items = samples.filter((s) => s.category === cat);
         if (items.length === 0) return null;
         return (
-          <div key={cat} style={{ marginTop: "1rem", marginBottom: "0.4rem" }}>
-            <div style={{ fontSize: "0.95rem", fontWeight: 700, color: theme.text, marginBottom: "0.5rem" }}>{CAT_LABEL[cat]}</div>
+          <div key={cat} style={{ marginTop: "1.1rem", marginBottom: "0.4rem" }}>
+            <div style={{ fontSize: "1rem", fontWeight: 700, color: "#fff", marginBottom: "0.5rem" }}>{CAT_LABEL[cat]}</div>
             {items.map((s) => (
-              <Row key={s.id} label={s.label} sub={s.mime} right={probeVerdict(cat, results[s.id] ?? "pending")} />
+              <Row key={s.id} label={s.label} sub={s.mime} right={verdict(cat, results[s.id] ?? "pending")} />
             ))}
           </div>
         );
       })}
 
-      {/* canPlayType reference */}
-      <h2 style={{ fontSize: "1.05rem", fontWeight: 800, color: "#fff", margin: "1.8rem 0 0.6rem" }}>canPlayType (tájékoztató)</h2>
-      {[
-        { title: "Videó", checks: report.video },
-        { title: "Audió", checks: report.audio },
-        { title: "Konténer", checks: report.container },
-      ].map((g) => (
-        <div key={g.title} style={{ marginBottom: "1rem" }}>
-          <div style={{ fontSize: "0.9rem", fontWeight: 700, color: theme.muted, marginBottom: "0.4rem" }}>{g.title}</div>
-          {g.checks.map((c) => (
-            <Row key={c.id} label={c.label} sub={c.mime} right={canPlayVerdict(c)} />
-          ))}
-        </div>
-      ))}
-
-      <div style={{ color: theme.muted, fontSize: "0.78rem", marginTop: "0.5rem" }}>▲▼ Görgetés · Back Vissza</div>
+      <p style={{ color: theme.muted, fontSize: "0.78rem", marginTop: "1.2rem", maxWidth: 860 }}>
+        Felirat: a natív lejátszó VTT-t renderel; az ASS-t a szerver VTT-vé alakítja. ▲▼ Görgetés · Back Vissza
+      </p>
     </div>
   );
 }
