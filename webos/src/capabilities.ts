@@ -200,6 +200,12 @@ export function probeAudio(url: string, timeoutMs = 7000): Promise<ProbeResult> 
     };
     v.crossOrigin = "anonymous";
     v.preload = "auto";
+    // Some webOS builds only feed Web Audio when the element is in the document.
+    v.style.position = "fixed";
+    v.style.left = "-9999px";
+    v.style.width = "1px";
+    v.style.height = "1px";
+    document.body.appendChild(v);
     let analyser: AnalyserNode | null = null;
     let srcNode: MediaElementAudioSourceNode | null = null;
     let maxRms = 0;
@@ -219,6 +225,11 @@ export function probeAudio(url: string, timeoutMs = 7000): Promise<ProbeResult> 
       v.removeAttribute("src");
       try {
         v.load();
+      } catch {
+        /* ignore */
+      }
+      try {
+        if (v.parentNode !== null) v.parentNode.removeChild(v);
       } catch {
         /* ignore */
       }
@@ -254,7 +265,8 @@ export function probeAudio(url: string, timeoutMs = 7000): Promise<ProbeResult> 
         analyser = ctx.createAnalyser();
         analyser.fftSize = 1024;
         const gain = ctx.createGain();
-        gain.gain.value = 0; // keep the test silent
+        gain.gain.value = 0.2; // audible fallback: if the Web Audio tap is a no-op
+        // on this platform you still hear the tone and can spot the silent ones
         srcNode.connect(analyser);
         analyser.connect(gain);
         gain.connect(ctx.destination);
