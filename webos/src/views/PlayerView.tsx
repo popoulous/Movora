@@ -21,7 +21,7 @@ const SUB_PREF_KEY = "movora_sub_pref";
 const EP_W = 200;
 const EP_H = aspectHeight(EP_W, "16/9");
 
-type SubSize = "s" | "m" | "l" | "xl";
+type SubSize = "s" | "m" | "l" | "xl" | "xxl" | "xxxl";
 type SubBg = "none" | "box" | "solid";
 type SubPos = "low" | "mid" | "high";
 interface SubStyle {
@@ -31,10 +31,17 @@ interface SubStyle {
 }
 
 const SUB_STYLE_KEY = "movora_sub_style";
-const SIZES: SubSize[] = ["s", "m", "l", "xl"];
+const SIZES: SubSize[] = ["s", "m", "l", "xl", "xxl", "xxxl"];
 const BGS: SubBg[] = ["none", "box", "solid"];
 const POSS: SubPos[] = ["low", "mid", "high"];
-const SIZE_VH: Record<SubSize, string> = { s: "2.6vh", m: "3.4vh", l: "4.4vh", xl: "5.6vh" };
+const SIZE_VH: Record<SubSize, string> = {
+  s: "2.6vh",
+  m: "3.4vh",
+  l: "4.4vh",
+  xl: "5.6vh",
+  xxl: "6.8vh",
+  xxxl: "8.2vh",
+};
 const BG_COLOR: Record<SubBg, string> = {
   none: "transparent",
   box: "rgba(0,0,0,0.5)",
@@ -43,7 +50,14 @@ const BG_COLOR: Record<SubBg, string> = {
 // Move the whole cue container up from its default bottom position: bottom ->
 // roughly screen centre -> near the top.
 const POS_BASE: Record<SubPos, string> = { low: "-2vh", mid: "-42vh", high: "-82vh" };
-const SIZE_LABEL: Record<SubSize, string> = { s: "Kicsi", m: "Közepes", l: "Nagy", xl: "Óriás" };
+const SIZE_LABEL: Record<SubSize, string> = {
+  s: "Kicsi",
+  m: "Közepes",
+  l: "Nagy",
+  xl: "Óriás",
+  xxl: "Hatalmas",
+  xxxl: "Maximális",
+};
 const BG_LABEL: Record<SubBg, string> = { none: "Nincs", box: "Áttetsző", solid: "Tömör" };
 const POS_LABEL: Record<SubPos, string> = { low: "Lent", mid: "Közép", high: "Fent" };
 
@@ -201,6 +215,22 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
   useEffect(() => {
     if (info) rootRef.current?.focus();
   }, [info]);
+
+  // Warm the episode thumbnails into the browser cache as soon as the series
+  // loads, so the bottom panel opens instantly instead of fetching ~a dozen
+  // images the first time it is shown.
+  useEffect(() => {
+    if (!series) return;
+    for (const season of series.seasons) {
+      for (const ep of season.episodes) {
+        const src = mediaUrl(base, token, ep.thumbnail_url);
+        if (src) {
+          const im = new Image();
+          im.src = src;
+        }
+      }
+    }
+  }, [series, base, token]);
 
   // Keep the focused episode card visible.
   useEffect(() => {
