@@ -19,8 +19,9 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import select
 
-from movora.api.deps import CurrentUserDep, SessionDep
+from movora.api.deps import CurrentUserDep, RequestDeviceDep, SessionDep
 from movora.api.schemas import (
+    CapabilityProbeReport,
     DeviceCapabilitiesUpdate,
     DeviceCreate,
     DeviceCreated,
@@ -161,6 +162,19 @@ def create_device(
     session.commit()
     # The token is returned exactly once; only its hash is stored.
     return DeviceCreated(**_to_read(device).model_dump(), token=token)
+
+
+@router.post("/me/capabilities", status_code=204)
+def report_capabilities(
+    payload: CapabilityProbeReport, device: RequestDeviceDep, session: SessionDep
+) -> None:
+    """A paired device reports its own real playback-probe results. It authenticates
+    with its bearer token and knows only that — not its id — so this resolves the
+    device from the token and stores the report verbatim on it (plan §13.1)."""
+    if device is None:
+        raise HTTPException(status_code=401, detail="device token required")
+    device.capabilities = json.dumps(payload.model_dump())
+    session.commit()
 
 
 @router.post("/{device_id}/capabilities", response_model=DeviceRead)

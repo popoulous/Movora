@@ -71,6 +71,28 @@ class DeviceCapabilitiesUpdate(BaseModel):
     capabilities: DeviceCapabilities
 
 
+class ProbeOutcome(BaseModel):
+    """One sample's real playback-probe result on the device."""
+
+    played: bool = False
+    video_bytes: int = 0
+    audio_bytes: int = 0
+    has_audio: bool | None = None  # audio probe: real signal detected (None if unmeasured)
+    cues: int | None = None  # subtitle probe: parsed cue count (None if N/A)
+
+
+class CapabilityProbeReport(BaseModel):
+    """A device's real playback-probe results, keyed by sample id, plus subtitle
+    support — stored on the device so the operator (and, later, the selector) can
+    see what it truly decodes (plan §13.1/§13.4)."""
+
+    probe: dict[str, ProbeOutcome] = {}
+    supports_ass: bool = False
+    supports_srt: bool = False
+    supports_vtt: bool = True
+    user_agent: str | None = None
+
+
 class DeviceRead(BaseModel):
     id: int
     name: str

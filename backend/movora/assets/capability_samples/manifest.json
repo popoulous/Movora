@@ -33,6 +33,8 @@
     { "id": "h264_vorbis_mkv", "category": "audio", "filename": "movora_demo_h264_vorbis_mkv.mkv", "label": "Vorbis (MKV)", "mime": "video/x-matroska; codecs=\"vorbis\"" },
     { "id": "h264_mp3", "category": "audio", "filename": "movora_demo_h264_mp3.mp4", "label": "MP3 (MP4)", "mime": "video/mp4; codecs=\"mp3\"" },
 
-    { "id": "vtt_subtitle_test", "category": "subtitle", "filename": "movora_demo_subtitle_test.vtt", "label": "WebVTT subtitle sidecar", "mime": "text/vtt" }
+    { "id": "vtt_subtitle_test", "category": "subtitle", "filename": "movora_demo_subtitle_test.vtt", "label": "WebVTT (native track)", "mime": "text/vtt" },
+    { "id": "srt_subtitle_test", "category": "subtitle", "filename": "movora_demo_subtitle_test.srt", "label": "SubRip (SRT) — native track?", "mime": "application/x-subrip" },
+    { "id": "ass_subtitle_test", "category": "subtitle", "filename": "movora_demo_subtitle_test.ass", "label": "ASS / SSA — native track? (else convert to VTT)", "mime": "text/x-ssa" }
   ]
 }

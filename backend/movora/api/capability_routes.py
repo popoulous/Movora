@@ -21,7 +21,11 @@ _MEDIA_TYPES = {
     ".mp4": "video/mp4",
     ".mkv": "video/x-matroska",
     ".webm": "video/webm",
+    ".avi": "video/x-msvideo",
+    ".ts": "video/mp2t",
     ".vtt": "text/vtt",
+    ".srt": "application/x-subrip",
+    ".ass": "text/x-ssa",
 }
 
 
