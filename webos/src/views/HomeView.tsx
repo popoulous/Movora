@@ -13,15 +13,6 @@ interface Props {
   onSettings: () => void;
 }
 
-const TABS: NavTab[] = [
-  { id: "home", label: "Főoldal" },
-  { id: "continue", label: "Folytatás" },
-  { id: "anime", label: "Anime" },
-  { id: "movie", label: "Filmek" },
-  { id: "series", label: "Sorozatok" },
-  { id: "settings", label: "Beállítások" },
-];
-
 const POSTER_W = 185;
 const HERO_W = 260;
 
@@ -45,8 +36,15 @@ export default function HomeView({ onSeries, onPlay, onLibrary, onSettings }: Pr
   const hero: HomeSeries | null = data?.continue_watching[0] ?? null;
   const recent = data?.recently_added ?? [];
 
+  // Top nav: Home + one tab per actual library + Settings.
+  const navTabs: NavTab[] = [
+    { id: "home", label: "Főoldal" },
+    ...libraries.map((l) => ({ id: `lib:${l.id}`, label: l.name })),
+    { id: "settings", label: "Beállítások" },
+  ];
+
   // Ordered focus zones (only those with content).
-  const zones: { id: string; len: number }[] = [{ id: "nav", len: TABS.length }];
+  const zones: { id: string; len: number }[] = [{ id: "nav", len: navTabs.length }];
   if (hero) zones.push({ id: "hero", len: 1 });
   if (recent.length) zones.push({ id: "recent", len: recent.length });
   if (libraries.length) zones.push({ id: "libs", len: libraries.length });
@@ -61,15 +59,12 @@ export default function HomeView({ onSeries, onPlay, onLibrary, onSettings }: Pr
 
   const openTab = (id: string): void => {
     if (id === "settings") onSettings();
-    else if (id === "anime" || id === "movie" || id === "series") {
-      const lib = libraries.find((l) => l.kind === id);
-      if (lib) onLibrary(lib.id);
-    }
-    // home / continue stay on this page.
+    else if (id.startsWith("lib:")) onLibrary(Number(id.slice(4)));
+    // home stays on this page.
   };
 
   const activate = (): void => {
-    if (zone.id === "nav") openTab(TABS[focus.i].id);
+    if (zone.id === "nav") openTab(navTabs[focus.i].id);
     else if (zone.id === "hero" && hero) {
       if (hero.continue_episode_id !== null) onPlay(hero.continue_episode_id);
       else onSeries(hero.id);
@@ -150,7 +145,7 @@ export default function HomeView({ onSeries, onPlay, onLibrary, onSettings }: Pr
 
   return (
     <div className="mv-app" style={{ height: "100vh", overflowY: "auto", paddingBottom: "2rem" }}>
-      <TopNav tabs={TABS} activeId="home" focusIdx={navFocus} onActivate={openTab} />
+      <TopNav tabs={navTabs} activeId="home" focusIdx={navFocus} onActivate={openTab} />
 
       <div style={{ padding: "0.5rem 2.5rem" }}>
         {!data && !error && <p style={{ color: theme.muted }}>Betöltés…</p>}
