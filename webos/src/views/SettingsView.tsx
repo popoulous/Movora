@@ -1,18 +1,37 @@
-import React from "react";
+import React, { useState } from "react";
 import { Panel, Header } from "@enact/sandstone/Panels";
 import Button from "@enact/sandstone/Button";
 import { useDevice } from "../context/DeviceContext";
+import { discoverServer } from "../discovery";
 
 interface Props {
   onBack: () => void;
 }
 
 export default function SettingsView({ onBack }: Props): React.JSX.Element {
-  const { config, clear } = useDevice();
+  const { config, save, clear } = useDevice();
+  const [rescanning, setRescanning] = useState(false);
+  const [rescanMsg, setRescanMsg] = useState<string | null>(null);
 
-  function handleUnpair() {
+  function handleUnpair(): void {
     clear();
     onBack();
+  }
+
+  function handleRescan(): void {
+    setRescanning(true);
+    setRescanMsg(null);
+    void discoverServer().then((res) => {
+      setRescanning(false);
+      if (res.serverUrl !== null && config !== null) {
+        save({ ...config, serverUrl: res.serverUrl });
+        setRescanMsg(`Szerver frissítve: ${res.serverUrl}`);
+      } else if (res.ip === null) {
+        setRescanMsg("Nem sikerült megállapítani a TV hálózati címét.");
+      } else {
+        setRescanMsg("Nem találtam Movora szervert a hálózaton.");
+      }
+    });
   }
 
   return (
@@ -49,8 +68,17 @@ export default function SettingsView({ onBack }: Props): React.JSX.Element {
           </tbody>
         </table>
 
-        <Button onClick={handleUnpair}>Szétválasztás (unpair)</Button>
+        <div style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
+          <Button onClick={handleRescan} disabled={rescanning}>
+            {rescanning ? "Keresés…" : "Szerver újrakeresése"}
+          </Button>
+          <Button onClick={handleUnpair}>Szétválasztás (unpair)</Button>
+        </div>
+        {rescanMsg !== null && (
+          <p style={{ marginTop: "0.75rem", fontSize: "0.85rem", color: "#c084fc" }}>{rescanMsg}</p>
+        )}
         <p style={{ marginTop: "0.75rem", fontSize: "0.8rem", opacity: 0.5 }}>
+          Az újrakeresés a hálózaton keresi a szervert és frissíti a címet (a párosítás megmarad).
           Szétválasztás után az app visszatér a beállítási képernyőre.
         </p>
 

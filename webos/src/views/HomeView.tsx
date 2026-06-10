@@ -20,13 +20,20 @@ export default function HomeView({ onSeries, onPlay, onLibrary, onSettings }: Pr
   const { api, config } = useDevice();
   const [data, setData] = useState<HomeData | null>(null);
   const [libraries, setLibraries] = useState<Library[]>([]);
+  const [libsLoaded, setLibsLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [focus, setFocus] = useState({ z: 0, i: 0 });
 
   useEffect(() => {
     if (!api) return;
     api.getHome().then(setData).catch((e: unknown) => setError(String(e)));
-    api.getLibraries().then(setLibraries).catch(() => undefined);
+    api
+      .getLibraries()
+      .then((l) => {
+        setLibraries(l);
+        setLibsLoaded(true);
+      })
+      .catch(() => undefined);
   }, [api]);
 
   const img = (url: string | null): string | undefined =>
@@ -241,6 +248,18 @@ export default function HomeView({ onSeries, onPlay, onLibrary, onSettings }: Pr
               })}
             </div>
           </section>
+        )}
+
+        {/* Nothing anywhere yet */}
+        {data && libsLoaded && !hero && recent.length === 0 && libraries.length === 0 && !error && (
+          <div style={{ padding: "4rem 0", textAlign: "center", color: theme.muted }}>
+            <div style={{ fontSize: "1.2rem", fontWeight: 700, color: theme.text }}>
+              Még nincs tartalom
+            </div>
+            <div style={{ fontSize: "0.9rem", marginTop: "0.6rem" }}>
+              Hozz létre könyvtárat a Movora szerveren, és indíts egy beolvasást.
+            </div>
+          </div>
         )}
       </div>
     </div>

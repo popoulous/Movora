@@ -34,6 +34,7 @@ export default function LibraryView({
   const { api, config } = useDevice();
   const [all, setAll] = useState<SeriesSummary[]>([]);
   const [libraries, setLibraries] = useState<Library[]>([]);
+  const [loadedFor, setLoadedFor] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [zone, setZone] = useState<"nav" | "filters" | "grid">("grid");
@@ -48,6 +49,7 @@ export default function LibraryView({
       .then((s) => {
         setAll(s);
         setError(null);
+        setLoadedFor(libraryId);
       })
       .catch((e: unknown) => setError(String(e)));
     api.getLibraries().then(setLibraries).catch(() => undefined);
@@ -81,6 +83,7 @@ export default function LibraryView({
   );
 
   const sel = series[Math.min(gridI, series.length - 1)] ?? null;
+  const loading = loadedFor !== libraryId;
 
   useEffect(() => {
     const el = document.querySelector(`[data-g="${gridI}"]`);
@@ -172,8 +175,20 @@ export default function LibraryView({
 
       {/* Poster grid (full width) */}
       <div style={{ flex: 1, overflowY: "auto", padding: "0.6rem 2.5rem 3.5rem", minHeight: 0 }}>
-        {!all.length && !error && <p style={{ color: theme.muted }}>Betöltés…</p>}
+        {loading && !error && <p style={{ color: theme.muted }}>Betöltés…</p>}
         {error && <p style={{ color: "#f87171" }}>Betöltési hiba: {error}</p>}
+        {!loading && !error && series.length === 0 && (
+          <div style={{ padding: "3rem 0", textAlign: "center", color: theme.muted }}>
+            <div style={{ fontSize: "1.1rem", fontWeight: 600, color: theme.text }}>
+              {all.length === 0 ? "Ez a könyvtár üres" : "Nincs találat erre a szűrőre"}
+            </div>
+            <div style={{ fontSize: "0.85rem", marginTop: "0.5rem" }}>
+              {all.length === 0
+                ? "Adj hozzá médiát a Movora szerveren, majd indíts egy beolvasást."
+                : "Válassz másik szűrőt a fenti listából."}
+            </div>
+          </div>
+        )}
         <div style={{ display: "grid", gridTemplateColumns: `repeat(${COLS}, 1fr)`, gap: "1rem" }}>
           {series.map((s, i) => {
             const focused = zone === "grid" && i === gridI;
