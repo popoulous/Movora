@@ -200,6 +200,7 @@ export function probeAudio(url: string, timeoutMs = 7000): Promise<ProbeResult> 
     };
     v.crossOrigin = "anonymous";
     v.preload = "auto";
+    v.volume = 0.6; // audible (also our by-ear fallback) but not blasting
     // Some webOS builds only feed Web Audio when the element is in the document.
     v.style.position = "fixed";
     v.style.left = "-9999px";
@@ -207,7 +208,7 @@ export function probeAudio(url: string, timeoutMs = 7000): Promise<ProbeResult> 
     v.style.height = "1px";
     document.body.appendChild(v);
     let analyser: AnalyserNode | null = null;
-    let srcNode: MediaElementAudioSourceNode | null = null;
+    let srcNode: AudioNode | null = null;
     let maxRms = 0;
     let done = false;
     let timer = 0;
@@ -261,15 +262,30 @@ export function probeAudio(url: string, timeoutMs = 7000): Promise<ProbeResult> 
         return;
       }
       try {
-        srcNode = ctx.createMediaElementSource(v);
         analyser = ctx.createAnalyser();
         analyser.fftSize = 1024;
-        const gain = ctx.createGain();
-        gain.gain.value = 0.2; // audible fallback: if the Web Audio tap is a no-op
-        // on this platform you still hear the tone and can spot the silent ones
-        srcNode.connect(analyser);
-        analyser.connect(gain);
-        gain.connect(ctx.destination);
+        // Prefer captureStream(): it taps the element's actual rendered output, so
+        // it works where createMediaElementSource is a no-op (webOS). The element
+        // keeps playing audibly on its own, which is also our by-ear fallback.
+        const cap = v as HTMLVideoElement & {
+          captureStream?: () => MediaStream;
+          mozCaptureStream?: () => MediaStream;
+        };
+        const capture = cap.captureStream ?? cap.mozCaptureStream;
+        const stream = typeof capture === "function" ? capture.call(v) : null;
+        if (stream !== null && stream.getAudioTracks().length > 0) {
+          srcNode = ctx.createMediaStreamSource(stream);
+          srcNode.connect(analyser); // MediaStreamSource pushes; no destination needed
+        } else {
+          // Fallback: route through Web Audio (low gain so it stays audible too).
+          const node = ctx.createMediaElementSource(v);
+          srcNode = node;
+          const gain = ctx.createGain();
+          gain.gain.value = 0.3;
+          node.connect(analyser);
+          analyser.connect(gain);
+          gain.connect(ctx.destination);
+        }
         void ctx.resume();
       } catch {
         finish(true, null, null);

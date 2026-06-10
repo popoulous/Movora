@@ -154,6 +154,7 @@ export default function CapabilityView({ onBack }: Props): React.JSX.Element {
     const r = results[s.id];
     return r !== undefined && r !== "playing";
   }).length;
+  const playingAudio = samples.find((s) => s.category === "audio" && results[s.id] === "playing") ?? null;
 
   return (
     <div ref={scrollRef} className="mv-app" style={{ height: "100vh", overflowY: "auto", padding: "2rem 2.5rem 3rem" }}>
@@ -171,6 +172,26 @@ export default function CapabilityView({ onBack }: Props): React.JSX.Element {
       {base && samples.length === 0 && <p style={{ color: theme.muted, fontSize: "0.9rem" }}>Minták betöltése…</p>}
       {sent === "ok" && <p style={{ color: "#4ade80", fontSize: "0.9rem", fontWeight: 700 }}>✓ Profil elküldve a szervernek</p>}
       {sent === "error" && <p style={{ color: "#f87171", fontSize: "0.9rem" }}>A profil küldése nem sikerült.</p>}
+
+      {playingAudio !== null && (
+        <div
+          style={{
+            position: "sticky",
+            top: 0,
+            zIndex: 5,
+            background: "rgba(122,77,255,0.25)",
+            border: `2px solid ${theme.accent}`,
+            borderRadius: 12,
+            padding: "0.8rem 1.1rem",
+            margin: "0.4rem 0 1rem",
+          }}
+        >
+          <div style={{ fontSize: "1.15rem", fontWeight: 800, color: "#fff" }}>Most szól: {playingAudio.label}</div>
+          <div style={{ fontSize: "0.85rem", color: theme.text }}>
+            Hallasz hangot? Ha NEM szól, ezt az audió-codecet a TV nem tudja.
+          </div>
+        </div>
+      )}
 
       {CATEGORIES.map((cat) => {
         const items = samples.filter((s) => s.category === cat);
