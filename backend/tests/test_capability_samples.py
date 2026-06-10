@@ -23,7 +23,13 @@ def test_lists_samples_with_required_fields(tmp_path: Path) -> None:
         assert {"id", "category", "label", "mime", "filename"} <= s.keys()
     # The real-world cases we generated must be present.
     ids = {s["id"] for s in samples}
-    assert {"hevc10_720p_aac_mkv", "h264_dts", "h264_ac3"} <= ids
+    assert {
+        "h264_hi10p_1080p_mkv",  # anime 10-bit
+        "hevc10_2160p_hdr10_mkv",  # 4K HDR remux
+        "h264_pcm_mkv",  # lossless remux audio
+        "h264_dts",
+        "h264_ac3",
+    } <= ids
 
 
 def test_serves_a_sample_clip(tmp_path: Path) -> None:
