@@ -1,5 +1,7 @@
 from pathlib import Path
+from typing import cast
 
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from movora.api.app import create_app
@@ -16,7 +18,7 @@ def _gated_client(tmp_path: Path) -> TestClient:
 def _bearer_client(cookie_client: TestClient) -> TestClient:
     # A second client on the same app/DB with no cookie — authenticates via header.
     bearer = TestClient(cookie_client.app)
-    cookie_client.app.dependency_overrides.clear()  # conftest re-adds it on init
+    cast(FastAPI, cookie_client.app).dependency_overrides.clear()  # conftest re-adds it on init
     return bearer
 
 

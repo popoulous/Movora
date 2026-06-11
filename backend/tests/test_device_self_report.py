@@ -2,7 +2,9 @@
 (no device id), and the report is stored on the device."""
 
 from pathlib import Path
+from typing import cast
 
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from movora.api.app import create_app
@@ -22,7 +24,7 @@ def test_device_self_reports_capabilities_via_bearer(tmp_path: Path) -> None:
     token = client.post("/api/devices", json={"name": "TV"}).json()["token"]
 
     bearer = TestClient(client.app)
-    client.app.dependency_overrides.clear()  # conftest re-adds the bypass on init
+    cast(FastAPI, client.app).dependency_overrides.clear()  # conftest re-adds the bypass on init
     auth = {"Authorization": f"Bearer {token}"}
 
     report = {
@@ -49,5 +51,5 @@ def test_self_report_requires_a_device_token(tmp_path: Path) -> None:
     client = _gated_client(tmp_path)
     client.post("/api/auth/setup", json={"username": "admin", "password": "pw"})
     bearer = TestClient(client.app)
-    client.app.dependency_overrides.clear()
+    cast(FastAPI, client.app).dependency_overrides.clear()
     assert bearer.post("/api/devices/me/capabilities", json={"probe": {}}).status_code == 401

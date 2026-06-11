@@ -1,5 +1,7 @@
 from pathlib import Path
+from typing import cast
 
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 import movora.api.device_routes as dr
@@ -43,7 +45,7 @@ def test_pairing_flow_end_to_end(tmp_path: Path) -> None:
 
     # The collected token authenticates as a bearer.
     bearer = TestClient(client.app)
-    client.app.dependency_overrides.clear()
+    cast(FastAPI, client.app).dependency_overrides.clear()
     assert (
         bearer.get("/api/home", headers={"Authorization": f"Bearer {token}"}).status_code == 200
     )
@@ -61,7 +63,7 @@ def test_approve_needs_auth_and_valid_code(tmp_path: Path) -> None:
     # A real code exists, but approval requires a logged-in user.
     code = client.post("/api/devices/pair/start", json={}).json()["code"]
     anon = TestClient(client.app)
-    client.app.dependency_overrides.clear()
+    cast(FastAPI, client.app).dependency_overrides.clear()
     assert anon.post("/api/devices/pair/approve", json={"code": code}).status_code == 401
     # ...and an unnamed device falls back to a default name once approved.
     client.post("/api/devices/pair/approve", json={"code": code})
