@@ -217,6 +217,9 @@ def record_web_variant(session: Session, media_file: MediaFile, output: Path) ->
                 status=VariantStatus.READY,
                 quality_score=DEFAULT_RECIPE.quality_score,
                 source_fingerprint=src_fp,
+                video_codec=DEFAULT_RECIPE.video_codec,
+                audio_codec=DEFAULT_RECIPE.audio_codec,
+                container=DEFAULT_RECIPE.container,
             )
         )
     else:
@@ -224,6 +227,9 @@ def record_web_variant(session: Session, media_file: MediaFile, output: Path) ->
         existing.status = VariantStatus.READY
         existing.quality_score = DEFAULT_RECIPE.quality_score
         existing.source_fingerprint = src_fp
+        existing.video_codec = DEFAULT_RECIPE.video_codec
+        existing.audio_codec = DEFAULT_RECIPE.audio_codec
+        existing.container = DEFAULT_RECIPE.container
 
 
 def _track_progress(

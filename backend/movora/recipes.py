@@ -65,3 +65,14 @@ DEFAULT_RECIPE = WEB_H264
 
 def get_recipe(recipe_id: str) -> EncodingRecipe | None:
     return RECIPES.get(recipe_id)
+
+
+def recipe_id_for(container: str, video_codec: str, audio_codec: str) -> str:
+    """A stable id for a surgically-built device variant, from its output streams.
+
+    Device variants don't map to a static recipe (the target depends on the source —
+    a copied HEVC here, a re-encoded H.264 there), so the id is derived from the output
+    tuple, e.g. ``mkv-hevc-10-ac3@1``. The selector matches on the variant's actual codec
+    columns, not this id, so ids outside ``RECIPES`` are fine.
+    """
+    return f"{container}-{video_codec}-{audio_codec}@1"

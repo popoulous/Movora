@@ -211,6 +211,12 @@ class MediaVariant(Base):
     path: Mapped[str]
     status: Mapped[VariantStatus] = mapped_column(default=VariantStatus.PREPARING)
     quality_score: Mapped[int] = mapped_column(default=0)  # higher = closer to source
+    # The variant's actual output streams, so the selector can match it to a device's
+    # profile directly (a surgical variant may copy the source's HEVC/10-bit video).
+    # video_codec is a bit-depth-aware token (e.g. "h264", "hevc-10"; see compat.video_token).
+    video_codec: Mapped[str | None] = mapped_column(default=None)
+    audio_codec: Mapped[str | None] = mapped_column(default=None)
+    container: Mapped[str | None] = mapped_column(default=None)  # bare suffix, e.g. "mp4"
     # mtime+size of the source when this variant was built; a mismatch on scan -> stale.
     source_fingerprint: Mapped[str | None] = mapped_column(default=None)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())

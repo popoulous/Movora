@@ -144,14 +144,34 @@ def _container_ok(profile: CapabilityProfile, container: str | None) -> bool:
     return not profile.containers or container is None or container in profile.containers
 
 
-def _profile_plays(
-    profile: CapabilityProfile, video_codec: str, audio_codec: str, container: str
-) -> bool:
-    return (
-        video_codec in profile.video_codecs
-        and audio_codec in profile.audio_codecs
+def _variant_streams(variant: MediaVariant) -> tuple[str | None, str | None, str | None]:
+    """A variant's actual (video token, audio token, container).
+
+    Reads the codec columns (a surgical device variant may copy the source's HEVC/10-bit
+    video, so its real codecs live on the row), falling back to its recipe when the
+    columns weren't populated — legacy web-variant rows on a create_all DB that never
+    ran the backfill.
+    """
+    if variant.video_codec or variant.audio_codec or variant.container:
+        return (variant.video_codec, audio_token(variant.audio_codec), variant.container)
+    recipe = get_recipe(variant.recipe_id)
+    if recipe is None:
+        return (None, None, None)
+    return (recipe.video_codec, recipe.audio_codec, recipe.container)
+
+
+def _variant_plays(profile: CapabilityProfile, variant: MediaVariant) -> tuple[bool, str]:
+    """Whether the profile can play this variant, and the media type to serve it as."""
+    video, audio, container = _variant_streams(variant)
+    if video is None and audio is None and container is None:
+        return False, ""  # unknown variant (no columns, unknown recipe)
+    ok = (
+        (video is None or video in profile.video_codecs)
+        and (audio is None or audio in profile.audio_codecs)
         and _container_ok(profile, container)
     )
+    media_type = _MEDIA_TYPE_BY_CONTAINER.get((container or "").lower(), "application/octet-stream")
+    return ok, media_type
 
 
 def _original_playable(profile: CapabilityProfile, source: SourceStreams) -> bool:
@@ -195,15 +215,13 @@ def select_source(
     for variant in variants:
         if variant.status is not VariantStatus.READY:
             continue
-        recipe = get_recipe(variant.recipe_id)
-        if recipe is None:
-            continue
-        if not _profile_plays(prof, recipe.video_codec, recipe.audio_codec, recipe.container):
+        plays, media_type = _variant_plays(prof, variant)
+        if not plays:
             continue
         if not Path(variant.path).is_file():
             continue  # row exists but the file is gone — don't offer it
         if best is None or variant.quality_score > best[0].quality_score:
-            best = (variant, recipe.media_type)
+            best = (variant, media_type)
 
     if best is not None:
         variant, media_type = best
