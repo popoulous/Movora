@@ -632,12 +632,14 @@ def normalize_series(
     series = session.get(Series, series_id)
     if series is None:
         raise HTTPException(status_code=404, detail="series not found")
+    # Queue in season/episode order so the worker normalizes a series in episode order.
     media_ids = list(
         session.scalars(
             select(MediaFile.id)
             .join(Episode, MediaFile.episode_id == Episode.id)
             .join(Season, Episode.season_id == Season.id)
             .where(Season.series_id == series_id)
+            .order_by(Season.number, Episode.number, MediaFile.id)
         )
     )
     enqueue_normalize(session, media_ids)
@@ -650,7 +652,17 @@ def normalize_all(
     session: SessionDep, request: Request, background: BackgroundTasks, admin: AdminDep
 ) -> dict[str, str]:
     """Queue every file in the library that still needs optimizing (background)."""
-    enqueue_normalize(session, list(session.scalars(select(MediaFile.id))))
+    # Series-then-episode order so each show normalizes in episode order.
+    media_ids = list(
+        session.scalars(
+            select(MediaFile.id)
+            .join(Episode, MediaFile.episode_id == Episode.id)
+            .join(Season, Episode.season_id == Season.id)
+            .join(Series, Season.series_id == Series.id)
+            .order_by(Series.id, Season.number, Episode.number, MediaFile.id)
+        )
+    )
+    enqueue_normalize(session, media_ids)
     _run_worker(request, background)
     return {"status": "queued"}
 

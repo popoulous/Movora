@@ -23,6 +23,7 @@ from movora.db.models import (
 )
 from movora.device_variants import enforce_retention, ensure_device_variants
 from movora.domain import CapabilityProfile
+from movora.normalize import PRIORITY_DEVICE_NOW, PRIORITY_PREFETCH
 
 TV = CapabilityProfile(
     video_codecs=("av1", "h264", "hevc", "hevc-10", "mpeg4", "vp9"),
@@ -70,8 +71,8 @@ def test_ensure_queues_current_and_ahead(tmp_path: Path, monkeypatch: pytest.Mon
         )
         assert len(tasks) == 3  # current + 2 ahead, not the 4th episode
         assert tasks[0].media_file_id == eps[0].media_files[0].id
-        assert tasks[0].priority == 0  # current episode: top priority
-        assert all(task.priority == 2 for task in tasks[1:])  # prefetch
+        assert tasks[0].priority == PRIORITY_DEVICE_NOW  # current episode: top priority
+        assert all(task.priority == PRIORITY_PREFETCH for task in tasks[1:])  # prefetch
         assert all(task.recipe_id == "mp4-h264-aac@1" for task in tasks)
         # Idempotent: a second sweep with the same in-flight tasks queues nothing new.
         assert ensure_device_variants(session, TV, device.id, eps[0], ahead=2) is False

@@ -66,18 +66,20 @@ ProgressCallback = Callable[[int, int | None], None]
 _ACTIVE = (JobStatus.PENDING, JobStatus.RUNNING)
 _MAX_ATTEMPTS = 3  # bounded auto-retry before a task is marked failed
 
-# Two independent workers so scan/metadata (I/O + network) run *concurrently* with
-# transcoding (GPU/CPU) instead of queueing behind it.
-_normalize_lock = threading.Lock()
-_light_lock = threading.Lock()
-# The heavy worker runs one transcode at a time: web normalize + device variant prepare.
-_NORMALIZE_TYPES = (TaskType.NORMALIZE, TaskType.PREPARE_VARIANT)
-_LIGHT_TYPES = (TaskType.SCAN, TaskType.METADATA, TaskType.THUMBNAIL, TaskType.INTRO)
-# Heavy-worker drain priority (lower runs first): a device you're trying to watch now
-# preempts a manual/web normalize, which preempts prefetch-ahead.
+# A single serial worker drains every task type, one at a time, so a scan never runs
+# alongside a transcode and the queue is predictable. A running task isn't preempted,
+# but the *next* task picked is always the highest priority pending one — so a freshly
+# queued library scan jumps ahead of queued normalizes.
+_worker_lock = threading.Lock()
+# Drain priority (lower runs first). A device you're trying to watch now beats
+# everything; then scan > metadata > thumbnails > intro > web normalize > prefetch.
 PRIORITY_DEVICE_NOW = 0
-PRIORITY_NORMALIZE = 1
-PRIORITY_PREFETCH = 2
+PRIORITY_SCAN = 10
+PRIORITY_METADATA = 20
+PRIORITY_THUMBNAIL = 30
+PRIORITY_INTRO = 40
+PRIORITY_NORMALIZE = 50
+PRIORITY_PREFETCH = 60
 # Production runs the workers in threads; tests set this False to run them inline.
 _run_in_thread = True
 
@@ -354,7 +356,7 @@ def should_normalize(media_file: MediaFile) -> bool:
 
 def enqueue_scan(session: Session, library_id: int) -> None:
     if not _has_active_library_task(session, library_id, TaskType.SCAN):
-        session.add(Task(type=TaskType.SCAN, library_id=library_id))
+        session.add(Task(type=TaskType.SCAN, library_id=library_id, priority=PRIORITY_SCAN))
         session.commit()
 
 
@@ -368,13 +370,17 @@ def enqueue_scan_all(session: Session) -> int:
 
 def enqueue_metadata(session: Session, library_id: int) -> None:
     if not _has_active_library_task(session, library_id, TaskType.METADATA):
-        session.add(Task(type=TaskType.METADATA, library_id=library_id))
+        session.add(
+            Task(type=TaskType.METADATA, library_id=library_id, priority=PRIORITY_METADATA)
+        )
         session.commit()
 
 
 def enqueue_thumbnail(session: Session, library_id: int) -> None:
     if not _has_active_library_task(session, library_id, TaskType.THUMBNAIL):
-        session.add(Task(type=TaskType.THUMBNAIL, library_id=library_id))
+        session.add(
+            Task(type=TaskType.THUMBNAIL, library_id=library_id, priority=PRIORITY_THUMBNAIL)
+        )
         session.commit()
 
 
@@ -403,7 +409,9 @@ def enqueue_intro(session: Session, library_id: int) -> int:
         ).first()
         if active is not None:  # already in flight — don't double-queue
             continue
-        session.add(Task(type=TaskType.INTRO, media_file_id=media_file_id))
+        session.add(
+            Task(type=TaskType.INTRO, media_file_id=media_file_id, priority=PRIORITY_INTRO)
+        )
         queued += 1
     session.commit()
     return queued
@@ -556,8 +564,7 @@ def _has_active_library_task(session: Session, library_id: int, task_type: TaskT
 def start_workers(
     session_factory: sessionmaker[Session], output_dir: Path, registry: MetadataRegistry
 ) -> None:
-    """Start both workers: transcoding (serial) and scan/metadata (concurrent)."""
-    _spawn(run_light_worker, session_factory, output_dir, registry)
+    """Start the single serial worker (one task at a time, highest priority first)."""
     _spawn(run_worker, session_factory, output_dir, registry)
 
 
@@ -588,15 +595,23 @@ def start_rescan_timer(
 def run_worker(
     session_factory: sessionmaker[Session], output_dir: Path, registry: MetadataRegistry
 ) -> None:
-    """Drain normalize tasks serially — one transcode at a time."""
-    _drain(session_factory, output_dir, registry, _NORMALIZE_TYPES, _normalize_lock)
-
-
-def run_light_worker(
-    session_factory: sessionmaker[Session], output_dir: Path, registry: MetadataRegistry
-) -> None:
-    """Drain scan/metadata tasks, concurrently with transcoding."""
-    _drain(session_factory, output_dir, registry, _LIGHT_TYPES, _light_lock)
+    """Drain every pending task serially, highest priority first."""
+    if not _worker_lock.acquire(blocking=False):
+        return  # already draining
+    try:
+        while True:
+            with session_factory() as session:
+                task = session.scalars(
+                    select(Task)
+                    .where(Task.status == JobStatus.PENDING)
+                    .order_by(Task.priority, Task.id)
+                ).first()
+                if task is None:
+                    return
+                task_id = task.id
+            _process_task(session_factory, task_id, output_dir, registry)
+    finally:
+        _worker_lock.release()
 
 
 def _spawn(target: Callable[..., None], *args: object) -> None:
@@ -604,34 +619,6 @@ def _spawn(target: Callable[..., None], *args: object) -> None:
         threading.Thread(target=target, args=args, daemon=True).start()
     else:
         target(*args)  # tests run workers inline for determinism
-
-
-def _drain(
-    session_factory: sessionmaker[Session],
-    output_dir: Path,
-    registry: MetadataRegistry,
-    types: tuple[TaskType, ...],
-    lock: threading.Lock,
-) -> None:
-    if not lock.acquire(blocking=False):
-        return  # this worker is already draining its queue
-    try:
-        while True:
-            with session_factory() as session:
-                task = session.scalars(
-                    select(Task)
-                    .where(Task.status == JobStatus.PENDING, Task.type.in_(types))
-                    .order_by(Task.priority, Task.id)
-                ).first()
-                if task is None:
-                    return
-                task_id = task.id
-            _process_task(session_factory, task_id, output_dir, registry)
-            if TaskType.NORMALIZE not in types:
-                # a scan may have queued transcodes — make sure that worker runs
-                _spawn(run_worker, session_factory, output_dir, registry)
-    finally:
-        lock.release()
 
 
 def _process_task(
