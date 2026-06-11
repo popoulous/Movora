@@ -2,12 +2,11 @@ import React, { useEffect, useRef, useState } from "react";
 import { useTvInput } from "../hooks";
 import { useDevice } from "../context/DeviceContext";
 import { theme } from "../theme";
+import { Icon } from "../components/Icon";
 import {
   fetchSamples,
-  probeAudio,
   probePlayback,
   probeSubtitle,
-  resumeAudioContext,
   sampleUrl,
   type ProbeResult,
   type ServerSample,
@@ -18,32 +17,28 @@ interface Props {
   onBack: () => void;
 }
 
+// Auto-probe state for the passive (video/container/subtitle) categories.
 type ProbeState = "pending" | "playing" | ProbeResult;
+type Answer = "yes" | "no";
 
 const CAT_LABEL: Record<string, string> = {
   video: "Videó codecek / felbontás",
   container: "Konténerek",
-  audio: "Audió codecek (van-e tényleg hang)",
+  audio: "Audió codecek — hallgasd meg (van-e tényleg hang)",
   subtitle: "Feliratok",
 };
 const CATEGORIES = ["video", "container", "audio", "subtitle"];
 
 function verdict(category: string, s: ProbeState): { text: string; color: string } {
   if (s === "pending") return { text: "…", color: theme.muted };
-  if (s === "playing") return { text: "▶ próba…", color: "#c084fc" };
+  if (s === "playing") return { text: "próba…", color: "#c084fc" };
   if (category === "subtitle") {
     return (s.cues ?? 0) > 0
-      ? { text: `✓ Renderelhető (${s.cues} sor)`, color: "#4ade80" }
-      : { text: "✗ Konvertálás kell", color: "#fbbf24" };
+      ? { text: `Renderelhető (${s.cues} sor)`, color: "#4ade80" }
+      : { text: "Konvertálás kell", color: "#fbbf24" };
   }
-  if (!s.played) return { text: "✗ Nem megy", color: "#f87171" };
-  if (category === "audio") {
-    const rms = s.audioRms !== null ? ` (rms ${Math.round(s.audioRms)})` : "";
-    if (s.hasAudio === true) return { text: `✓ Hang OK${rms}`, color: "#4ade80" };
-    if (s.hasAudio === false) return { text: `✗ Nincs hang${rms}`, color: "#f87171" };
-    return { text: "✓ Lejátszható (hang nem mérhető)", color: "#fbbf24" };
-  }
-  return { text: "✓ Megy", color: "#4ade80" };
+  if (!s.played) return { text: "Nem megy", color: "#f87171" };
+  return { text: "Megy", color: "#4ade80" };
 }
 
 function Row({ label, sub, right }: { label: string; sub?: string; right: { text: string; color: string } }): React.JSX.Element {
@@ -70,44 +65,129 @@ function Row({ label, sub, right }: { label: string; sub?: string; right: { text
   );
 }
 
+function playBtnStyle(active: boolean, playing: boolean): React.CSSProperties {
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 46,
+    height: 46,
+    borderRadius: 999,
+    color: "#fff",
+    background: playing ? theme.gradient : theme.surfaceStrong,
+    border: active ? `2px solid ${theme.accent}` : `1px solid ${theme.border}`,
+    boxShadow: active ? "0 0 0 3px rgba(122,77,255,0.4)" : "none",
+    flexShrink: 0,
+  };
+}
+
+function pillStyle(active: boolean, selected: Answer | null, kind: Answer): React.CSSProperties {
+  const base: React.CSSProperties = {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "0.5rem 1.2rem",
+    borderRadius: 999,
+    fontSize: "0.95rem",
+    fontWeight: 700,
+    color: theme.text,
+    border: `1px solid ${theme.border}`,
+    background: theme.surface,
+    marginLeft: "0.55rem",
+    flexShrink: 0,
+  };
+  if (selected === kind) {
+    base.background = kind === "yes" ? "#15803d" : "#b91c1c";
+    base.color = "#fff";
+    base.border = `1px solid ${kind === "yes" ? "#15803d" : "#b91c1c"}`;
+  }
+  if (active) {
+    base.border = `2px solid ${theme.accent}`;
+    base.boxShadow = "0 0 0 3px rgba(122,77,255,0.4)";
+  }
+  return base;
+}
+
 export default function CapabilityView({ onBack }: Props): React.JSX.Element {
   const { config, api } = useDevice();
   const base = config?.serverUrl ?? "";
   const [samples, setSamples] = useState<ServerSample[]>([]);
-  const [results, setResults] = useState<Record<string, ProbeState>>({});
-  const [sent, setSent] = useState<"idle" | "ok" | "error">("idle");
+  const [results, setResults] = useState<Record<string, ProbeState>>({}); // video/container/subtitle
+  const [answers, setAnswers] = useState<Record<string, Answer>>({}); // audio, answered by ear
+  const [playingId, setPlayingId] = useState<string | null>(null);
+  const [sent, setSent] = useState<"idle" | "sending" | "ok" | "error">("idle");
+  const [fRow, setFRow] = useState(0);
+  const [fCol, setFCol] = useState(0);
+  const audioElRef = useRef<HTMLVideoElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const rowRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
-  // Real probe: play each sample (video/container), measure real audio output
-  // (audio), or parse cues (subtitle). Sequential; then report the profile back.
+  const audioSamples = samples.filter((s) => s.category === "audio");
+  const sendRow = audioSamples.length; // the focus row of the "send" button
+  const rowCount = audioSamples.length + 1;
+  const answered = audioSamples.filter((s) => answers[s.id] !== undefined).length;
+
+  // Auto-probe only the categories we *can* measure (video/container/subtitle).
+  // Audio is confirmed by ear below, so it is intentionally skipped here.
   useEffect(() => {
     if (!base) return undefined;
     let cancelled = false;
     void (async () => {
-      resumeAudioContext(); // best-effort: the Enter that opened this screen is the gesture
       const list = await fetchSamples(base);
       if (cancelled) return;
       setSamples(list);
-      const collected: Record<string, ProbeResult> = {};
       for (const s of list) {
+        if (s.category === "audio") continue;
         if (cancelled) return;
         setResults((r) => ({ ...r, [s.id]: "playing" }));
         const url = sampleUrl(base, s.id);
-        const res =
-          s.category === "audio"
-            ? await probeAudio(url)
-            : s.category === "subtitle"
-              ? await probeSubtitle(url)
-              : await probePlayback(url);
+        const res = s.category === "subtitle" ? await probeSubtitle(url) : await probePlayback(url);
         if (cancelled) return;
-        collected[s.id] = res;
         setResults((r) => ({ ...r, [s.id]: res }));
       }
-      if (cancelled || !api) return;
-      const probe: Record<string, CapabilityProbeOutcome> = {};
-      for (const s of list) {
-        const r = collected[s.id];
-        if (r) {
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [base]);
+
+  // Keep the focused row in view as the user moves the D-pad.
+  useEffect(() => {
+    rowRefs.current.get(fRow)?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [fRow, audioSamples.length]);
+
+  const togglePlay = (s: ServerSample): void => {
+    const el = audioElRef.current;
+    if (el === null) return;
+    if (playingId === s.id) {
+      el.pause();
+      setPlayingId(null);
+      return;
+    }
+    el.src = sampleUrl(base, s.id);
+    el.currentTime = 0;
+    el.volume = 1;
+    void el.play().catch(() => undefined);
+    setPlayingId(s.id);
+  };
+
+  const doSend = async (): Promise<void> => {
+    if (!api) return;
+    setSent("sending");
+    const probe: Record<string, CapabilityProbeOutcome> = {};
+    for (const s of samples) {
+      if (s.category === "audio") {
+        const a = answers[s.id];
+        probe[s.id] = {
+          played: a !== undefined, // we got a verdict for it
+          video_bytes: 0,
+          audio_bytes: 0,
+          has_audio: a === undefined ? null : a === "yes", // by-ear answer
+          audio_rms: null,
+          cues: null,
+        };
+      } else {
+        const r = results[s.id];
+        if (r !== undefined && typeof r === "object") {
           probe[s.id] = {
             played: r.played,
             video_bytes: r.videoBytes,
@@ -118,62 +198,94 @@ export default function CapabilityView({ onBack }: Props): React.JSX.Element {
           };
         }
       }
-      const cues = (id: string): boolean => (collected[id]?.cues ?? 0) > 0;
-      const body: CapabilityReportBody = {
-        probe,
-        supports_vtt: cues("vtt_subtitle_test"),
-        supports_srt: cues("srt_subtitle_test"),
-        supports_ass: cues("ass_subtitle_test"),
-        user_agent: navigator.userAgent,
-      };
-      try {
-        await api.reportCapabilities(body);
-        if (!cancelled) setSent("ok");
-      } catch {
-        if (!cancelled) setSent("error");
-      }
-    })();
-    return () => {
-      cancelled = true;
+    }
+    const cueOk = (id: string): boolean => {
+      const r = results[id];
+      return r !== undefined && typeof r === "object" ? (r.cues ?? 0) > 0 : false;
     };
-  }, [base, api]);
+    const body: CapabilityReportBody = {
+      probe,
+      supports_vtt: cueOk("vtt_subtitle_test"),
+      supports_srt: cueOk("srt_subtitle_test"),
+      supports_ass: cueOk("ass_subtitle_test"),
+      user_agent: navigator.userAgent,
+    };
+    try {
+      await api.reportCapabilities(body);
+      setSent("ok");
+    } catch {
+      setSent("error");
+    }
+  };
+
+  const activate = (): void => {
+    if (fRow === sendRow) {
+      void doSend();
+      return;
+    }
+    const s = audioSamples[fRow];
+    if (s === undefined) return;
+    if (fCol === 0) togglePlay(s);
+    else if (fCol === 1) setAnswers((a) => ({ ...a, [s.id]: "yes" }));
+    else if (fCol === 2) setAnswers((a) => ({ ...a, [s.id]: "no" }));
+  };
 
   const onKey = (e: KeyboardEvent): void => {
-    resumeAudioContext(); // any remote key counts as the gesture that unlocks audio
-    if (e.key === "ArrowDown") {
+    const k = e.key;
+    if (k === "ArrowDown") {
       e.preventDefault();
-      scrollRef.current?.scrollBy({ top: 240, behavior: "smooth" });
-    } else if (e.key === "ArrowUp") {
+      if (fRow < rowCount - 1) setFRow(fRow + 1);
+      else scrollRef.current?.scrollBy({ top: 280, behavior: "smooth" });
+    } else if (k === "ArrowUp") {
       e.preventDefault();
-      scrollRef.current?.scrollBy({ top: -240, behavior: "smooth" });
+      if (fRow > 0) setFRow(fRow - 1);
+      else scrollRef.current?.scrollBy({ top: -280, behavior: "smooth" });
+    } else if (k === "ArrowRight") {
+      e.preventDefault();
+      if (fRow < sendRow) setFCol(Math.min(fCol + 1, 2));
+    } else if (k === "ArrowLeft") {
+      e.preventDefault();
+      if (fRow < sendRow) setFCol(Math.max(fCol - 1, 0));
+    } else if (k === "Enter") {
+      e.preventDefault();
+      activate();
     }
   };
   useTvInput(onKey, onBack);
 
-  const doneCount = samples.filter((s) => {
-    const r = results[s.id];
-    return r !== undefined && r !== "playing";
-  }).length;
-  const playingAudio = samples.find((s) => s.category === "audio" && results[s.id] === "playing") ?? null;
+  const playing = samples.find((s) => s.id === playingId) ?? null;
+  const sendLabel =
+    sent === "sending"
+      ? "Küldés…"
+      : sent === "ok"
+        ? "Elküldve — kész"
+        : sent === "error"
+          ? "Hiba — Enter az újraküldéshez"
+          : "Profil elküldése";
 
   return (
     <div ref={scrollRef} className="mv-app" style={{ height: "100vh", overflowY: "auto", padding: "2rem 2.5rem 3rem" }}>
+      <video
+        ref={audioElRef}
+        onEnded={() => setPlayingId(null)}
+        onError={() => setPlayingId(null)}
+        playsInline
+        style={{ position: "fixed", left: "-9999px", width: 1, height: 1 }}
+      />
+
       <div style={{ color: theme.muted, fontSize: "0.95rem", marginBottom: "0.5rem" }}>← Vissza</div>
-      <h1 style={{ fontSize: "1.8rem", fontWeight: 800, margin: "0 0 0.4rem", color: "#fff" }}>
-        Képességteszt {samples.length > 0 ? `(${doneCount}/${samples.length})` : ""}
-      </h1>
+      <h1 style={{ fontSize: "1.8rem", fontWeight: 800, margin: "0 0 0.4rem", color: "#fff" }}>Képességteszt</h1>
       <p style={{ color: theme.muted, fontSize: "0.85rem", margin: "0 0 1rem", maxWidth: 880 }}>
-        A TV ténylegesen lejátssza a szerver minta-klipjeit. A videónál a dekódolást, az audiónál a
-        <b style={{ color: theme.text }}> tényleges hangot</b> (Web Audio jel) — így a „kép megy, de nincs hang"
-        eset is kiderül —, a feliratnál a natív renderelést méri. A végén elküldi a profilt a szervernek.
+        A videó/konténer/felirat mintákat a TV automatikusan próbálja. Az <b style={{ color: theme.text }}>audiónál</b> nincs
+        megbízható gépi mérés ezen a TV-n, ezért minden mintát lejátszhatsz, és <b style={{ color: theme.text }}>füllel</b> jelölöd
+        be: <b style={{ color: theme.text }}>Igen</b> (szól) vagy <b style={{ color: theme.text }}>Nem</b> (néma). A végén a
+        <b style={{ color: theme.text }}> Profil elküldése</b> gomb küldi el a szervernek.
       </p>
 
       {!base && <p style={{ color: "#fbbf24", fontSize: "0.9rem" }}>Nincs szerverkapcsolat — előbb párosíts.</p>}
       {base && samples.length === 0 && <p style={{ color: theme.muted, fontSize: "0.9rem" }}>Minták betöltése…</p>}
-      {sent === "ok" && <p style={{ color: "#4ade80", fontSize: "0.9rem", fontWeight: 700 }}>✓ Profil elküldve a szervernek</p>}
-      {sent === "error" && <p style={{ color: "#f87171", fontSize: "0.9rem" }}>A profil küldése nem sikerült.</p>}
 
-      {playingAudio !== null && (
+      {playing !== null && (
         <div
           style={{
             position: "sticky",
@@ -186,9 +298,9 @@ export default function CapabilityView({ onBack }: Props): React.JSX.Element {
             margin: "0.4rem 0 1rem",
           }}
         >
-          <div style={{ fontSize: "1.15rem", fontWeight: 800, color: "#fff" }}>Most szól: {playingAudio.label}</div>
+          <div style={{ fontSize: "1.15rem", fontWeight: 800, color: "#fff" }}>Most szól: {playing.label}</div>
           <div style={{ fontSize: "0.85rem", color: theme.text }}>
-            Hallasz hangot? Ha NEM szól, ezt az audió-codecet a TV nem tudja.
+            Hallasz hangot? Jelöld be: Igen (szól) vagy Nem (néma).
           </div>
         </div>
       )}
@@ -199,14 +311,85 @@ export default function CapabilityView({ onBack }: Props): React.JSX.Element {
         return (
           <div key={cat} style={{ marginTop: "1.1rem", marginBottom: "0.4rem" }}>
             <div style={{ fontSize: "1rem", fontWeight: 700, color: "#fff", marginBottom: "0.5rem" }}>{CAT_LABEL[cat]}</div>
-            {items.map((s) => (
-              <Row key={s.id} label={s.label} sub={s.mime} right={verdict(cat, results[s.id] ?? "pending")} />
-            ))}
+            {cat === "audio"
+              ? items.map((s, i) => {
+                  const focused = fRow === i;
+                  const isPlaying = playingId === s.id;
+                  const ans = answers[s.id] ?? null;
+                  const av =
+                    ans === "yes"
+                      ? { text: "Van hang", color: "#4ade80" }
+                      : ans === "no"
+                        ? { text: "Nincs hang", color: "#f87171" }
+                        : { text: "Hallgasd meg", color: theme.muted };
+                  return (
+                    <div
+                      key={s.id}
+                      ref={(el) => {
+                        if (el) rowRefs.current.set(i, el);
+                        else rowRefs.current.delete(i);
+                      }}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        padding: "0.55rem 0.8rem",
+                        marginBottom: "0.45rem",
+                        background: theme.surface,
+                        border: focused ? "1px solid rgba(122,77,255,0.55)" : `1px solid ${theme.border}`,
+                        borderRadius: theme.radius,
+                      }}
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: "0.95rem", fontWeight: 600, color: theme.text }}>{s.label}</div>
+                        <div style={{ fontSize: "0.72rem", color: theme.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.mime}</div>
+                      </div>
+                      <div style={{ width: 110, textAlign: "right", marginRight: "0.9rem", fontSize: "0.88rem", fontWeight: 700, color: av.color }}>{av.text}</div>
+                      <div style={playBtnStyle(focused && fCol === 0, isPlaying)}>
+                        <Icon name={isPlaying ? "pause" : "play"} size={22} />
+                      </div>
+                      <div style={pillStyle(focused && fCol === 1, ans, "yes")}>Igen</div>
+                      <div style={pillStyle(focused && fCol === 2, ans, "no")}>Nem</div>
+                    </div>
+                  );
+                })
+              : items.map((s) => <Row key={s.id} label={s.label} sub={s.mime} right={verdict(cat, results[s.id] ?? "pending")} />)}
           </div>
         );
       })}
 
-      <div style={{ color: theme.muted, fontSize: "0.78rem", marginTop: "1rem" }}>▲▼ Görgetés · Back Vissza</div>
+      {samples.length > 0 && (
+        <div
+          ref={(el) => {
+            if (el) rowRefs.current.set(sendRow, el);
+            else rowRefs.current.delete(sendRow);
+          }}
+          style={{ marginTop: "1.6rem" }}
+        >
+          <div
+            style={{
+              display: "inline-block",
+              padding: "0.85rem 2.2rem",
+              borderRadius: theme.radius,
+              fontSize: "1.1rem",
+              fontWeight: 800,
+              color: "#fff",
+              background: sent === "ok" ? "#15803d" : theme.gradient,
+              border: fRow === sendRow ? "2px solid #fff" : "2px solid transparent",
+              boxShadow: fRow === sendRow ? "0 0 0 4px rgba(122,77,255,0.45)" : "none",
+              opacity: sent === "sending" ? 0.7 : 1,
+            }}
+          >
+            {sendLabel}
+          </div>
+          <div style={{ color: theme.muted, fontSize: "0.82rem", marginTop: "0.5rem" }}>
+            Audió megválaszolva: {answered}/{audioSamples.length}
+          </div>
+        </div>
+      )}
+
+      <div style={{ color: theme.muted, fontSize: "0.78rem", marginTop: "1.2rem" }}>
+        ▲▼ Sorok · ◀▶ Lejátszás / Igen / Nem · Enter aktivál · Back Vissza
+      </div>
     </div>
   );
 }
