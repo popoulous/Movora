@@ -353,6 +353,7 @@ class TaskType(str, enum.Enum):
     NORMALIZE = "normalize"
     THUMBNAIL = "thumbnail"  # extract a representative frame per episode
     INTRO = "intro"  # detect intro/outro skip markers per episode
+    PREPARE_VARIANT = "prepare_variant"  # build a device-specific variant (plan §13)
 
 
 class Task(Base):
@@ -369,6 +370,12 @@ class Task(Base):
     type: Mapped[TaskType]
     media_file_id: Mapped[int | None] = mapped_column(ForeignKey("media_file.id"), default=None)
     library_id: Mapped[int | None] = mapped_column(ForeignKey("library.id"), default=None)
+    # PREPARE_VARIANT only: the target variant id and which device's profile to build for.
+    recipe_id: Mapped[str | None] = mapped_column(default=None)
+    device_id: Mapped[int | None] = mapped_column(default=None)
+    # Heavy-worker drain order (NORMALIZE + PREPARE_VARIANT), lowest first: 0 on-demand
+    # device prepare, 1 web normalize, 2 prefetch-ahead.
+    priority: Mapped[int] = mapped_column(default=0)
     status: Mapped[JobStatus] = mapped_column(default=JobStatus.PENDING)
     progress: Mapped[int] = mapped_column(default=0)  # 0-100
     attempts: Mapped[int] = mapped_column(default=0)  # for bounded auto-retry

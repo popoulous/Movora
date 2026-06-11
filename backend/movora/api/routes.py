@@ -57,6 +57,7 @@ from movora.db.models import (
     User,
     WatchState,
 )
+from movora.device_variants import run_device_prefetch
 from movora.domain import CapabilityProfile
 from movora.filesystem import list_directories
 from movora.home import SeriesOverview, home_overview
@@ -514,6 +515,7 @@ def episode_playback(
     episode_id: int,
     session: SessionDep,
     request: Request,
+    background: BackgroundTasks,
     user: CurrentUserDep,
     device: RequestDeviceDep,
 ) -> PlaybackInfo:
@@ -523,6 +525,17 @@ def episode_playback(
     season = episode.season
     series = season.series
     source = _playback_source(session, media_file, device)
+    if device is not None:
+        # Off the request: ensure this + the next few episodes have a device variant,
+        # and rotate old ones out (plan §13.2).
+        background.add_task(
+            run_device_prefetch,
+            request.app.state.session_factory,
+            _normalized_dir(request),
+            request.app.state.metadata_provider,
+            device.id,
+            episode_id,
+        )
     return PlaybackInfo(
         media_file_id=media_file.id,
         stream_url=f"/api/episodes/{episode_id}/stream",
@@ -928,6 +941,18 @@ def update_settings(
         settings_store.set_bool(session, settings_store.AUTO_SCAN, payload.auto_scan)
     if payload.tmdb_language is not None:
         settings_store.set_str(session, settings_store.TMDB_LANGUAGE, payload.tmdb_language)
+    if payload.device_prefetch is not None:
+        settings_store.set_bool(session, settings_store.DEVICE_PREFETCH, payload.device_prefetch)
+    if payload.device_retention is not None:
+        settings_store.set_bool(session, settings_store.DEVICE_RETENTION, payload.device_retention)
+    if payload.prepare_ahead_count is not None:
+        settings_store.set_int(
+            session, settings_store.PREPARE_AHEAD_COUNT, payload.prepare_ahead_count
+        )
+    if payload.retain_behind_count is not None:
+        settings_store.set_int(
+            session, settings_store.RETAIN_BEHIND_COUNT, payload.retain_behind_count
+        )
     return _read_settings(session)
 
 
@@ -938,4 +963,8 @@ def _read_settings(session: Session) -> SettingsRead:
         auto_detect_intro=settings_store.get_bool(session, settings_store.AUTO_DETECT_INTRO),
         auto_scan=settings_store.get_bool(session, settings_store.AUTO_SCAN),
         tmdb_language=settings_store.get_str(session, settings_store.TMDB_LANGUAGE),
+        device_prefetch=settings_store.get_bool(session, settings_store.DEVICE_PREFETCH),
+        device_retention=settings_store.get_bool(session, settings_store.DEVICE_RETENTION),
+        prepare_ahead_count=settings_store.get_int(session, settings_store.PREPARE_AHEAD_COUNT),
+        retain_behind_count=settings_store.get_int(session, settings_store.RETAIN_BEHIND_COUNT),
     )

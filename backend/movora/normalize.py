@@ -14,6 +14,7 @@ to a data dir outside the library, is ffprobe-verified, and recorded on the file
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import shutil
 import signal
@@ -30,8 +31,9 @@ from sqlalchemy.orm import Session, selectinload, sessionmaker
 from sqlalchemy.orm.exc import StaleDataError
 
 from movora import settings_store
-from movora.compat import fingerprint
+from movora.compat import fingerprint, parse_capabilities
 from movora.db.models import (
+    Device,
     Episode,
     JobStatus,
     Library,
@@ -43,6 +45,8 @@ from movora.db.models import (
     TaskType,
     VariantStatus,
 )
+from movora.device_planner import DeviceVariantPlanner, VariantTarget
+from movora.domain import CapabilityProfile
 from movora.encoders import detect_h264_encoder
 from movora.enrich import enrich_library
 from movora.ffprobe import probe_media
@@ -50,7 +54,7 @@ from movora.interfaces import NormalizationPlanner
 from movora.intro import detect_episode
 from movora.metadata import MetadataRegistry, TmdbProvider
 from movora.normalization import WEB_TARGET, RemuxFirstPlanner, needs_normalization
-from movora.recipes import DEFAULT_RECIPE
+from movora.recipes import DEFAULT_RECIPE, recipe_id_for
 from movora.scanner import scan_library
 from movora.streaming import DirectPlayStrategy
 from movora.subtitles import preserve_embedded_assets
@@ -66,8 +70,14 @@ _MAX_ATTEMPTS = 3  # bounded auto-retry before a task is marked failed
 # transcoding (GPU/CPU) instead of queueing behind it.
 _normalize_lock = threading.Lock()
 _light_lock = threading.Lock()
-_NORMALIZE_TYPES = (TaskType.NORMALIZE,)
+# The heavy worker runs one transcode at a time: web normalize + device variant prepare.
+_NORMALIZE_TYPES = (TaskType.NORMALIZE, TaskType.PREPARE_VARIANT)
 _LIGHT_TYPES = (TaskType.SCAN, TaskType.METADATA, TaskType.THUMBNAIL, TaskType.INTRO)
+# Heavy-worker drain priority (lower runs first): a device you're trying to watch now
+# preempts a manual/web normalize, which preempts prefetch-ahead.
+PRIORITY_DEVICE_NOW = 0
+PRIORITY_NORMALIZE = 1
+PRIORITY_PREFETCH = 2
 # Production runs the workers in threads; tests set this False to run them inline.
 _run_in_thread = True
 
@@ -151,9 +161,39 @@ def normalize_media_file(
     args = planner.plan(probe, WEB_TARGET)
     output_dir.mkdir(parents=True, exist_ok=True)
     output = output_dir / f"{media_file.id}.mp4"
-    partial = output.with_suffix(".part.mp4")
     duration = _as_float(probe.get("duration"))
+    _ffmpeg_transcode(
+        ffmpeg, source, args, output, media_file.id, duration,
+        on_progress=on_progress, on_start=on_start,
+        verify=lambda p: p is not None and p.get("video_codec") == "h264",
+    )
+    media_file.normalized_path = str(output)
+    media_file.is_normalized = True
+    record_web_variant(session, media_file, output)
+    session.commit()
+    return output
 
+
+def _ffmpeg_transcode(
+    ffmpeg: str,
+    source: Path,
+    args: list[str],
+    output: Path,
+    media_file_id: int,
+    duration: float | None,
+    *,
+    on_progress: ProgressCallback | None,
+    on_start: Callable[[int], None] | None,
+    verify: Callable[[dict[str, object] | None], bool],
+) -> None:
+    """Run ffmpeg (source -> output) with the cancel/pid/progress wiring, then verify.
+
+    Shared by the web normalizer and the device-variant builder: writes to a ``.part``
+    sibling, verifies the result, and only then atomically replaces the output — so a
+    killed/failed run never leaves a half-written file in place.
+    """
+    output.parent.mkdir(parents=True, exist_ok=True)
+    partial = output.with_suffix(".part" + output.suffix)
     proc = subprocess.Popen(
         [ffmpeg, "-nostdin", "-y", "-i", str(source), *args,
          "-progress", "pipe:1", "-nostats", "-loglevel", "error", str(partial)],
@@ -166,7 +206,7 @@ def normalize_media_file(
     )
     global _active
     with _active_lock:
-        _active = (media_file.id, proc)
+        _active = (media_file_id, proc)
     try:
         if on_start is not None:
             on_start(proc.pid)  # record the pid so another process can cancel it
@@ -174,23 +214,15 @@ def normalize_media_file(
         stderr = proc.stderr.read() if proc.stderr is not None else ""
         if proc.wait() != 0:
             raise RuntimeError(f"ffmpeg failed: {stderr[-500:]}")
-
-        out_probe = probe_media(partial)
-        if out_probe is None or out_probe.get("video_codec") != "h264":
-            raise RuntimeError("normalized output failed verification")
+        if not verify(probe_media(partial)):
+            raise RuntimeError("transcoded output failed verification")
     except BaseException:
         partial.unlink(missing_ok=True)  # killed/failed/cancelled — drop the partial
         raise
     finally:
         with _active_lock:
             _active = None
-
     partial.replace(output)
-    media_file.normalized_path = str(output)
-    media_file.is_normalized = True
-    record_web_variant(session, media_file, output)
-    session.commit()
-    return output
 
 
 def record_web_variant(session: Session, media_file: MediaFile, output: Path) -> None:
@@ -230,6 +262,47 @@ def record_web_variant(session: Session, media_file: MediaFile, output: Path) ->
         existing.video_codec = DEFAULT_RECIPE.video_codec
         existing.audio_codec = DEFAULT_RECIPE.audio_codec
         existing.container = DEFAULT_RECIPE.container
+
+
+# Device variants are surgical (near-source) but not the untouched original, so they
+# rank below a Direct-Play original (quality 100) and the web recipe (90) is irrelevant
+# here since the selector compares the original first.
+_DEVICE_VARIANT_QUALITY = 80
+
+
+def record_variant(
+    session: Session, media_file: MediaFile, recipe_id: str, output: Path, target: VariantTarget
+) -> None:
+    """Upsert a device-specific MediaVariant with its real output codecs (plan §13)."""
+    existing = session.scalar(
+        select(MediaVariant).where(
+            MediaVariant.media_file_id == media_file.id,
+            MediaVariant.recipe_id == recipe_id,
+        )
+    )
+    src_fp = fingerprint(Path(media_file.path))
+    if existing is None:
+        session.add(
+            MediaVariant(
+                media_file_id=media_file.id,
+                recipe_id=recipe_id,
+                path=str(output),
+                status=VariantStatus.READY,
+                quality_score=_DEVICE_VARIANT_QUALITY,
+                source_fingerprint=src_fp,
+                video_codec=target.video_codec,
+                audio_codec=target.audio_codec,
+                container=target.container,
+            )
+        )
+    else:
+        existing.path = str(output)
+        existing.status = VariantStatus.READY
+        existing.quality_score = _DEVICE_VARIANT_QUALITY
+        existing.source_fingerprint = src_fp
+        existing.video_codec = target.video_codec
+        existing.audio_codec = target.audio_codec
+        existing.container = target.container
 
 
 def _track_progress(
@@ -363,10 +436,42 @@ def enqueue_normalize(session: Session, media_file_ids: list[int]) -> int:
             _reset(failed[-1])  # retry the latest failed attempt in place
             failed[-1].attempts = 0  # a manual re-queue is a fresh start
         else:
-            session.add(Task(type=TaskType.NORMALIZE, media_file_id=media_file_id))
+            session.add(
+                Task(type=TaskType.NORMALIZE, media_file_id=media_file_id,
+                     priority=PRIORITY_NORMALIZE)
+            )
         queued += 1
     session.commit()
     return queued
+
+
+def enqueue_prepare_variant(
+    session: Session, media_file_id: int, device_id: int, recipe_id: str, priority: int
+) -> bool:
+    """Queue a PREPARE_VARIANT unless one is already active for this (file, recipe).
+
+    The caller commits (so a prefetch sweep batches several). Returns True if queued.
+    """
+    active = session.scalar(
+        select(Task.id).where(
+            Task.type == TaskType.PREPARE_VARIANT,
+            Task.media_file_id == media_file_id,
+            Task.recipe_id == recipe_id,
+            Task.status.in_(_ACTIVE),
+        )
+    )
+    if active is not None:
+        return False
+    session.add(
+        Task(
+            type=TaskType.PREPARE_VARIANT,
+            media_file_id=media_file_id,
+            device_id=device_id,
+            recipe_id=recipe_id,
+            priority=priority,
+        )
+    )
+    return True
 
 
 def dedupe_tasks(session: Session) -> int:
@@ -417,11 +522,15 @@ def _reset(task: Task) -> None:
 
 
 def clean_partials(output_dir: Path) -> int:
-    """Remove orphaned .part.mp4 files left by an interrupted/killed transcode."""
+    """Remove orphaned ``.part`` files left by an interrupted/killed transcode.
+
+    Covers the web normalizer (``<id>.part.mp4``) and the device variants in the
+    ``variants/`` subdir (``<id>-<recipe>.part.<ext>``), hence the recursive glob.
+    """
     if not output_dir.is_dir():
         return 0
     removed = 0
-    for partial in output_dir.glob("*.part.mp4"):
+    for partial in output_dir.rglob("*.part.*"):
         with contextlib.suppress(OSError):
             partial.unlink()
             removed += 1
@@ -512,7 +621,7 @@ def _drain(
                 task = session.scalars(
                     select(Task)
                     .where(Task.status == JobStatus.PENDING, Task.type.in_(types))
-                    .order_by(Task.id)
+                    .order_by(Task.priority, Task.id)
                 ).first()
                 if task is None:
                     return
@@ -538,6 +647,8 @@ def _process_task(
         try:
             if task.type == TaskType.NORMALIZE:
                 _run_normalize_task(session, task, output_dir)
+            elif task.type == TaskType.PREPARE_VARIANT:
+                _run_prepare_variant_task(session, task, output_dir)
             elif task.type == TaskType.SCAN:
                 _run_scan_task(session, task)
             elif task.type == TaskType.METADATA:
@@ -618,6 +729,77 @@ def _run_normalize_task(session: Session, task: Task, output_dir: Path) -> None:
         )
     if settings_store.get_bool(session, settings_store.DELETE_ORIGINAL):
         _delete_original(session, media_file, output_dir.parent / "assets" / str(media_file.id))
+    _finish(session, task)
+
+
+def _device_profile_for_task(session: Session, task: Task) -> CapabilityProfile | None:
+    device = session.get(Device, task.device_id) if task.device_id is not None else None
+    caps = device.capabilities if device is not None else None
+    return parse_capabilities(json.loads(caps)) if caps else None
+
+
+def _run_prepare_variant_task(session: Session, task: Task, output_dir: Path) -> None:
+    """Build a surgical, device-specific variant for the task's device profile (plan §13)."""
+    media_file = task.media_file
+    if media_file is None or not Path(media_file.path).is_file():
+        _finish(session, task, message="source gone")
+        return
+    profile = _device_profile_for_task(session, task)
+    if profile is None:
+        _finish(session, task, message="no device profile")  # device unpaired/wiped
+        return
+    source = Path(media_file.path)
+    probe = probe_media(source) or {}
+    encoder = detect_h264_encoder()
+    args, target = DeviceVariantPlanner(encoder).plan(probe, profile)
+    recipe_id = recipe_id_for(target.container, target.video_codec, target.audio_codec)
+    existing = session.scalar(
+        select(MediaVariant).where(
+            MediaVariant.media_file_id == media_file.id, MediaVariant.recipe_id == recipe_id
+        )
+    )
+    ready = existing is not None and existing.status == VariantStatus.READY
+    if ready and existing is not None and Path(existing.path).is_file():
+        _finish(session, task, message="already prepared")
+        return
+    task_id = task.id
+    _start(session, task)
+
+    def on_progress(pct: int, eta: int | None) -> None:
+        task.progress = pct
+        task.eta_seconds = eta
+        _commit_or_cancel(session)
+
+    def on_start(pid: int) -> None:
+        task.pid = pid
+        _commit_or_cancel(session)
+
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg is None:
+        raise RuntimeError("ffmpeg is not available")
+    output = output_dir / "variants" / f"{media_file.id}-{recipe_id}.{target.container}"
+    duration = _as_float(probe.get("duration"))
+
+    def verify(out: dict[str, object] | None) -> bool:
+        return out is not None and out.get("video_codec") is not None
+
+    try:
+        _ffmpeg_transcode(ffmpeg, source, args, output, media_file.id, duration,
+                          on_progress=on_progress, on_start=on_start, verify=verify)
+    except RuntimeError:
+        # Copy-only failures or software-encoder failures have no softer fallback.
+        if encoder == "libx264" or target.video_copy:
+            raise
+        session.rollback()
+        if session.get(Task, task_id) is None:
+            raise _Cancelled() from None
+        task.progress = 0
+        session.commit()
+        soft_args, _ = DeviceVariantPlanner("libx264").plan(probe, profile)
+        _ffmpeg_transcode(ffmpeg, source, soft_args, output, media_file.id, duration,
+                          on_progress=on_progress, on_start=on_start, verify=verify)
+    record_variant(session, media_file, recipe_id, output, target)
+    session.commit()
     _finish(session, task)
 
 

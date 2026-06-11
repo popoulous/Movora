@@ -336,6 +336,11 @@ class SettingsRead(BaseModel):
     auto_detect_intro: bool
     auto_scan: bool
     tmdb_language: str
+    # Device-aware optimization (plan §13.2).
+    device_prefetch: bool  # build per-device variants ahead of playback
+    device_retention: bool  # auto-rotate: delete device variants outside the window
+    prepare_ahead_count: int  # episodes ahead to pre-build / keep
+    retain_behind_count: int  # watched episodes behind to keep
 
 
 class SettingsUpdate(BaseModel):
@@ -344,6 +349,10 @@ class SettingsUpdate(BaseModel):
     auto_detect_intro: bool | None = None
     auto_scan: bool | None = None
     tmdb_language: str | None = None
+    device_prefetch: bool | None = None
+    device_retention: bool | None = None
+    prepare_ahead_count: int | None = Field(default=None, ge=0, le=20)
+    retain_behind_count: int | None = Field(default=None, ge=0, le=20)
 
 
 class TaskRead(BaseModel):
