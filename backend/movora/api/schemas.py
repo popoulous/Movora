@@ -307,6 +307,9 @@ class PlaybackInfo(BaseModel):
     stream_url: str
     media_type: str
     direct_play: bool  # False -> needs ingest-normalization before it plays in a browser
+    # Device-aware variant state: "direct" (original plays), "ready" (a variant serves it),
+    # "preparing" (a device-specific variant is needed/being built), "unavailable".
+    variant_status: str = "direct"
     subtitle_tracks: list[SubtitleTrackRead] = []
     fonts: list[str] = []  # URLs of embedded fonts for JASSUB
     resume_position: float = 0.0  # saved playback position to seek back to (seconds)

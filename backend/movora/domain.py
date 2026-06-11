@@ -7,13 +7,21 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class CapabilityProfile:
-    """What a client can play — the central branch point (plan §4.2 / §6)."""
+    """What a client can play — the central branch point (plan §4.2 / §6).
+
+    ``video_codecs`` holds bit-depth-aware tokens (see ``movora.compat.video_token``):
+    e.g. ``"h264"`` for 8-bit and ``"h264-10"`` for 10-bit, so a device that plays
+    8-bit H.264 but not Hi10P is captured exactly. ``audio_codecs`` are normalized
+    codec names (``movora.compat.audio_token``; PCM variants collapse to ``"pcm"``).
+    ``containers`` are bare suffixes the device can demux (``"mp4"``, ``"mkv"``, …).
+    """
 
     schema_version: int = 1
     supports_ass: bool = False  # can render soft ASS (mpv / Infuse / our JASSUB player)
     supports_srt: bool = True
     video_codecs: tuple[str, ...] = ()
     audio_codecs: tuple[str, ...] = ()
+    containers: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

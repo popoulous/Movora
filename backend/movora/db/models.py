@@ -169,6 +169,7 @@ class MediaFile(Base):
     path: Mapped[str] = mapped_column(unique=True)
     container: Mapped[str | None] = mapped_column(default=None)
     video_codec: Mapped[str | None] = mapped_column(default=None)
+    video_pix_fmt: Mapped[str | None] = mapped_column(default=None)  # 10-bit detection (Hi10P)
     audio_codec: Mapped[str | None] = mapped_column(default=None)
     is_normalized: Mapped[bool] = mapped_column(default=False)
     normalized_path: Mapped[str | None] = mapped_column(default=None)  # web Direct Play mp4

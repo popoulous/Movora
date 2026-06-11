@@ -42,7 +42,7 @@ from movora.api.schemas import (
     TaskRead,
     WatchStateUpdate,
 )
-from movora.compat import PlaybackSource, parse_capabilities, select_source
+from movora.compat import PlaybackSource, parse_capabilities, select_source, source_streams
 from movora.db.models import (
     Device,
     Episode,
@@ -522,12 +522,13 @@ def episode_playback(
     episode = media_file.episode
     season = episode.season
     series = season.series
-    source = _playback_source(media_file, _device_profile(device))
+    source = _playback_source(session, media_file, device)
     return PlaybackInfo(
         media_file_id=media_file.id,
         stream_url=f"/api/episodes/{episode_id}/stream",
         media_type=source.media_type,
         direct_play=source.direct_play,
+        variant_status=_variant_status(source),
         # Subtitles/fonts come from the original, or the preserved assets if it was deleted.
         subtitle_tracks=_subtitle_tracks(episode_id, _subtitle_base(media_file, request)),
         fonts=_font_urls(episode_id, media_file, request),
@@ -571,7 +572,7 @@ def stream_episode(
 ) -> FileResponse:
     _require_episode_access(session, user, episode_id)
     media_file = _episode_media_file(session, episode_id)
-    source = _playback_source(media_file, _device_profile(device))
+    source = _playback_source(session, media_file, device)
     if not source.path.is_file():
         raise HTTPException(status_code=404, detail="media file is missing on disk")
     # FileResponse honours the Range header (HTTP 206) so the player can seek.
@@ -677,11 +678,23 @@ def _device_profile(device: Device | None) -> CapabilityProfile | None:
 
 
 def _playback_source(
-    media_file: MediaFile, profile: CapabilityProfile | None
+    session: Session, media_file: MediaFile, device: Device | None
 ) -> PlaybackSource:
     """Best playable source for the client: the CompatibilitySelector over the
-    media file's variants, falling back to the original (plan §13.1)."""
-    return select_source(profile, list(media_file.variants), media_file)
+    media file's variants, falling back to the original (plan §13.1). For a device we
+    also pass the original's codecs so the selector can tell whether it Direct Plays."""
+    profile = _device_profile(device)
+    source = source_streams(session, media_file) if profile is not None else None
+    return select_source(profile, list(media_file.variants), media_file, source)
+
+
+def _variant_status(source: PlaybackSource) -> str:
+    """How the chosen source plays, for the client: original/variant/needs-preparing."""
+    if source.needs_variant:
+        return "preparing"
+    if source.recipe_id is not None:
+        return "ready"
+    return "direct"
 
 
 @router.get("/episodes/{episode_id}/subtitles")
