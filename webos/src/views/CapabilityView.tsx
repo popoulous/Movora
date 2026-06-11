@@ -115,6 +115,7 @@ export default function CapabilityView({ onBack }: Props): React.JSX.Element {
   const [answers, setAnswers] = useState<Record<string, Answer>>({}); // audio, answered by ear
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [sent, setSent] = useState<"idle" | "sending" | "ok" | "error">("idle");
+  const [probing, setProbing] = useState(true); // auto-probes (video/container/subtitle) still running
   const [fRow, setFRow] = useState(0);
   const [fCol, setFCol] = useState(0);
   const audioElRef = useRef<HTMLVideoElement>(null);
@@ -144,18 +145,24 @@ export default function CapabilityView({ onBack }: Props): React.JSX.Element {
         if (cancelled) return;
         setResults((r) => ({ ...r, [s.id]: res }));
       }
+      // Only now is it safe to play audio by ear: this TV has a single decoder,
+      // so a running video probe would mute the audio sample.
+      if (!cancelled) setProbing(false);
     })();
     return () => {
       cancelled = true;
     };
   }, [base]);
 
-  // Keep the focused row in view as the user moves the D-pad.
+  // Once the auto-probes finish, scroll the audio section into view and keep the
+  // focused row visible. While probing we stay put (audio can't play yet).
   useEffect(() => {
+    if (probing) return;
     rowRefs.current.get(fRow)?.scrollIntoView({ block: "center", behavior: "smooth" });
-  }, [fRow, audioSamples.length]);
+  }, [fRow, probing, audioSamples.length]);
 
   const togglePlay = (s: ServerSample): void => {
+    if (probing) return; // a running video probe would mute the audio sample
     const el = audioElRef.current;
     if (el === null) return;
     if (playingId === s.id) {
@@ -232,6 +239,17 @@ export default function CapabilityView({ onBack }: Props): React.JSX.Element {
 
   const onKey = (e: KeyboardEvent): void => {
     const k = e.key;
+    if (probing) {
+      // Auto-probes still running — only allow reading/scrolling, no audio yet.
+      if (k === "ArrowDown") {
+        e.preventDefault();
+        scrollRef.current?.scrollBy({ top: 280, behavior: "smooth" });
+      } else if (k === "ArrowUp") {
+        e.preventDefault();
+        scrollRef.current?.scrollBy({ top: -280, behavior: "smooth" });
+      }
+      return;
+    }
     if (k === "ArrowDown") {
       e.preventDefault();
       if (fRow < rowCount - 1) setFRow(fRow + 1);
@@ -253,7 +271,11 @@ export default function CapabilityView({ onBack }: Props): React.JSX.Element {
   };
   useTvInput(onKey, onBack);
 
-  const playing = samples.find((s) => s.id === playingId) ?? null;
+  const autoSamples = samples.filter((s) => s.category !== "audio");
+  const autoDone = autoSamples.filter((s) => {
+    const r = results[s.id];
+    return r !== undefined && r !== "playing";
+  }).length;
   const sendLabel =
     sent === "sending"
       ? "Küldés…"
@@ -285,23 +307,20 @@ export default function CapabilityView({ onBack }: Props): React.JSX.Element {
       {!base && <p style={{ color: "#fbbf24", fontSize: "0.9rem" }}>Nincs szerverkapcsolat — előbb párosíts.</p>}
       {base && samples.length === 0 && <p style={{ color: theme.muted, fontSize: "0.9rem" }}>Minták betöltése…</p>}
 
-      {playing !== null && (
+      {base && probing && samples.length > 0 && (
         <div
           style={{
-            position: "sticky",
-            top: 0,
-            zIndex: 5,
-            background: "rgba(122,77,255,0.25)",
-            border: `2px solid ${theme.accent}`,
+            background: "rgba(122,77,255,0.18)",
+            border: `1px solid ${theme.accent}`,
             borderRadius: 12,
-            padding: "0.8rem 1.1rem",
+            padding: "0.7rem 1.1rem",
             margin: "0.4rem 0 1rem",
+            fontSize: "0.95rem",
+            fontWeight: 700,
+            color: "#fff",
           }}
         >
-          <div style={{ fontSize: "1.15rem", fontWeight: 800, color: "#fff" }}>Most szól: {playing.label}</div>
-          <div style={{ fontSize: "0.85rem", color: theme.text }}>
-            Hallasz hangot? Jelöld be: Igen (szól) vagy Nem (néma).
-          </div>
+          Videó / konténer / felirat tesztek futnak… ({autoDone}/{autoSamples.length}) — az audió ezután jön.
         </div>
       )}
 
@@ -313,7 +332,7 @@ export default function CapabilityView({ onBack }: Props): React.JSX.Element {
             <div style={{ fontSize: "1rem", fontWeight: 700, color: "#fff", marginBottom: "0.5rem" }}>{CAT_LABEL[cat]}</div>
             {cat === "audio"
               ? items.map((s, i) => {
-                  const focused = fRow === i;
+                  const focused = !probing && fRow === i;
                   const isPlaying = playingId === s.id;
                   const ans = answers[s.id] ?? null;
                   const av =
@@ -374,8 +393,8 @@ export default function CapabilityView({ onBack }: Props): React.JSX.Element {
               fontWeight: 800,
               color: "#fff",
               background: sent === "ok" ? "#15803d" : theme.gradient,
-              border: fRow === sendRow ? "2px solid #fff" : "2px solid transparent",
-              boxShadow: fRow === sendRow ? "0 0 0 4px rgba(122,77,255,0.45)" : "none",
+              border: !probing && fRow === sendRow ? "2px solid #fff" : "2px solid transparent",
+              boxShadow: !probing && fRow === sendRow ? "0 0 0 4px rgba(122,77,255,0.45)" : "none",
               opacity: sent === "sending" ? 0.7 : 1,
             }}
           >
