@@ -8,6 +8,7 @@ import SeriesView from "../views/SeriesView";
 import PlayerView from "../views/PlayerView";
 import SettingsView from "../views/SettingsView";
 import CapabilityView from "../views/CapabilityView";
+import SplashScreen from "../components/SplashScreen";
 import "../theme.css";
 
 type Screen =
@@ -24,6 +25,7 @@ function AppInner(): React.JSX.Element {
   const [stack, setStack] = useState<Screen[]>(() =>
     config ? [{ id: "home" }] : [{ id: "welcome" }],
   );
+  const [splashDone, setSplashDone] = useState(false);
   const screen = stack[stack.length - 1] ?? { id: "home" };
 
   // When the user unpairs, force back to welcome at render time (no effect needed).
@@ -34,54 +36,65 @@ function AppInner(): React.JSX.Element {
   const back = (): void => setStack((st) => (st.length > 1 ? st.slice(0, -1) : st));
   const reset = (s: Screen): void => setStack([s]);
 
-  switch (activeScreen.id) {
-    case "welcome":
-      return <WelcomeView onDone={() => reset({ id: "home" })} />;
-    case "home":
-      return (
-        <HomeView
-          onSeries={(id) => push({ id: "series", seriesId: id })}
-          onPlay={(id) => push({ id: "player", episodeId: id })}
-          onLibrary={(id) => push({ id: "library", libraryId: id })}
-          onSettings={() => push({ id: "settings" })}
-        />
-      );
-    case "library":
-      return (
-        <LibraryView
-          libraryId={activeScreen.libraryId}
-          onSeries={(id) => push({ id: "series", seriesId: id })}
-          onLibrary={(id) => replace({ id: "library", libraryId: id })}
-          onHome={() => reset({ id: "home" })}
-          onSettings={() => push({ id: "settings" })}
-          onBack={back}
-        />
-      );
-    case "series":
-      return (
-        <SeriesView
-          seriesId={activeScreen.seriesId}
-          onPlay={(id) => push({ id: "player", episodeId: id })}
-          onSeries={(id) => push({ id: "series", seriesId: id })}
-          onLibrary={(id) => push({ id: "library", libraryId: id })}
-          onHome={() => reset({ id: "home" })}
-          onSettings={() => push({ id: "settings" })}
-          onBack={back}
-        />
-      );
-    case "player":
-      return (
-        <PlayerView
-          episodeId={activeScreen.episodeId}
-          onBack={back}
-          onNext={(id) => replace({ id: "player", episodeId: id })}
-        />
-      );
-    case "settings":
-      return <SettingsView onBack={back} onCapability={() => push({ id: "capability" })} />;
-    case "capability":
-      return <CapabilityView onBack={back} />;
-  }
+  const renderScreen = (): React.JSX.Element => {
+    switch (activeScreen.id) {
+      case "welcome":
+        return <WelcomeView onDone={() => reset({ id: "home" })} />;
+      case "home":
+        return (
+          <HomeView
+            onSeries={(id) => push({ id: "series", seriesId: id })}
+            onPlay={(id) => push({ id: "player", episodeId: id })}
+            onLibrary={(id) => push({ id: "library", libraryId: id })}
+            onSettings={() => push({ id: "settings" })}
+          />
+        );
+      case "library":
+        return (
+          <LibraryView
+            libraryId={activeScreen.libraryId}
+            onSeries={(id) => push({ id: "series", seriesId: id })}
+            onLibrary={(id) => replace({ id: "library", libraryId: id })}
+            onHome={() => reset({ id: "home" })}
+            onSettings={() => push({ id: "settings" })}
+            onBack={back}
+          />
+        );
+      case "series":
+        return (
+          <SeriesView
+            seriesId={activeScreen.seriesId}
+            onPlay={(id) => push({ id: "player", episodeId: id })}
+            onSeries={(id) => push({ id: "series", seriesId: id })}
+            onLibrary={(id) => push({ id: "library", libraryId: id })}
+            onHome={() => reset({ id: "home" })}
+            onSettings={() => push({ id: "settings" })}
+            onBack={back}
+          />
+        );
+      case "player":
+        return (
+          <PlayerView
+            episodeId={activeScreen.episodeId}
+            onBack={back}
+            onNext={(id) => replace({ id: "player", episodeId: id })}
+          />
+        );
+      case "settings":
+        return <SettingsView onBack={back} onCapability={() => push({ id: "capability" })} />;
+      case "capability":
+        return <CapabilityView onBack={back} />;
+    }
+  };
+
+  return (
+    <>
+      {renderScreen()}
+      {!splashDone && (
+        <SplashScreen serverUrl={config?.serverUrl ?? null} onDone={() => setSplashDone(true)} />
+      )}
+    </>
+  );
 }
 
 function App(): React.JSX.Element {
