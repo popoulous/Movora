@@ -36,6 +36,7 @@ const en = {
     type_normalize: "Optimization",
     type_thumbnail: "Thumbnails",
     type_intro: "Intro detection",
+    type_prepare_variant: "Device optimization",
     season: "Season {{number}}",
     episode: "Episode {{number}}",
     queued: "Queued",
@@ -87,6 +88,19 @@ const en = {
     autoScan: "Automatic library rescan",
     autoScanDesc:
       "Rescan libraries on startup and hourly to pick up added files. A rescan also removes entries whose files were deleted or moved. Safe: a library that reads as empty (e.g. an offline drive) is never wiped.",
+    deviceTitle: "Device optimization",
+    devicePrefetch: "Prepare versions for devices",
+    devicePrefetchDesc:
+      "When a TV plays an episode, build a playable version of it and the next few in the background — so it never stalls on a format the TV can't play (10-bit, DTS, MPEG-TS).",
+    prepareAhead: "Prepared ahead",
+    prepareAheadDesc: "How many upcoming episodes to optimize in advance.",
+    deviceRetention: "Auto-rotate old versions",
+    deviceRetentionDesc:
+      "Delete device versions outside the window around what's being watched, to save space. The original files are never touched.",
+    retainBehind: "Kept behind",
+    retainBehindDesc: "How many already-watched episodes to keep optimized before rotating them out.",
+    deviceUnsupported: "Needs optimizing:",
+    deviceVariants: "{{count}} device version(s) built",
     introTitle: "Intro & outro skipping",
     autoDetectIntro: "Auto-detect intro/outro on scan",
     autoDetectIntroDesc:
@@ -303,6 +317,7 @@ const hu: typeof en = {
     type_normalize: "Optimalizálás",
     type_thumbnail: "Indexképek",
     type_intro: "Intro-felismerés",
+    type_prepare_variant: "Eszköz-optimalizálás",
     season: "{{number}}. évad",
     episode: "{{number}}. rész",
     queued: "Besorolva",
@@ -355,6 +370,19 @@ const hu: typeof en = {
     autoScan: "Automatikus könyvtár-újraszken",
     autoScanDesc:
       "Indításkor és óránként újraszkenel, hogy behúzza az új fájlokat. Az újraszken kitakarítja azokat a bejegyzéseket is, amelyek fájlja törlődött vagy átkerült. Biztonságos: az üresként látszó könyvtárat (pl. offline meghajtó) soha nem üríti ki.",
+    deviceTitle: "Eszköz-optimalizálás",
+    devicePrefetch: "Verziók előkészítése eszközökhöz",
+    devicePrefetchDesc:
+      "Amikor egy TV elindít egy részt, a háttérben legyártjuk a lejátszható verzióját és a következő pár részét — így sosem akad meg olyan formátumon, amit a TV nem tud (10-bit, DTS, MPEG-TS).",
+    prepareAhead: "Előre legyártva",
+    prepareAheadDesc: "Hány következő részt optimalizáljunk előre.",
+    deviceRetention: "Régi verziók automatikus rotálása",
+    deviceRetentionDesc:
+      "A nézett rész körüli ablakon kívül eső eszköz-verziók törlése helyspórolás miatt. Az eredeti fájlokhoz soha nem nyúlunk.",
+    retainBehind: "Hátrafelé megtartva",
+    retainBehindDesc: "Hány már megnézett részt tartsunk meg optimalizálva, mielőtt kirotálnánk.",
+    deviceUnsupported: "Optimalizálandó:",
+    deviceVariants: "{{count}} eszköz-verzió legyártva",
     introTitle: "Intro & outro átugrása",
     autoDetectIntro: "Intro/outro automatikus felismerése szkenneléskor",
     autoDetectIntroDesc:

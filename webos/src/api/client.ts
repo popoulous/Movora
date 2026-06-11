@@ -109,6 +109,7 @@ export interface PlaybackInfo {
   stream_url: string;
   media_type: string;
   direct_play: boolean;
+  variant_status: "direct" | "preparing" | "ready" | "unavailable";
   subtitle_tracks: SubtitleTrack[];
   resume_position: number;
   intro_start: number | null;

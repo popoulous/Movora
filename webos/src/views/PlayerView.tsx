@@ -17,6 +17,7 @@ type Row = "scrub" | "controls" | "episodes";
 const SAVE_INTERVAL_S = 10;
 const COUNTDOWN_START = 10;
 const PANEL_TIMEOUT = 6000;
+const PREPARE_POLL_MS = 4000; // re-ask while a device variant is being built
 const SUB_PREF_KEY = "movora_sub_pref";
 const EP_W = 200;
 const EP_H = aspectHeight(EP_W, "16/9");
@@ -90,6 +91,7 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
   const [info, setInfo] = useState<PlaybackInfo | null>(null);
   const [series, setSeries] = useState<SeriesDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [preparing, setPreparing] = useState(false); // a device variant is being built
   const [paused, setPaused] = useState(false);
   const [cur, setCur] = useState(0);
   const [dur, setDur] = useState(0);
@@ -122,21 +124,53 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
   const token = config?.deviceToken ?? null;
 
   useEffect(() => {
-    if (!api) return;
-    api
-      .getPlayback(episodeId)
-      .then((i) => {
-        setInfo(i);
-        setError(null);
-        setEnded(false);
-        setSkip(null);
-        setCountdown(COUNTDOWN_START);
-        setSubIdx(-1);
-        setPanelOpen(false);
-        lastSaved.current = 0;
-        api.getSeries(i.series_id).then(setSeries).catch(() => undefined);
-      })
-      .catch((e: unknown) => setError(String(e)));
+    if (!api) return undefined;
+    let cancelled = false;
+    let timer = 0;
+    let seriesFetched = false;
+    const fetchSeries = (id: number): void => {
+      if (seriesFetched) return;
+      seriesFetched = true;
+      api.getSeries(id).then((s) => {
+        if (!cancelled) setSeries(s);
+      }).catch(() => undefined);
+    };
+    const ready = (i: PlaybackInfo): void => {
+      setPreparing(false);
+      setInfo(i);
+      setError(null);
+      setEnded(false);
+      setSkip(null);
+      setCountdown(COUNTDOWN_START);
+      setSubIdx(-1);
+      setPanelOpen(false);
+      lastSaved.current = 0;
+    };
+    const load = (): void => {
+      api
+        .getPlayback(episodeId)
+        .then((i) => {
+          if (cancelled) return;
+          fetchSeries(i.series_id);
+          if (i.variant_status === "preparing") {
+            // The TV can't Direct Play this yet; a variant is building. Wait and re-ask.
+            setPreparing(true);
+            setInfo(i);
+            setError(null);
+            timer = window.setTimeout(load, PREPARE_POLL_MS);
+            return;
+          }
+          ready(i);
+        })
+        .catch((e: unknown) => {
+          if (!cancelled) setError(String(e));
+        });
+    };
+    load();
+    return () => {
+      cancelled = true;
+      if (timer) window.clearTimeout(timer);
+    };
   }, [api, episodeId]);
 
   const flat: Episode[] = series ? series.seasons.flatMap((s) => s.episodes) : [];
@@ -533,11 +567,21 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
   return (
     <div ref={rootRef} style={rootStyle}>
       <style>{cueCss}</style>
-      {!info && (
+      {!info && !preparing && (
         <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: theme.muted }}>Betöltés…</div>
       )}
 
-      {info && (
+      {preparing && (
+        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "1.1rem", background: theme.bg, textAlign: "center", padding: "2rem" }}>
+          <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "#fff" }}>Optimalizálás folyamatban…</div>
+          <div style={{ fontSize: "1rem", color: theme.muted, maxWidth: 680, lineHeight: 1.5 }}>
+            A TV nem tudja közvetlenül lejátszani ezt a részt, ezért a háttérben készül egy kompatibilis verzió. Amint kész, automatikusan elindul.
+          </div>
+          <div onClick={onBack} style={pillStyle}>Vissza</div>
+        </div>
+      )}
+
+      {info && !preparing && (
         <video
           ref={videoRef}
           src={streamUrl}

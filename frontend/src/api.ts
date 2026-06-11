@@ -147,6 +147,7 @@ export interface PlaybackInfo {
   stream_url: string;
   media_type: string;
   direct_play: boolean;
+  variant_status: "direct" | "preparing" | "ready" | "unavailable";
   subtitle_tracks: SubtitleTrack[];
   fonts: string[];
   resume_position: number;
@@ -182,6 +183,10 @@ export interface ServerSettings {
   auto_detect_intro: boolean;
   auto_scan: boolean;
   tmdb_language: string;
+  device_prefetch: boolean;
+  device_retention: boolean;
+  prepare_ahead_count: number;
+  retain_behind_count: number;
 }
 
 export type TaskStatus = "pending" | "running" | "done" | "failed";
@@ -211,6 +216,8 @@ export interface Device {
   capabilities: Record<string, unknown> | null;
   created_at: string;
   last_seen_at: string | null;
+  unsupported: string[]; // formats it can't Direct Play (what we optimize)
+  variant_count: number; // device variants built so far
 }
 
 // A 401 mid-session means the cookie expired; let the app drop back to the login gate.

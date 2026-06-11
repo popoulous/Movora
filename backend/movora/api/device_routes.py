@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from movora.api.deps import CurrentUserDep, RequestDeviceDep, SessionDep
 from movora.api.schemas import (
@@ -32,7 +32,9 @@ from movora.api.schemas import (
     PairStatusResponse,
 )
 from movora.auth import generate_device_token, hash_device_token
-from movora.db.models import Device, UserRole
+from movora.compat import parse_capabilities, unsupported_summary
+from movora.db.models import Device, MediaVariant, UserRole
+from movora.recipes import DEFAULT_RECIPE
 
 router = APIRouter(prefix="/api/devices", tags=["devices"])
 
@@ -125,7 +127,7 @@ def pair_approve(
     return _to_read(device)
 
 
-def _to_read(device: Device) -> DeviceRead:
+def _to_read(device: Device, variant_count: int = 0) -> DeviceRead:
     caps = json.loads(device.capabilities) if device.capabilities else None
     return DeviceRead(
         id=device.id,
@@ -133,15 +135,26 @@ def _to_read(device: Device) -> DeviceRead:
         capabilities=caps,
         created_at=device.created_at,
         last_seen_at=device.last_seen_at,
+        unsupported=unsupported_summary(parse_capabilities(caps)),
+        variant_count=variant_count,
     )
 
 
 @router.get("", response_model=list[DeviceRead])
 def list_devices(user: CurrentUserDep, session: SessionDep) -> list[DeviceRead]:
+    # Device variants are the non-default (surgical) variants we build for devices.
+    variant_count = (
+        session.scalar(
+            select(func.count())
+            .select_from(MediaVariant)
+            .where(MediaVariant.recipe_id != DEFAULT_RECIPE.id)
+        )
+        or 0
+    )
     devices = session.scalars(
         select(Device).where(Device.user_id == user.id).order_by(Device.id)
     )
-    return [_to_read(d) for d in devices]
+    return [_to_read(d, variant_count) for d in devices]
 
 
 @router.post("", response_model=DeviceCreated, status_code=201)

@@ -50,6 +50,50 @@ function Toggle({
   );
 }
 
+function NumberField({
+  label,
+  description,
+  value,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  description: string;
+  value: number;
+  onChange: (value: number) => void;
+  disabled?: boolean;
+}): JSX.Element {
+  return (
+    <div
+      className={`flex items-center justify-between gap-4 rounded-xl bg-white/[0.03] p-4 ring-1 ring-white/10 ${
+        disabled ? "opacity-50" : ""
+      }`}
+    >
+      <span className="min-w-0">
+        <span className="block text-sm font-medium text-white">{label}</span>
+        <span className="mt-0.5 block text-xs leading-relaxed text-neutral-400">{description}</span>
+      </span>
+      <div className="flex shrink-0 items-center gap-1.5">
+        <button
+          onClick={() => onChange(value - 1)}
+          disabled={disabled || value <= 0}
+          className="h-8 w-8 rounded-lg bg-white/[0.06] text-lg leading-none text-neutral-200 ring-1 ring-white/10 transition hover:bg-white/10 disabled:opacity-40"
+        >
+          −
+        </button>
+        <span className="w-8 text-center text-sm font-semibold text-white">{value}</span>
+        <button
+          onClick={() => onChange(value + 1)}
+          disabled={disabled || value >= 20}
+          className="h-8 w-8 rounded-lg bg-white/[0.06] text-lg leading-none text-neutral-200 ring-1 ring-white/10 transition hover:bg-white/10 disabled:opacity-40"
+        >
+          +
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function SettingsPage(): JSX.Element {
   const { t, i18n } = useTranslation();
   const { refreshSoon } = useActivity();
@@ -82,13 +126,32 @@ export function SettingsPage(): JSX.Element {
   }, [i18n.language]);
 
   const toggle = (
-    key: "auto_normalize" | "delete_original" | "auto_detect_intro" | "auto_scan",
+    key:
+      | "auto_normalize"
+      | "delete_original"
+      | "auto_detect_intro"
+      | "auto_scan"
+      | "device_prefetch"
+      | "device_retention",
   ): void => {
     if (settings === null) return;
     const next = { ...settings, [key]: !settings[key] };
     setSettings(next);
     api
       .updateSettings({ [key]: next[key] })
+      .then(setSettings)
+      .catch(() => undefined);
+  };
+
+  const setCount = (
+    key: "prepare_ahead_count" | "retain_behind_count",
+    value: number,
+  ): void => {
+    if (settings === null || Number.isNaN(value)) return;
+    const clamped = Math.max(0, Math.min(20, Math.trunc(value)));
+    setSettings({ ...settings, [key]: clamped });
+    api
+      .updateSettings({ [key]: clamped })
       .then(setSettings)
       .catch(() => undefined);
   };
@@ -158,6 +221,40 @@ export function SettingsPage(): JSX.Element {
             description={t("settings.autoScanDesc")}
             on={settings.auto_scan}
             onToggle={() => toggle("auto_scan")}
+          />
+        </section>
+      )}
+
+      {settings !== null && (
+        <section className="space-y-3">
+          <h2 className="text-xs font-semibold tracking-wide text-neutral-500 uppercase">
+            {t("settings.deviceTitle")}
+          </h2>
+          <Toggle
+            label={t("settings.devicePrefetch")}
+            description={t("settings.devicePrefetchDesc")}
+            on={settings.device_prefetch}
+            onToggle={() => toggle("device_prefetch")}
+          />
+          <NumberField
+            label={t("settings.prepareAhead")}
+            description={t("settings.prepareAheadDesc")}
+            value={settings.prepare_ahead_count}
+            onChange={(value) => setCount("prepare_ahead_count", value)}
+            disabled={!settings.device_prefetch}
+          />
+          <Toggle
+            label={t("settings.deviceRetention")}
+            description={t("settings.deviceRetentionDesc")}
+            on={settings.device_retention}
+            onToggle={() => toggle("device_retention")}
+          />
+          <NumberField
+            label={t("settings.retainBehind")}
+            description={t("settings.retainBehindDesc")}
+            value={settings.retain_behind_count}
+            onChange={(value) => setCount("retain_behind_count", value)}
+            disabled={!settings.device_retention}
           />
         </section>
       )}
@@ -283,23 +380,45 @@ function DevicesSection({
           {devices.map((device) => (
             <div
               key={device.id}
-              className="flex items-center gap-3 rounded-xl bg-white/[0.03] px-4 py-2.5 ring-1 ring-white/10"
+              className="rounded-xl bg-white/[0.03] px-4 py-2.5 ring-1 ring-white/10"
             >
-              <span className="min-w-0 flex-1 truncate text-sm text-neutral-100">
-                {device.name}
-              </span>
-              <span className="shrink-0 text-xs text-neutral-500">
-                {t("settings.deviceLastSeen", { when: lastSeen(device) })}
-              </span>
-              <button
-                onClick={() => revoke(device)}
-                title={t("settings.deviceDelete")}
-                className="shrink-0 rounded-lg p-1.5 text-neutral-500 transition hover:bg-red-500/15 hover:text-red-300"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
+              <div className="flex items-center gap-3">
+                <span className="min-w-0 flex-1 truncate text-sm text-neutral-100">
+                  {device.name}
+                </span>
+                <span className="shrink-0 text-xs text-neutral-500">
+                  {t("settings.deviceLastSeen", { when: lastSeen(device) })}
+                </span>
+                <button
+                  onClick={() => revoke(device)}
+                  title={t("settings.deviceDelete")}
+                  className="shrink-0 rounded-lg p-1.5 text-neutral-500 transition hover:bg-red-500/15 hover:text-red-300"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+              {device.unsupported.length > 0 && (
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  <span className="text-xs text-neutral-500">
+                    {t("settings.deviceUnsupported")}
+                  </span>
+                  {device.unsupported.map((format) => (
+                    <span
+                      key={format}
+                      className="rounded-full bg-amber-500/15 px-2 py-0.5 text-xs text-amber-200 ring-1 ring-amber-400/30"
+                    >
+                      {format}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
+          {devices.length > 0 && devices[0].variant_count > 0 && (
+            <p className="pt-1 text-xs text-neutral-500">
+              {t("settings.deviceVariants", { count: devices[0].variant_count })}
+            </p>
+          )}
         </div>
       )}
     </section>

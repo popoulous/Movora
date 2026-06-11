@@ -100,6 +100,10 @@ class DeviceRead(BaseModel):
     capabilities: DeviceCapabilities | None = None
     created_at: datetime
     last_seen_at: datetime | None = None
+    # Per-device status (plan §13.2): formats the device can't Direct Play (what we
+    # optimize), and how many device variants have been built.
+    unsupported: list[str] = []
+    variant_count: int = 0
 
 
 class DeviceCreated(DeviceRead):

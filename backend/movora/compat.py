@@ -285,6 +285,26 @@ def profile_from_report(report: dict[str, object]) -> CapabilityProfile:
     )
 
 
+def unsupported_summary(profile: CapabilityProfile | None) -> list[str]:
+    """Human labels for the common formats a device can't Direct Play (what we optimize).
+
+    Drives the per-device status in the web Settings. Empty when the device hasn't been
+    capability-tested yet (no codecs known).
+    """
+    if profile is None or not profile.video_codecs:
+        return []
+    labels: list[str] = []
+    if "h264" in profile.video_codecs and "h264-10" not in profile.video_codecs:
+        labels.append("H.264 10-bit (Hi10P)")
+    if "hevc" in profile.video_codecs and "hevc-10" not in profile.video_codecs:
+        labels.append("HEVC 10-bit")
+    if profile.audio_codecs and "dts" not in profile.audio_codecs:
+        labels.append("DTS")
+    if profile.containers and "ts" not in profile.containers:
+        labels.append("MPEG-TS")
+    return labels
+
+
 def parse_capabilities(raw: dict[str, object] | None) -> CapabilityProfile | None:
     """Build a CapabilityProfile from a device's stored/declared capabilities.
 
