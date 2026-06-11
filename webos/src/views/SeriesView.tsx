@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { type SeriesDetail, type Library, mediaUrl } from "../api/client";
 import { useDevice } from "../context/DeviceContext";
-import { useTvInput } from "../hooks";
+import { scrollIntoFocus, useTvInput } from "../hooks";
 import { TopNav, type NavTab } from "../components/TopNav";
 import { Icon } from "../components/Icon";
 import { theme } from "../theme";
@@ -127,10 +127,8 @@ export default function SeriesView({
   useEffect(() => {
     const el = document.querySelector(`[data-f="${focus.z}-${focus.i}"]`);
     if (!(el instanceof HTMLElement)) return;
-    el.scrollIntoView({ block: "nearest", inline: "center" });
-    // The top nav scrolls with the page; block:"nearest" can leave it clipped, so pull
-    // the page fully to the top when the nav is focused (still centers the tab).
-    if (focus.z === 0) el.closest(".mv-app")?.scrollTo({ top: 0, behavior: "smooth" });
+    el.scrollIntoView({ block: "nearest", inline: "center" }); // horizontal centering
+    scrollIntoFocus(el); // reliable vertical visibility (incl. the top nav)
   }, [focus]);
 
   const openTab = (id: string): void => {
@@ -201,7 +199,7 @@ export default function SeriesView({
 
   return (
     <div className="mv-app" style={{ height: "100vh", overflowY: "auto", paddingBottom: "2rem" }}>
-      <TopNav tabs={navTabs} activeId="" focusIdx={navFocus} onActivate={openTab} />
+      <TopNav tabs={navTabs} activeId="" focusIdx={navFocus} onActivate={openTab} zoneIndex={0} />
 
       {/* Hero with right-side banner fading into the background. */}
       <div style={{ position: "relative", minHeight: 360, padding: "0 2.5rem" }}>

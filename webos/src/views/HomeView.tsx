@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { type HomeData, type HomeSeries, type Library, mediaUrl } from "../api/client";
 import { useDevice } from "../context/DeviceContext";
-import { useTvInput } from "../hooks";
+import { scrollIntoFocus, useTvInput } from "../hooks";
 import { TopNav, type NavTab } from "../components/TopNav";
 import { theme } from "../theme";
 import { aspectHeight } from "../util";
@@ -62,10 +62,8 @@ export default function HomeView({ onSeries, onPlay, onLibrary, onSettings }: Pr
   useEffect(() => {
     const el = document.querySelector(`[data-f="${focus.z}-${focus.i}"]`);
     if (!(el instanceof HTMLElement)) return;
-    el.scrollIntoView({ block: "nearest", inline: "center" });
-    // The top nav scrolls with the page; block:"nearest" can leave it clipped, so pull
-    // the page fully to the top when the nav is focused (still centers the tab).
-    if (focus.z === 0) el.closest(".mv-app")?.scrollTo({ top: 0, behavior: "smooth" });
+    el.scrollIntoView({ block: "nearest", inline: "center" }); // horizontal centering
+    scrollIntoFocus(el); // reliable vertical visibility (incl. the top nav)
   }, [focus]);
 
   const openTab = (id: string): void => {
@@ -157,7 +155,7 @@ export default function HomeView({ onSeries, onPlay, onLibrary, onSettings }: Pr
 
   return (
     <div className="mv-app" style={{ height: "100vh", overflowY: "auto", paddingBottom: "2rem" }}>
-      <TopNav tabs={navTabs} activeId="home" focusIdx={navFocus} onActivate={openTab} />
+      <TopNav tabs={navTabs} activeId="home" focusIdx={navFocus} onActivate={openTab} zoneIndex={0} />
 
       <div style={{ padding: "0.5rem 2.5rem" }}>
         {!data && !error && <p style={{ color: theme.muted }}>Betöltés…</p>}

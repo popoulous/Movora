@@ -12,6 +12,7 @@ interface Props {
   activeId: string;
   focusIdx: number; // index of the focused tab, or -1 when this zone isn't active
   onActivate: (id: string) => void;
+  zoneIndex?: number; // this nav's focus-zone index, so its tabs carry data-f for scrolling
 }
 
 function Clock(): React.JSX.Element {
@@ -25,7 +26,13 @@ function Clock(): React.JSX.Element {
   return <span style={{ color: theme.muted, fontSize: "1rem", fontVariantNumeric: "tabular-nums" }}>{hh}:{mm}</span>;
 }
 
-export function TopNav({ tabs, activeId, focusIdx, onActivate }: Props): React.JSX.Element {
+export function TopNav({
+  tabs,
+  activeId,
+  focusIdx,
+  onActivate,
+  zoneIndex = 0,
+}: Props): React.JSX.Element {
   return (
     <header
       style={{
@@ -56,6 +63,7 @@ export function TopNav({ tabs, activeId, focusIdx, onActivate }: Props): React.J
           return (
             <span
               key={tab.id}
+              data-f={`${zoneIndex}-${i}`}
               onClick={() => onActivate(tab.id)}
               style={{
                 marginRight: "1.6rem",
