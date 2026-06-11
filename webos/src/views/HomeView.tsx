@@ -61,7 +61,11 @@ export default function HomeView({ onSeries, onPlay, onLibrary, onSettings }: Pr
   // Keep the focused card in view.
   useEffect(() => {
     const el = document.querySelector(`[data-f="${focus.z}-${focus.i}"]`);
-    if (el instanceof HTMLElement) el.scrollIntoView({ block: "nearest", inline: "center" });
+    if (!(el instanceof HTMLElement)) return;
+    el.scrollIntoView({ block: "nearest", inline: "center" });
+    // The top nav scrolls with the page; block:"nearest" can leave it clipped, so pull
+    // the page fully to the top when the nav is focused (still centers the tab).
+    if (focus.z === 0) el.closest(".mv-app")?.scrollTo({ top: 0, behavior: "smooth" });
   }, [focus]);
 
   const openTab = (id: string): void => {
