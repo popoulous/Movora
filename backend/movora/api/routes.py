@@ -543,19 +543,18 @@ def episode_playback(
             *args,
         )
 
-    if status == "preparing":
-        # The original isn't playable on this client. Optimize on demand only if enabled
-        # (or already building) — otherwise it's "unavailable" rather than spinning forever.
-        if optimize_on:
-            if device is not None and profile is not None:
-                _schedule(run_device_prefetch, device.id, episode_id)  # device variant + prefetch
-            else:
-                _schedule(prepare_browser_normalize, media_file.id)  # universal web normalize
-        elif prepare_progress == 0 and not _has_active_prepare(session, media_file.id):
-            status = "unavailable"
-    elif device is not None and profile is not None and optimize_on:
-        # The current episode plays directly; still prefetch the next few for the device.
-        _schedule(run_device_prefetch, device.id, episode_id)
+    if optimize_on:
+        # Build the current episode if it isn't playable here + prefetch the next few. The
+        # background jobs skip what's already playable/queued, so this is safe on every poll.
+        if device is not None and profile is not None:
+            _schedule(run_device_prefetch, device.id, episode_id)  # device variant + prefetch
+        else:
+            _schedule(prepare_browser_normalize, episode_id)  # universal web normalize + prefetch
+    elif status == "preparing" and prepare_progress == 0 and not _has_active_prepare(
+        session, media_file.id
+    ):
+        # Optimization is off and nothing is building -> not playable here (don't spin).
+        status = "unavailable"
     return PlaybackInfo(
         media_file_id=media_file.id,
         stream_url=f"/api/episodes/{episode_id}/stream",

@@ -15,11 +15,12 @@ import contextlib
 import json
 from pathlib import Path
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from movora import settings_store
 from movora.compat import SourceStreams, parse_capabilities, select_source
-from movora.db.models import Device, Episode, MediaFile, Series
+from movora.db.models import Device, Episode, JobStatus, MediaFile, Series, Task, TaskType
 from movora.device_planner import variant_target
 from movora.domain import CapabilityProfile
 from movora.ffprobe import probe_media
@@ -163,22 +164,50 @@ def run_device_prefetch(
         start_workers(session_factory, output_dir, registry)
 
 
+def _has_active_normalize(session: Session, media_file_id: int) -> bool:
+    return (
+        session.scalar(
+            select(Task.id)
+            .where(
+                Task.type == TaskType.NORMALIZE,
+                Task.media_file_id == media_file_id,
+                Task.status.in_((JobStatus.PENDING, JobStatus.RUNNING)),
+            )
+            .limit(1)
+        )
+        is not None
+    )
+
+
 def prepare_browser_normalize(
     session_factory: sessionmaker[Session],
     output_dir: Path,
     registry: MetadataRegistry,
-    media_file_id: int,
+    episode_id: int,
 ) -> None:
-    """Background entry point: web-normalize the episode the browser is trying to play.
-
-    The browser's "device variant" is the v1 web mp4, so on-demand optimization for it is
-    just a NORMALIZE — queued at top priority since you pressed play and are waiting.
+    """Background entry point: web-normalize the episode the browser is playing + prefetch
+    the next few. The browser's "device variant" is the v1 web mp4, so this is a NORMALIZE —
+    the current episode at top priority (you're waiting), the look-ahead as prefetch.
     """
-    queued = 0
+    queued = False
     with session_factory() as session:
-        media_file = session.get(MediaFile, media_file_id)
-        if media_file is None or not should_normalize(media_file):
+        episode = session.get(Episode, episode_id)
+        if episode is None:
             return
-        queued = enqueue_normalize(session, [media_file_id], priority=PRIORITY_DEVICE_NOW)
+        ahead = settings_store.get_int(session, settings_store.PREPARE_AHEAD_COUNT)
+        ordered = _ordered_episodes(episode.season.series)
+        index = _index_of(ordered, episode.id)
+        if index is None:
+            return
+        for offset, candidate in enumerate(ordered[index : index + ahead + 1]):
+            if not candidate.media_files:
+                continue
+            media_file = candidate.media_files[0]
+            # Skip the (expensive) probe if it's already queued/running for this file.
+            if _has_active_normalize(session, media_file.id) or not should_normalize(media_file):
+                continue
+            priority = PRIORITY_DEVICE_NOW if offset == 0 else PRIORITY_PREFETCH
+            if enqueue_normalize(session, [media_file.id], priority=priority) > 0:
+                queued = True
     if queued:
         start_workers(session_factory, output_dir, registry)
