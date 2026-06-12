@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import json
 import shutil
+from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import quote
 
@@ -528,40 +529,33 @@ def episode_playback(
     status = _variant_status(source)
     optimize_on = settings_store.get_bool(session, settings_store.DEVICE_PREFETCH)
     prepare_progress, prepare_eta = _prepare_progress(session, media_file.id)
+    # Branch on the capability PROFILE, not just the device token: a device that hasn't run
+    # the capability test has no profile, so we can't build a device variant for it — treat
+    # it like the browser (a universal web normalize) instead of leaving it stuck.
+    profile = _device_profile(device) if device is not None else None
+
+    def _schedule(target: Callable[..., object], *args: object) -> None:
+        background.add_task(
+            target,
+            request.app.state.session_factory,
+            _normalized_dir(request),
+            request.app.state.metadata_provider,
+            *args,
+        )
+
     if status == "preparing":
         # The original isn't playable on this client. Optimize on demand only if enabled
         # (or already building) — otherwise it's "unavailable" rather than spinning forever.
         if optimize_on:
-            if device is not None:
-                # device variant for this episode + prefetch the next few (plan §13.2)
-                background.add_task(
-                    run_device_prefetch,
-                    request.app.state.session_factory,
-                    _normalized_dir(request),
-                    request.app.state.metadata_provider,
-                    device.id,
-                    episode_id,
-                )
-            else:  # browser: web-normalize the episode it's trying to play
-                background.add_task(
-                    prepare_browser_normalize,
-                    request.app.state.session_factory,
-                    _normalized_dir(request),
-                    request.app.state.metadata_provider,
-                    media_file.id,
-                )
+            if device is not None and profile is not None:
+                _schedule(run_device_prefetch, device.id, episode_id)  # device variant + prefetch
+            else:
+                _schedule(prepare_browser_normalize, media_file.id)  # universal web normalize
         elif prepare_progress == 0 and not _has_active_prepare(session, media_file.id):
             status = "unavailable"
-    elif device is not None and optimize_on:
+    elif device is not None and profile is not None and optimize_on:
         # The current episode plays directly; still prefetch the next few for the device.
-        background.add_task(
-            run_device_prefetch,
-            request.app.state.session_factory,
-            _normalized_dir(request),
-            request.app.state.metadata_provider,
-            device.id,
-            episode_id,
-        )
+        _schedule(run_device_prefetch, device.id, episode_id)
     return PlaybackInfo(
         media_file_id=media_file.id,
         stream_url=f"/api/episodes/{episode_id}/stream",
