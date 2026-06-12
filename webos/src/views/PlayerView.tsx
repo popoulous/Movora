@@ -4,6 +4,7 @@ import { useDevice } from "../context/DeviceContext";
 import { theme } from "../theme";
 import { aspectHeight } from "../util";
 import { Icon } from "../components/Icon";
+import { BackButton } from "../components/BackButton";
 
 interface Props {
   episodeId: number;
@@ -557,7 +558,7 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
     return (
       <div style={{ position: "fixed", inset: 0, background: theme.bg, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#f87171", gap: "1rem" }}>
         <p>Lejátszási hiba: {error}</p>
-        <button onClick={onBack} style={pillStyle}>Vissza</button>
+        <BackButton onClick={onBack} />
       </div>
     );
   }
@@ -594,7 +595,7 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
           <div style={{ fontSize: "1rem", color: theme.muted, maxWidth: 680, lineHeight: 1.5 }}>
             A TV nem tudja közvetlenül lejátszani ezt a formátumot, és az automatikus optimalizálás ki van kapcsolva. Kapcsold be a Beállításokban, vagy válassz másik részt.
           </div>
-          <div onClick={onBack} style={pillStyle}>Vissza</div>
+          <BackButton onClick={onBack} />
         </div>
       )}
 
@@ -610,7 +611,7 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
             </div>
             <div style={{ marginTop: "0.7rem", fontSize: "1.15rem", fontWeight: 700, color: "#fff" }}>{prepareLabel}</div>
           </div>
-          <div onClick={onBack} style={pillStyle}>Vissza</div>
+          <BackButton onClick={onBack} />
         </div>
       )}
 

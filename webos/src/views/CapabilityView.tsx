@@ -12,6 +12,7 @@ import {
   type ServerSample,
 } from "../capabilities";
 import { type CapabilityProbeOutcome, type CapabilityReportBody } from "../api/client";
+import { BackButton } from "../components/BackButton";
 
 interface Props {
   onBack: () => void;
@@ -295,7 +296,9 @@ export default function CapabilityView({ onBack }: Props): React.JSX.Element {
         style={{ position: "fixed", left: "-9999px", width: 1, height: 1 }}
       />
 
-      <div style={{ color: theme.muted, fontSize: "0.95rem", marginBottom: "0.5rem" }}>← Vissza</div>
+      <div style={{ marginBottom: "0.5rem" }}>
+        <BackButton onClick={onBack} />
+      </div>
       <h1 style={{ fontSize: "1.8rem", fontWeight: 800, margin: "0 0 0.4rem", color: "#fff" }}>Képességteszt</h1>
       <p style={{ color: theme.muted, fontSize: "0.85rem", margin: "0 0 1rem", maxWidth: 880 }}>
         A videó/konténer/felirat mintákat a TV automatikusan próbálja. Az <b style={{ color: theme.text }}>audiónál</b> nincs

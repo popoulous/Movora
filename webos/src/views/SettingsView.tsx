@@ -3,6 +3,7 @@ import { scrollIntoFocus, useTvInput } from "../hooks";
 import { useDevice } from "../context/DeviceContext";
 import { theme } from "../theme";
 import { Icon } from "../components/Icon";
+import { BackButton } from "../components/BackButton";
 import { discoverServer } from "../discovery";
 
 interface Props {
@@ -230,26 +231,7 @@ export default function SettingsView({ onBack, onCapability }: Props): React.JSX
     >
       {/* Top bar */}
       <div style={{ display: "flex", alignItems: "center", marginBottom: "2.2rem" }}>
-        <div
-          data-sf="0"
-          onClick={onBack}
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "0.5rem",
-            cursor: "pointer",
-            padding: "0.55rem 1.3rem",
-            borderRadius: 999,
-            fontSize: "1.15rem",
-            fontWeight: 700,
-            color: "#fff",
-            background: backFocused ? "rgba(122,77,255,0.24)" : "rgba(255,255,255,0.06)",
-            border: backFocused ? `2px solid ${theme.accent}` : "1px solid rgba(255,255,255,0.12)",
-            boxShadow: backFocused ? "0 0 0 4px rgba(168,85,247,0.28)" : "none",
-          }}
-        >
-          <Icon name="back" size={22} /> Vissza
-        </div>
+        <BackButton focused={backFocused} onClick={onBack} dataSf="0" />
         <h1 style={{ margin: "0 0 0 1.4rem", fontSize: "2.6rem", fontWeight: 800 }}>Beállítások</h1>
         <span
           onClick={onBack}

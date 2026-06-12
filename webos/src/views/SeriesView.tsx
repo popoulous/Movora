@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { type SeriesDetail, type Library, mediaUrl } from "../api/client";
 import { useDevice } from "../context/DeviceContext";
 import { scrollIntoFocus, useTvInput } from "../hooks";
+import { BackButton } from "../components/BackButton";
 import { TopNav, type NavTab } from "../components/TopNav";
 import { Icon } from "../components/Icon";
 import { theme } from "../theme";
@@ -239,7 +240,9 @@ export default function SeriesView({
         )}
 
         <div style={{ position: "relative", maxWidth: 840, paddingTop: "0.6rem" }}>
-          <div style={{ color: theme.muted, fontSize: "0.95rem", marginBottom: "0.7rem" }}>← Vissza</div>
+          <div style={{ marginBottom: "0.7rem" }}>
+            <BackButton onClick={onBack} />
+          </div>
           <h1 style={{ fontSize: "2.4rem", fontWeight: 800, margin: "0 0 0.5rem", color: "#fff" }}>{title}</h1>
 
           {metaParts.length > 0 && (
