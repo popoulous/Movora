@@ -88,6 +88,18 @@ def _str_or_none(value: object) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
+def source_streams_stored(media_file: MediaFile) -> SourceStreams:
+    """SourceStreams from the stored columns only (no probe) — for bulk per-episode checks
+    (e.g. the series view's per-episode device-ready badges)."""
+    container = (Path(media_file.path).suffix.lstrip(".").lower()) or None
+    return SourceStreams(
+        video_codec=media_file.video_codec,
+        video_pix_fmt=media_file.video_pix_fmt,
+        audio_codec=media_file.audio_codec,
+        container=media_file.container or container,
+    )
+
+
 def source_streams(session: Session, media_file: MediaFile) -> SourceStreams:
     """The original's codecs + container, reading the stored columns and self-healing.
 

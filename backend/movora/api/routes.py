@@ -43,7 +43,13 @@ from movora.api.schemas import (
     TaskRead,
     WatchStateUpdate,
 )
-from movora.compat import PlaybackSource, parse_capabilities, select_source, source_streams
+from movora.compat import (
+    PlaybackSource,
+    parse_capabilities,
+    select_source,
+    source_streams,
+    source_streams_stored,
+)
 from movora.db.models import (
     Device,
     Episode,
@@ -58,7 +64,11 @@ from movora.db.models import (
     User,
     WatchState,
 )
-from movora.device_variants import prepare_browser_normalize, run_device_prefetch
+from movora.device_variants import (
+    populate_series_codecs,
+    prepare_browser_normalize,
+    run_device_prefetch,
+)
 from movora.domain import CapabilityProfile
 from movora.filesystem import list_directories
 from movora.home import SeriesOverview, home_overview
@@ -391,24 +401,55 @@ def search(q: str, session: SessionDep, user: CurrentUserDep) -> list[SearchResu
 
 
 @router.get("/series/{series_id}", response_model=SeriesDetail)
-def series_detail(series_id: int, session: SessionDep, user: CurrentUserDep) -> SeriesDetail:
+def series_detail(
+    series_id: int,
+    session: SessionDep,
+    request: Request,
+    background: BackgroundTasks,
+    user: CurrentUserDep,
+    device: RequestDeviceDep,
+) -> SeriesDetail:
     series = session.scalar(
         select(Series)
         .where(Series.id == series_id)
         .options(
             selectinload(Series.seasons)
             .selectinload(Season.episodes)
-            .selectinload(Episode.media_files),
+            .selectinload(Episode.media_files)
+            .selectinload(MediaFile.variants),
             selectinload(Series.recommendations),
         )
     )
     if series is None:
         raise HTTPException(status_code=404, detail="series not found")
     _require_library_access(user, series.library_id)
-    return _series_detail(session, series, user)
+    if _device_profile(device) is not None:
+        # Fill in source codecs in the background so per-episode "ready on this device"
+        # badges become accurate without probing 100+ files on the request.
+        background.add_task(
+            populate_series_codecs, request.app.state.session_factory, series_id
+        )
+    return _series_detail(session, series, user, device)
 
 
-def _series_detail(session: Session, series: Series, user: User) -> SeriesDetail:
+def _device_episode_ready(
+    profile: CapabilityProfile, media_file: MediaFile | None
+) -> bool | None:
+    """Whether this episode plays on the device now (original or a ready variant), from
+    stored codecs only (no probe). None when it isn't known yet (not probed, no variant)."""
+    if media_file is None:
+        return None
+    known = media_file.video_codec is not None or media_file.audio_codec is not None
+    if not known and not media_file.variants:
+        return None
+    source = source_streams_stored(media_file)
+    return select_source(profile, list(media_file.variants), media_file, source).direct_play
+
+
+def _series_detail(
+    session: Session, series: Series, user: User, device: Device | None
+) -> SeriesDetail:
+    profile = _device_profile(device)
     episode_ids = [episode.id for season in series.seasons for episode in season.episodes]
     watched = watched_episode_ids(session, user, episode_ids)
     summary = series_watch_summary(session, user, series)
@@ -438,6 +479,10 @@ def _series_detail(session: Session, series: Series, user: User) -> SeriesDetail
         ep_id: mf is not None and mf.id in normalizing_ids
         for ep_id, mf in media_by_episode.items()
     }
+    device_ready_by_ep = {
+        ep_id: (_device_episode_ready(profile, mf) if profile is not None else None)
+        for ep_id, mf in media_by_episode.items()
+    }
     seasons = [
         SeasonRead(
             id=season.id,
@@ -451,6 +496,7 @@ def _series_detail(session: Session, series: Series, user: User) -> SeriesDetail
                     watched=episode.id in watched,
                     normalized=normalized_by_ep[episode.id],
                     normalizing=normalizing_by_ep[episode.id],
+                    device_ready=device_ready_by_ep[episode.id],
                     thumbnail_url=(
                         f"/api/episodes/{episode.id}/thumbnail"
                         if episode.thumbnail_path

@@ -33,6 +33,7 @@ export interface Episode {
   watched: boolean;
   normalized: boolean;
   normalizing: boolean;
+  device_ready: boolean | null; // plays on this device now (true) / needs optimizing (false)
   thumbnail_url: string | null;
 }
 

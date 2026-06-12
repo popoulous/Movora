@@ -159,6 +159,9 @@ class EpisodeRead(BaseModel):
     watched: bool = False
     normalized: bool = False  # media file is Direct-Play ready (optimized or already fine)
     normalizing: bool = False  # an optimize task is queued/running for it
+    # For a device request: does it play on THIS device now (original or a ready variant)?
+    # True = ready, False = needs optimizing, None = unknown (browser, or not probed yet).
+    device_ready: bool | None = None
     thumbnail_url: str | None = None  # extracted frame, if any
 
 

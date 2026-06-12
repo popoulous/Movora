@@ -399,6 +399,22 @@ export default function SeriesView({
                 >
                   <div style={{ position: "relative", width: "100%", height: aspectHeight(EP_W, "16/9"), background: "#11131f" }}>
                     {thumb && <img src={thumb} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />}
+                    {ep.device_ready !== null && (
+                      <div
+                        title={ep.device_ready ? "Lejátszható ezen a TV-n" : "Optimalizálás szükséges"}
+                        style={{
+                          position: "absolute",
+                          top: 6,
+                          left: 6,
+                          width: 14,
+                          height: 14,
+                          borderRadius: "50%",
+                          background: ep.device_ready ? "#4ade80" : "#fbbf24",
+                          border: "2px solid rgba(5,6,11,0.6)",
+                          boxShadow: `0 0 8px ${ep.device_ready ? "rgba(74,222,128,0.7)" : "rgba(251,191,36,0.7)"}`,
+                        }}
+                      />
+                    )}
                     {ep.watched && (
                       <div
                         style={{

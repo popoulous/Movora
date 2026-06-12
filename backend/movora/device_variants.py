@@ -19,7 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from movora import settings_store
-from movora.compat import SourceStreams, parse_capabilities, select_source
+from movora.compat import SourceStreams, parse_capabilities, select_source, source_streams
 from movora.db.models import Device, Episode, JobStatus, MediaFile, Series, Task, TaskType
 from movora.device_planner import variant_target
 from movora.domain import CapabilityProfile
@@ -162,6 +162,20 @@ def run_device_prefetch(
             enforce_retention(session, episode.season.series, episode, ahead, behind)
     if queued:
         start_workers(session_factory, output_dir, registry)
+
+
+def populate_series_codecs(session_factory: sessionmaker[Session], series_id: int) -> None:
+    """Probe + persist source codecs for a series' un-probed media files (so the series
+    view's per-episode device-ready badges are accurate). Cheap, one-time per file."""
+    with session_factory() as session:
+        series = session.get(Series, series_id)
+        if series is None:
+            return
+        for season in series.seasons:
+            for episode in season.episodes:
+                for media_file in episode.media_files:
+                    if media_file.video_codec is None and media_file.audio_codec is None:
+                        source_streams(session, media_file)  # probes + persists
 
 
 def _has_active_normalize(session: Session, media_file_id: int) -> bool:
