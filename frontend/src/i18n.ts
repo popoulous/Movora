@@ -101,6 +101,14 @@ const en = {
     retainBehindDesc: "How many already-watched episodes to keep optimized before rotating them out.",
     deviceUnsupported: "Needs optimizing:",
     deviceVariants: "{{count}} device version(s) built",
+    optimizeTitle: "Optimization status",
+    optimizeReady: "ready",
+    optimizeNeeds: "{{count}} to optimize",
+    optimizeLoading: "Loading optimization status…",
+    optimizeError: "Couldn't load optimization status.",
+    optimizeNoProfile:
+      "No capability profile yet — run the capability test on this device to see what's optimized.",
+    optimizeEmpty: "No series to optimize.",
     introTitle: "Intro & outro skipping",
     autoDetectIntro: "Auto-detect intro/outro on scan",
     autoDetectIntroDesc:
@@ -385,6 +393,14 @@ const hu: typeof en = {
     retainBehindDesc: "Hány már megnézett részt tartsunk meg optimalizálva, mielőtt kirotálnánk.",
     deviceUnsupported: "Optimalizálandó:",
     deviceVariants: "{{count}} eszköz-verzió legyártva",
+    optimizeTitle: "Optimalizáltság",
+    optimizeReady: "kész",
+    optimizeNeeds: "{{count}} optimalizálandó",
+    optimizeLoading: "Optimalizáltság betöltése…",
+    optimizeError: "Nem sikerült betölteni az optimalizáltságot.",
+    optimizeNoProfile:
+      "Még nincs profil — futtasd le az eszközön a Képességtesztet, hogy lásd, mi van optimalizálva.",
+    optimizeEmpty: "Nincs optimalizálandó sorozat.",
     introTitle: "Intro & outro átugrása",
     autoDetectIntro: "Intro/outro automatikus felismerése szkenneléskor",
     autoDetectIntroDesc:

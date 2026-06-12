@@ -45,10 +45,10 @@ from movora.api.schemas import (
 )
 from movora.compat import (
     PlaybackSource,
+    episode_device_ready,
     parse_capabilities,
     select_source,
     source_streams,
-    source_streams_stored,
 )
 from movora.db.models import (
     Device,
@@ -432,20 +432,6 @@ def series_detail(
     return _series_detail(session, series, user, device)
 
 
-def _device_episode_ready(
-    profile: CapabilityProfile, media_file: MediaFile | None
-) -> bool | None:
-    """Whether this episode plays on the device now (original or a ready variant), from
-    stored codecs only (no probe). None when it isn't known yet (not probed, no variant)."""
-    if media_file is None:
-        return None
-    known = media_file.video_codec is not None or media_file.audio_codec is not None
-    if not known and not media_file.variants:
-        return None
-    source = source_streams_stored(media_file)
-    return select_source(profile, list(media_file.variants), media_file, source).direct_play
-
-
 def _series_detail(
     session: Session, series: Series, user: User, device: Device | None
 ) -> SeriesDetail:
@@ -480,7 +466,7 @@ def _series_detail(
         for ep_id, mf in media_by_episode.items()
     }
     device_ready_by_ep = {
-        ep_id: (_device_episode_ready(profile, mf) if profile is not None else None)
+        ep_id: (episode_device_ready(profile, mf) if profile is not None else None)
         for ep_id, mf in media_by_episode.items()
     }
     seasons = [

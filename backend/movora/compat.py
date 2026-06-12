@@ -100,6 +100,20 @@ def source_streams_stored(media_file: MediaFile) -> SourceStreams:
     )
 
 
+def episode_device_ready(
+    profile: CapabilityProfile, media_file: MediaFile | None
+) -> bool | None:
+    """Whether this episode plays on the device now (original or a ready variant), from
+    stored codecs only (no probe). None when it isn't known yet (not probed, no variant)."""
+    if media_file is None:
+        return None
+    known = media_file.video_codec is not None or media_file.audio_codec is not None
+    if not known and not media_file.variants:
+        return None
+    source = source_streams_stored(media_file)
+    return select_source(profile, list(media_file.variants), media_file, source).direct_play
+
+
 def source_streams(session: Session, media_file: MediaFile) -> SourceStreams:
     """The original's codecs + container, reading the stored columns and self-healing.
 

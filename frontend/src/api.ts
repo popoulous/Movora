@@ -222,6 +222,24 @@ export interface Device {
   variant_count: number; // device variants built so far
 }
 
+export interface SeriesOptimization {
+  series_id: number;
+  title: string;
+  total: number;
+  ready: number; // plays on this device now
+  needs: number; // needs optimizing
+  unknown: number; // not probed yet
+  variants_built: number;
+}
+
+export interface DeviceOptimization {
+  device_id: number;
+  name: string;
+  has_profile: boolean;
+  unsupported: string[];
+  series: SeriesOptimization[];
+}
+
 // A 401 mid-session means the cookie expired; let the app drop back to the login gate.
 function checkOk(response: Response): void {
   if (response.status === 401) {
@@ -392,4 +410,6 @@ export const api = {
   listDevices: (): Promise<Device[]> => fetch("/api/devices").then(asJson<Device[]>),
   revokeDevice: (id: number): Promise<void> =>
     fetch(`/api/devices/${id}`, { method: "DELETE" }).then(throwIfNotOk),
+  getDeviceOptimization: (id: number): Promise<DeviceOptimization> =>
+    fetch(`/api/devices/${id}/optimization`).then(asJson<DeviceOptimization>),
 };

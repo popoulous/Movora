@@ -1,9 +1,16 @@
-import { KeyRound, Trash2 } from "lucide-react";
+import { ChevronDown, KeyRound, Trash2 } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useActivity } from "../ActivityContext";
-import { api, type Device, type Library, type ServerSettings, type User } from "../api";
+import {
+  api,
+  type Device,
+  type DeviceOptimization,
+  type Library,
+  type ServerSettings,
+  type User,
+} from "../api";
 import { useAuth } from "../AuthContext";
 import { getTvOverride, setTvModeOverride, useTvMode } from "../hooks/useTvMode";
 
@@ -338,6 +345,52 @@ export function SettingsPage(): JSX.Element {
   );
 }
 
+function DeviceOptimizationPanel({
+  deviceId,
+  t,
+}: {
+  deviceId: number;
+  t: ReturnType<typeof useTranslation>["t"];
+}): JSX.Element {
+  const [data, setData] = useState<DeviceOptimization | null>(null);
+  const [error, setError] = useState(false);
+  useEffect(() => {
+    api.getDeviceOptimization(deviceId).then(setData).catch(() => setError(true));
+  }, [deviceId]);
+
+  if (error) return <p className="mt-2 text-xs text-rose-400">{t("settings.optimizeError")}</p>;
+  if (data === null)
+    return <p className="mt-2 text-xs text-neutral-500">{t("settings.optimizeLoading")}</p>;
+  if (!data.has_profile)
+    return <p className="mt-2 text-xs text-amber-300">{t("settings.optimizeNoProfile")}</p>;
+  if (data.series.length === 0)
+    return <p className="mt-2 text-xs text-neutral-500">{t("settings.optimizeEmpty")}</p>;
+
+  return (
+    <div className="mt-2 space-y-1.5">
+      {data.series.map((s) => {
+        const pct = s.total > 0 ? Math.round((s.ready / s.total) * 100) : 0;
+        return (
+          <div key={s.series_id} className="rounded-lg bg-white/[0.02] px-3 py-2 ring-1 ring-white/5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="min-w-0 truncate text-xs font-medium text-neutral-200">{s.title}</span>
+              <span className="shrink-0 text-xs text-neutral-400">
+                {s.ready}/{s.total} {t("settings.optimizeReady")}
+                {s.needs > 0 && (
+                  <span className="ml-1 text-amber-300">· {t("settings.optimizeNeeds", { count: s.needs })}</span>
+                )}
+              </span>
+            </div>
+            <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+              <div className="h-full bg-emerald-400/80 transition-all" style={{ width: `${pct}%` }} />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function DevicesSection({
   t,
 }: {
@@ -345,6 +398,7 @@ function DevicesSection({
 }): JSX.Element {
   const [devices, setDevices] = useState<Device[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [expanded, setExpanded] = useState<number | null>(null);
 
   const reload = (): void => {
     api
@@ -390,6 +444,15 @@ function DevicesSection({
                   {t("settings.deviceLastSeen", { when: lastSeen(device) })}
                 </span>
                 <button
+                  onClick={() => setExpanded(expanded === device.id ? null : device.id)}
+                  title={t("settings.optimizeTitle")}
+                  className="shrink-0 rounded-lg p-1.5 text-neutral-500 transition hover:bg-white/10 hover:text-violet-300"
+                >
+                  <ChevronDown
+                    className={`h-4 w-4 transition ${expanded === device.id ? "rotate-180" : ""}`}
+                  />
+                </button>
+                <button
                   onClick={() => revoke(device)}
                   title={t("settings.deviceDelete")}
                   className="shrink-0 rounded-lg p-1.5 text-neutral-500 transition hover:bg-red-500/15 hover:text-red-300"
@@ -412,6 +475,7 @@ function DevicesSection({
                   ))}
                 </div>
               )}
+              {expanded === device.id && <DeviceOptimizationPanel deviceId={device.id} t={t} />}
             </div>
           ))}
           {devices.length > 0 && devices[0].variant_count > 0 && (

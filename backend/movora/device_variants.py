@@ -178,6 +178,23 @@ def populate_series_codecs(session_factory: sessionmaker[Session], series_id: in
                         source_streams(session, media_file)  # probes + persists
 
 
+def populate_all_codecs(session_factory: sessionmaker[Session]) -> None:
+    """Probe + persist source codecs for every un-probed media file, so the device
+    optimization overview is accurate. One-time per file; cheap ffprobe, in the background."""
+    with session_factory() as session:
+        ids = list(
+            session.scalars(
+                select(MediaFile.id).where(
+                    MediaFile.video_codec.is_(None), MediaFile.audio_codec.is_(None)
+                )
+            )
+        )
+        for media_file_id in ids:
+            media_file = session.get(MediaFile, media_file_id)
+            if media_file is not None:
+                source_streams(session, media_file)  # probes + persists
+
+
 def _has_active_normalize(session: Session, media_file_id: int) -> bool:
     return (
         session.scalar(

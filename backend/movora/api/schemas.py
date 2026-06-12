@@ -110,6 +110,26 @@ class DeviceCreated(DeviceRead):
     token: str  # the bearer token, shown only once at creation
 
 
+class SeriesOptimization(BaseModel):
+    """How much of one series is playable on a device (plan §13.2)."""
+
+    series_id: int
+    title: str
+    total: int  # episodes with a media file
+    ready: int  # play on this device now (original or a ready variant)
+    needs: int  # can't play & no variant -> needs optimizing
+    unknown: int  # not probed yet (codecs unknown)
+    variants_built: int  # device variants (non-default) built for this series
+
+
+class DeviceOptimization(BaseModel):
+    device_id: int
+    name: str
+    has_profile: bool  # False until the device has run the capability test
+    unsupported: list[str]  # formats it can't Direct Play (what we optimize)
+    series: list[SeriesOptimization]
+
+
 class PairStartRequest(BaseModel):
     device_name: str | None = None
 

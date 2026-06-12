@@ -16,24 +16,38 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from sqlalchemy import func, select
+from sqlalchemy.orm import selectinload
 
+from movora.access import accessible_library_ids
 from movora.api.deps import CurrentUserDep, RequestDeviceDep, SessionDep
 from movora.api.schemas import (
     CapabilityProbeReport,
     DeviceCapabilitiesUpdate,
     DeviceCreate,
     DeviceCreated,
+    DeviceOptimization,
     DeviceRead,
     PairApproveRequest,
     PairStartRequest,
     PairStartResponse,
     PairStatusResponse,
+    SeriesOptimization,
 )
 from movora.auth import generate_device_token, hash_device_token
-from movora.compat import parse_capabilities, unsupported_summary
-from movora.db.models import Device, MediaVariant, UserRole
+from movora.compat import episode_device_ready, parse_capabilities, unsupported_summary
+from movora.db.models import (
+    Device,
+    Episode,
+    MediaFile,
+    MediaVariant,
+    Season,
+    Series,
+    UserRole,
+    VariantStatus,
+)
+from movora.device_variants import populate_all_codecs
 from movora.recipes import DEFAULT_RECIPE
 
 router = APIRouter(prefix="/api/devices", tags=["devices"])
@@ -208,6 +222,80 @@ def revoke_device(device_id: int, user: CurrentUserDep, session: SessionDep) -> 
     device = _owned_device(session, user, device_id)
     session.delete(device)
     session.commit()
+
+
+@router.get("/{device_id}/optimization", response_model=DeviceOptimization)
+def device_optimization(
+    device_id: int,
+    user: CurrentUserDep,
+    session: SessionDep,
+    request: Request,
+    background: BackgroundTasks,
+) -> DeviceOptimization:
+    """Per-series optimization coverage for a device: how many episodes play on it now vs
+    still need optimizing. Source codecs are filled in (background) so the counts firm up."""
+    device = _owned_device(session, user, device_id)
+    profile = (
+        parse_capabilities(json.loads(device.capabilities)) if device.capabilities else None
+    )
+    if profile is None:
+        return DeviceOptimization(
+            device_id=device.id, name=device.name, has_profile=False, unsupported=[], series=[]
+        )
+    allowed = accessible_library_ids(session, user)
+    series_rows = session.scalars(
+        select(Series)
+        .where(Series.library_id.in_(allowed))
+        .options(
+            selectinload(Series.seasons)
+            .selectinload(Season.episodes)
+            .selectinload(Episode.media_files)
+            .selectinload(MediaFile.variants)
+        )
+    )
+    out: list[SeriesOptimization] = []
+    for series in series_rows:
+        total = ready = needs = unknown = variants_built = 0
+        for season in series.seasons:
+            for episode in season.episodes:
+                media_file = episode.media_files[0] if episode.media_files else None
+                if media_file is None:
+                    continue
+                total += 1
+                variants_built += sum(
+                    1
+                    for variant in media_file.variants
+                    if variant.recipe_id != DEFAULT_RECIPE.id
+                    and variant.status is VariantStatus.READY
+                )
+                state = episode_device_ready(profile, media_file)
+                if state is None:
+                    unknown += 1
+                elif state:
+                    ready += 1
+                else:
+                    needs += 1
+        if total > 0:
+            out.append(
+                SeriesOptimization(
+                    series_id=series.id,
+                    title=series.display_title or series.title,
+                    total=total,
+                    ready=ready,
+                    needs=needs,
+                    unknown=unknown,
+                    variants_built=variants_built,
+                )
+            )
+    out.sort(key=lambda series_opt: series_opt.title.lower())
+    background.add_task(populate_all_codecs, request.app.state.session_factory)
+    return DeviceOptimization(
+        device_id=device.id,
+        name=device.name,
+        has_profile=True,
+        unsupported=unsupported_summary(profile),
+        series=out,
+    )
 
 
 def _owned_device(session: SessionDep, user: CurrentUserDep, device_id: int) -> Device:
