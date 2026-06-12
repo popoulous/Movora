@@ -12,9 +12,9 @@ interface Props {
 
 const VERSION = "v0.1.0";
 
-// Focus order (1.png): Back, then the action buttons left-to-right. The X mirrors Back.
+// Focus order: Back, then the action buttons stacked top-to-bottom. The X mirrors Back.
 const FOCUS_BACK = 0;
-const FOCUS_ACTIONS = [1, 2, 3]; // rescan, unpair, capability
+const FOCUS_LAST = 3; // rescan(1), unpair(2), capability(3)
 
 function infoRowIcon(name: string): React.JSX.Element {
   return (
@@ -78,8 +78,7 @@ function actionStyle(focused: boolean): React.CSSProperties {
     display: "flex",
     alignItems: "center",
     gap: "0.7rem",
-    flex: 1,
-    minWidth: 0,
+    width: "100%",
     height: 78,
     padding: "0 1.4rem",
     borderRadius: 18,
@@ -191,16 +190,10 @@ export default function SettingsView({ onBack, onCapability }: Props): React.JSX
     const k = e.key;
     if (k === "ArrowDown") {
       e.preventDefault();
-      if (focus === FOCUS_BACK) setFocus(1);
+      setFocus(Math.min(focus + 1, FOCUS_LAST)); // Back -> button 1 -> 2 -> 3
     } else if (k === "ArrowUp") {
       e.preventDefault();
-      if (FOCUS_ACTIONS.includes(focus)) setFocus(FOCUS_BACK);
-    } else if (k === "ArrowRight") {
-      e.preventDefault();
-      if (FOCUS_ACTIONS.includes(focus)) setFocus(Math.min(focus + 1, 3));
-    } else if (k === "ArrowLeft") {
-      e.preventDefault();
-      if (FOCUS_ACTIONS.includes(focus)) setFocus(Math.max(focus - 1, 1));
+      setFocus(Math.max(focus - 1, FOCUS_BACK)); // up through the stack, back to Back
     } else if (k === "Enter") {
       e.preventDefault();
       activate(focus);
@@ -284,7 +277,7 @@ export default function SettingsView({ onBack, onCapability }: Props): React.JSX
           <InfoRow icon="monitor" label="Eszköz neve" value={config?.deviceName ?? "–"} />
           <InfoRow icon="key" label="Token" value={token} mono />
 
-          <div style={{ display: "flex", gap: "1rem", marginTop: "1.4rem" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.8rem", marginTop: "1.4rem" }}>
             <div style={actionStyle(focus === 1)}>
               <Icon name="refresh" size={24} />
               {rescanning ? "Keresés…" : "Szerver újrakeresése"}
