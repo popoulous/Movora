@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { useTvInput } from "../hooks";
+import React, { useEffect, useState } from "react";
+import { scrollIntoFocus, useTvInput } from "../hooks";
 import { useDevice } from "../context/DeviceContext";
 import { theme } from "../theme";
 import { Icon } from "../components/Icon";
@@ -79,6 +79,7 @@ function actionStyle(focused: boolean): React.CSSProperties {
     alignItems: "center",
     gap: "0.7rem",
     width: "100%",
+    boxSizing: "border-box", // include padding + border so it doesn't overflow the card
     height: 78,
     padding: "0 1.4rem",
     borderRadius: 18,
@@ -201,6 +202,12 @@ export default function SettingsView({ onBack, onCapability }: Props): React.JSX
   };
   useTvInput(onKey, onBack);
 
+  // Keep the focused control in view when navigating with the D-pad on short screens.
+  useEffect(() => {
+    const el = document.querySelector(`[data-sf="${focus}"]`);
+    if (el instanceof HTMLElement) scrollIntoFocus(el, 90, 90);
+  }, [focus]);
+
   const token = config?.deviceToken ? `${config.deviceToken.slice(0, 12)}…` : "–";
   const backFocused = focus === FOCUS_BACK;
 
@@ -224,6 +231,7 @@ export default function SettingsView({ onBack, onCapability }: Props): React.JSX
       {/* Top bar */}
       <div style={{ display: "flex", alignItems: "center", marginBottom: "2.2rem" }}>
         <div
+          data-sf="0"
           onClick={onBack}
           style={{
             display: "inline-flex",
@@ -281,15 +289,15 @@ export default function SettingsView({ onBack, onCapability }: Props): React.JSX
           <InfoRow icon="key" label="Token" value={token} mono />
 
           <div style={{ display: "flex", flexDirection: "column", gap: "0.8rem", marginTop: "1.4rem" }}>
-            <div style={actionStyle(focus === 1)} onClick={() => { setFocus(1); handleRescan(); }}>
+            <div data-sf="1" style={actionStyle(focus === 1)} onClick={() => { setFocus(1); handleRescan(); }}>
               <Icon name="refresh" size={24} />
               {rescanning ? "Keresés…" : "Szerver újrakeresése"}
             </div>
-            <div style={actionStyle(focus === 2)} onClick={() => { setFocus(2); handleUnpair(); }}>
+            <div data-sf="2" style={actionStyle(focus === 2)} onClick={() => { setFocus(2); handleUnpair(); }}>
               <Icon name="unlink" size={24} />
               Szétválasztás
             </div>
-            <div style={actionStyle(focus === 3)} onClick={() => { setFocus(3); onCapability(); }}>
+            <div data-sf="3" style={actionStyle(focus === 3)} onClick={() => { setFocus(3); onCapability(); }}>
               <Icon name="settings" size={24} />
               Képességteszt
             </div>
