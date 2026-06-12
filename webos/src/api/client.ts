@@ -110,6 +110,8 @@ export interface PlaybackInfo {
   media_type: string;
   direct_play: boolean;
   variant_status: "direct" | "preparing" | "ready" | "unavailable";
+  prepare_progress: number; // 0-100, the on-demand optimize task's progress
+  prepare_eta_seconds: number | null;
   subtitle_tracks: SubtitleTrack[];
   resume_position: number;
   intro_start: number | null;

@@ -148,6 +148,8 @@ export interface PlaybackInfo {
   media_type: string;
   direct_play: boolean;
   variant_status: "direct" | "preparing" | "ready" | "unavailable";
+  prepare_progress: number;
+  prepare_eta_seconds: number | null;
   subtitle_tracks: SubtitleTrack[];
   fonts: string[];
   resume_position: number;

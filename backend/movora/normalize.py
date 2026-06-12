@@ -417,11 +417,14 @@ def enqueue_intro(session: Session, library_id: int) -> int:
     return queued
 
 
-def enqueue_normalize(session: Session, media_file_ids: list[int]) -> int:
+def enqueue_normalize(
+    session: Session, media_file_ids: list[int], priority: int = PRIORITY_NORMALIZE
+) -> int:
     """Queue normalize Tasks, skipping active/already-optimized files and retrying failed.
 
     A file that already has a queued/running task is skipped; a previously FAILED task
-    is reset to PENDING (a retry) rather than duplicated.
+    is reset to PENDING (a retry) rather than duplicated. ``priority`` lets an on-demand
+    playback normalize jump the queue (PRIORITY_DEVICE_NOW).
     """
     queued = 0
     for media_file_id in media_file_ids:
@@ -443,10 +446,10 @@ def enqueue_normalize(session: Session, media_file_ids: list[int]) -> int:
         if failed:
             _reset(failed[-1])  # retry the latest failed attempt in place
             failed[-1].attempts = 0  # a manual re-queue is a fresh start
+            failed[-1].priority = priority
         else:
             session.add(
-                Task(type=TaskType.NORMALIZE, media_file_id=media_file_id,
-                     priority=PRIORITY_NORMALIZE)
+                Task(type=TaskType.NORMALIZE, media_file_id=media_file_id, priority=priority)
             )
         queued += 1
     session.commit()

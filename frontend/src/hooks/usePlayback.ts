@@ -90,6 +90,8 @@ export interface UsePlaybackReturn {
   nearEnd: boolean;
   afterOutro: boolean;
   normalizing: boolean;
+  prepareProgress: number;
+  prepareEta: number | null;
   trackId: string | null;
   setTrackId: Dispatch<SetStateAction<string | null>>;
   subLabels: Record<string, string>;
@@ -143,6 +145,8 @@ export function usePlayback(id: number): UsePlaybackReturn {
       .getPlayback(id)
       .then((info) => {
         setPlayback(info);
+        // The backend auto-optimizes on play (when enabled); poll until it's ready.
+        if (info.variant_status === "preparing") setNormalizing(true);
         const preferred = user?.preferred_language ?? i18n.language;
         setTrackId(pickDefaultTrack(info.subtitle_tracks, preferred)?.id ?? null);
       })
@@ -184,10 +188,8 @@ export function usePlayback(id: number): UsePlaybackReturn {
       api
         .getPlayback(id)
         .then((info) => {
-          if (info.direct_play) {
-            setPlayback(info);
-            setNormalizing(false);
-          }
+          setPlayback(info); // live progress while optimizing
+          if (info.variant_status !== "preparing") setNormalizing(false);
         })
         .catch(() => undefined);
     }, 4000);
@@ -274,6 +276,8 @@ export function usePlayback(id: number): UsePlaybackReturn {
     nearEnd,
     afterOutro,
     normalizing,
+    prepareProgress: playback?.prepare_progress ?? 0,
+    prepareEta: playback?.prepare_eta_seconds ?? null,
     trackId,
     setTrackId,
     subLabels,

@@ -159,6 +159,8 @@ export function PlayerPage(): JSX.Element {
     skip,
     nearEnd,
     normalizing,
+    prepareProgress,
+    prepareEta,
     trackId,
     setTrackId,
     subLabels,
@@ -252,17 +254,34 @@ export function PlayerPage(): JSX.Element {
 
       <div className="mt-4 max-w-[1600px] space-y-5">
         <div className="space-y-4">
-          {!playback.direct_play && (
-            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-              <span className="min-w-0 flex-1">{t("player.notPlayable")}</span>
-              <button
-                onClick={normalize}
-                disabled={normalizing}
-                className="shrink-0 rounded-lg bg-amber-400/20 px-3 py-1.5 font-medium text-amber-100 ring-1 ring-amber-400/30 transition hover:bg-amber-400/30 disabled:opacity-60"
-              >
-                {normalizing ? t("player.normalizing") : t("player.normalizeNow")}
-              </button>
+          {normalizing ? (
+            <div className="rounded-xl border border-violet-500/30 bg-violet-500/10 px-4 py-3 text-sm text-violet-100">
+              <div className="flex items-center justify-between gap-3">
+                <span className="min-w-0">{t("player.optimizing")}</span>
+                <span className="shrink-0 font-semibold">
+                  {prepareProgress}%
+                  {prepareEta ? ` · ~${Math.max(1, Math.round(prepareEta / 60))} ${t("player.min")}` : ""}
+                </span>
+              </div>
+              <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                <div
+                  className="h-full bg-gradient-to-r from-[#7A4DFF] to-[#EC4899] transition-all"
+                  style={{ width: `${prepareProgress}%` }}
+                />
+              </div>
             </div>
+          ) : (
+            !playback.direct_play && (
+              <div className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+                <span className="min-w-0 flex-1">{t("player.notPlayable")}</span>
+                <button
+                  onClick={normalize}
+                  className="shrink-0 rounded-lg bg-amber-400/20 px-3 py-1.5 font-medium text-amber-100 ring-1 ring-amber-400/30 transition hover:bg-amber-400/30"
+                >
+                  {t("player.normalizeNow")}
+                </button>
+              </div>
+            )
           )}
 
           <div className="tv-player relative overflow-hidden rounded-2xl bg-black shadow-[0_0_70px_rgba(122,77,255,0.12)] ring-1 ring-white/10">

@@ -27,7 +27,9 @@ from movora.metadata import MetadataRegistry
 from movora.normalize import (
     PRIORITY_DEVICE_NOW,
     PRIORITY_PREFETCH,
+    enqueue_normalize,
     enqueue_prepare_variant,
+    should_normalize,
     start_workers,
 )
 from movora.recipes import DEFAULT_RECIPE, recipe_id_for
@@ -139,11 +141,12 @@ def run_device_prefetch(
     device_id: int,
     episode_id: int,
 ) -> None:
-    """Background entry point: prefetch the window for a device, then rotate (if enabled)."""
+    """Background entry point: build the current episode's variant on demand + prefetch the
+    next few, then rotate (if enabled). Gated by the optimize-on-play setting."""
     queued = False
     with session_factory() as session:
         if not settings_store.get_bool(session, settings_store.DEVICE_PREFETCH):
-            return
+            return  # optimization on playback is off
         device = session.get(Device, device_id)
         episode = session.get(Episode, episode_id)
         if device is None or episode is None or not device.capabilities:
@@ -156,5 +159,26 @@ def run_device_prefetch(
         queued = ensure_device_variants(session, profile, device.id, episode, ahead)
         if settings_store.get_bool(session, settings_store.DEVICE_RETENTION):
             enforce_retention(session, episode.season.series, episode, ahead, behind)
+    if queued:
+        start_workers(session_factory, output_dir, registry)
+
+
+def prepare_browser_normalize(
+    session_factory: sessionmaker[Session],
+    output_dir: Path,
+    registry: MetadataRegistry,
+    media_file_id: int,
+) -> None:
+    """Background entry point: web-normalize the episode the browser is trying to play.
+
+    The browser's "device variant" is the v1 web mp4, so on-demand optimization for it is
+    just a NORMALIZE — queued at top priority since you pressed play and are waiting.
+    """
+    queued = 0
+    with session_factory() as session:
+        media_file = session.get(MediaFile, media_file_id)
+        if media_file is None or not should_normalize(media_file):
+            return
+        queued = enqueue_normalize(session, [media_file_id], priority=PRIORITY_DEVICE_NOW)
     if queued:
         start_workers(session_factory, output_dir, registry)

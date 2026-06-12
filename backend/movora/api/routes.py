@@ -57,7 +57,7 @@ from movora.db.models import (
     User,
     WatchState,
 )
-from movora.device_variants import run_device_prefetch
+from movora.device_variants import prepare_browser_normalize, run_device_prefetch
 from movora.domain import CapabilityProfile
 from movora.filesystem import list_directories
 from movora.home import SeriesOverview, home_overview
@@ -525,9 +525,35 @@ def episode_playback(
     season = episode.season
     series = season.series
     source = _playback_source(session, media_file, device)
-    if device is not None:
-        # Off the request: ensure this + the next few episodes have a device variant,
-        # and rotate old ones out (plan §13.2).
+    status = _variant_status(source)
+    optimize_on = settings_store.get_bool(session, settings_store.DEVICE_PREFETCH)
+    prepare_progress, prepare_eta = _prepare_progress(session, media_file.id)
+    if status == "preparing":
+        # The original isn't playable on this client. Optimize on demand only if enabled
+        # (or already building) — otherwise it's "unavailable" rather than spinning forever.
+        if optimize_on:
+            if device is not None:
+                # device variant for this episode + prefetch the next few (plan §13.2)
+                background.add_task(
+                    run_device_prefetch,
+                    request.app.state.session_factory,
+                    _normalized_dir(request),
+                    request.app.state.metadata_provider,
+                    device.id,
+                    episode_id,
+                )
+            else:  # browser: web-normalize the episode it's trying to play
+                background.add_task(
+                    prepare_browser_normalize,
+                    request.app.state.session_factory,
+                    _normalized_dir(request),
+                    request.app.state.metadata_provider,
+                    media_file.id,
+                )
+        elif prepare_progress == 0 and not _has_active_prepare(session, media_file.id):
+            status = "unavailable"
+    elif device is not None and optimize_on:
+        # The current episode plays directly; still prefetch the next few for the device.
         background.add_task(
             run_device_prefetch,
             request.app.state.session_factory,
@@ -541,7 +567,9 @@ def episode_playback(
         stream_url=f"/api/episodes/{episode_id}/stream",
         media_type=source.media_type,
         direct_play=source.direct_play,
-        variant_status=_variant_status(source),
+        variant_status=status,
+        prepare_progress=prepare_progress,
+        prepare_eta_seconds=prepare_eta,
         # Subtitles/fonts come from the original, or the preserved assets if it was deleted.
         subtitle_tracks=_subtitle_tracks(episode_id, _subtitle_base(media_file, request)),
         fonts=_font_urls(episode_id, media_file, request),
@@ -714,12 +742,57 @@ def _playback_source(
 
 
 def _variant_status(source: PlaybackSource) -> str:
-    """How the chosen source plays, for the client: original/variant/needs-preparing."""
-    if source.needs_variant:
-        return "preparing"
+    """How the chosen source plays, for the client (browser or device alike):
+
+    "ready" — a variant serves it; "direct" — the original plays as-is; "preparing" —
+    the original isn't playable for this client and there's no variant yet, so one is
+    being built on demand (browser: web normalize, device: surgical variant).
+    """
     if source.recipe_id is not None:
         return "ready"
-    return "direct"
+    if source.direct_play:
+        return "direct"
+    return "preparing"
+
+
+def _prepare_progress(session: Session, media_file_id: int) -> tuple[int, int | None]:
+    """Progress + ETA of the on-demand optimize task for this file, so the player can show
+    "Optimizing… 40% (~2 min)". Prefers the running task, else the next queued one."""
+    running = session.scalar(
+        select(Task).where(
+            Task.media_file_id == media_file_id,
+            Task.type.in_((TaskType.NORMALIZE, TaskType.PREPARE_VARIANT)),
+            Task.status == JobStatus.RUNNING,
+        )
+    )
+    task = running or session.scalar(
+        select(Task)
+        .where(
+            Task.media_file_id == media_file_id,
+            Task.type.in_((TaskType.NORMALIZE, TaskType.PREPARE_VARIANT)),
+            Task.status == JobStatus.PENDING,
+        )
+        .order_by(Task.priority, Task.id)
+    )
+    if task is None:
+        return 0, None
+    return task.progress, task.eta_seconds
+
+
+def _has_active_prepare(session: Session, media_file_id: int) -> bool:
+    """Whether an optimize task (NORMALIZE / PREPARE_VARIANT) is queued or running for this file."""
+    return (
+        session.scalar(
+            select(Task.id)
+            .where(
+                Task.media_file_id == media_file_id,
+                Task.type.in_((TaskType.NORMALIZE, TaskType.PREPARE_VARIANT)),
+                Task.status.in_((JobStatus.PENDING, JobStatus.RUNNING)),
+            )
+            .limit(1)
+        )
+        is not None
+    )
 
 
 @router.get("/episodes/{episode_id}/subtitles")

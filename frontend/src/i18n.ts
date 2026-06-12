@@ -89,9 +89,9 @@ const en = {
     autoScanDesc:
       "Rescan libraries on startup and hourly to pick up added files. A rescan also removes entries whose files were deleted or moved. Safe: a library that reads as empty (e.g. an offline drive) is never wiped.",
     deviceTitle: "Device optimization",
-    devicePrefetch: "Prepare versions for devices",
+    devicePrefetch: "Optimize on playback",
     devicePrefetchDesc:
-      "When a TV plays an episode, build a playable version of it and the next few in the background — so it never stalls on a format the TV can't play (10-bit, DTS, MPEG-TS).",
+      "When you open an episode a TV or browser can't play directly (10-bit, DTS, MPEG-TS…), build a playable version on demand — and the next few ahead — so playback starts as soon as it's ready. Off: such episodes show as not playable.",
     prepareAhead: "Prepared ahead",
     prepareAheadDesc: "How many upcoming episodes to optimize in advance.",
     deviceRetention: "Auto-rotate old versions",
@@ -262,6 +262,8 @@ const en = {
       "This file isn't web-playable yet (e.g. HEVC/10-bit). Optimize it for Direct Play — the original is kept.",
     normalizeNow: "Optimize for playback",
     normalizing: "Optimizing… watch the activity bell",
+    optimizing: "Optimizing this episode — playback starts automatically when it's ready.",
+    min: "min",
     episodes: "Episodes",
     nextEpisode: "Next episode",
     startingIn: "Starting in {{seconds}}s",
@@ -371,9 +373,9 @@ const hu: typeof en = {
     autoScanDesc:
       "Indításkor és óránként újraszkenel, hogy behúzza az új fájlokat. Az újraszken kitakarítja azokat a bejegyzéseket is, amelyek fájlja törlődött vagy átkerült. Biztonságos: az üresként látszó könyvtárat (pl. offline meghajtó) soha nem üríti ki.",
     deviceTitle: "Eszköz-optimalizálás",
-    devicePrefetch: "Verziók előkészítése eszközökhöz",
+    devicePrefetch: "Optimalizálás lejátszáskor",
     devicePrefetchDesc:
-      "Amikor egy TV elindít egy részt, a háttérben legyártjuk a lejátszható verzióját és a következő pár részét — így sosem akad meg olyan formátumon, amit a TV nem tud (10-bit, DTS, MPEG-TS).",
+      "Ha olyan részt indítasz, amit a TV vagy a böngésző nem tud közvetlenül lejátszani (10-bit, DTS, MPEG-TS…), a háttérben legyártjuk a lejátszható verzióját — és a következő párat előre — így amint kész, indul. Kikapcsolva az ilyen rész nem játszható.",
     prepareAhead: "Előre legyártva",
     prepareAheadDesc: "Hány következő részt optimalizáljunk előre.",
     deviceRetention: "Régi verziók automatikus rotálása",
@@ -544,6 +546,8 @@ const hu: typeof en = {
       "Ez a fájl böngészőben még nem játszható (pl. HEVC/10-bit). Optimalizáld Direct Play-re — az eredeti megmarad.",
     normalizeNow: "Optimalizálás lejátszáshoz",
     normalizing: "Optimalizálás… nézd az aktivitás-harangot",
+    optimizing: "A rész optimalizálása folyamatban — amint kész, a lejátszás automatikusan elindul.",
+    min: "perc",
     episodes: "Epizódok",
     nextEpisode: "Következő rész",
     startingIn: "{{seconds}} mp múlva indul",

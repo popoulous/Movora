@@ -92,6 +92,7 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
   const [series, setSeries] = useState<SeriesDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [preparing, setPreparing] = useState(false); // a device variant is being built
+  const [blocked, setBlocked] = useState(false); // unplayable here & optimization is off
   const [paused, setPaused] = useState(false);
   const [cur, setCur] = useState(0);
   const [dur, setDur] = useState(0);
@@ -137,6 +138,7 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
     };
     const ready = (i: PlaybackInfo): void => {
       setPreparing(false);
+      setBlocked(false);
       setInfo(i);
       setError(null);
       setEnded(false);
@@ -155,9 +157,18 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
           if (i.variant_status === "preparing") {
             // The TV can't Direct Play this yet; a variant is building. Wait and re-ask.
             setPreparing(true);
+            setBlocked(false);
             setInfo(i);
             setError(null);
             timer = window.setTimeout(load, PREPARE_POLL_MS);
+            return;
+          }
+          if (i.variant_status === "unavailable") {
+            // Can't play directly and optimization is off — don't spin; tell the user.
+            setBlocked(true);
+            setPreparing(false);
+            setInfo(i);
+            setError(null);
             return;
           }
           ready(i);
@@ -554,6 +565,12 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
   const streamUrl = info ? mediaUrl(base, token, info.stream_url) : undefined;
   const tracks = info?.subtitle_tracks ?? [];
   const pct = dur > 0 ? (cur / dur) * 100 : 0;
+  const prepProgress = info?.prepare_progress ?? 0;
+  const prepEta = info?.prepare_eta_seconds ?? null;
+  const prepareLabel =
+    prepProgress > 0
+      ? `${prepProgress}%${prepEta ? ` · kb. ${Math.max(1, Math.round(prepEta / 60))} perc` : ""}`
+      : "Sorban áll…";
   const subShift = panelOpen ? (panelH > 0 ? `-${panelH + 20}px` : "-46vh") : POS_BASE[subStyle.pos];
   const cueCss = `video::cue { font-size: ${SIZE_VH[subStyle.size]}; background-color: ${BG_COLOR[subStyle.bg]}; color: #fff; text-shadow: -1px -1px 2px #000, 1px -1px 2px #000, -1px 1px 2px #000, 1px 1px 2px #000, 0 2px 5px rgba(0,0,0,0.9); }`;
   const rootStyle = {
@@ -567,8 +584,18 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
   return (
     <div ref={rootRef} style={rootStyle}>
       <style>{cueCss}</style>
-      {!info && !preparing && (
+      {!info && !preparing && !blocked && (
         <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: theme.muted }}>Betöltés…</div>
+      )}
+
+      {blocked && (
+        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "1.1rem", background: theme.bg, textAlign: "center", padding: "2rem" }}>
+          <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "#fff" }}>Ez a rész itt nem játszható le</div>
+          <div style={{ fontSize: "1rem", color: theme.muted, maxWidth: 680, lineHeight: 1.5 }}>
+            A TV nem tudja közvetlenül lejátszani ezt a formátumot, és az automatikus optimalizálás ki van kapcsolva. Kapcsold be a Beállításokban, vagy válassz másik részt.
+          </div>
+          <div onClick={onBack} style={pillStyle}>Vissza</div>
+        </div>
       )}
 
       {preparing && (
@@ -577,11 +604,17 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
           <div style={{ fontSize: "1rem", color: theme.muted, maxWidth: 680, lineHeight: 1.5 }}>
             A TV nem tudja közvetlenül lejátszani ezt a részt, ezért a háttérben készül egy kompatibilis verzió. Amint kész, automatikusan elindul.
           </div>
+          <div style={{ width: 440, marginTop: "0.2rem" }}>
+            <div style={{ height: 12, borderRadius: 999, background: "rgba(255,255,255,0.1)", overflow: "hidden" }}>
+              <div style={{ width: `${info?.prepare_progress ?? 0}%`, height: "100%", background: theme.gradient, transition: "width 0.5s ease" }} />
+            </div>
+            <div style={{ marginTop: "0.7rem", fontSize: "1.15rem", fontWeight: 700, color: "#fff" }}>{prepareLabel}</div>
+          </div>
           <div onClick={onBack} style={pillStyle}>Vissza</div>
         </div>
       )}
 
-      {info && !preparing && (
+      {info && !preparing && !blocked && (
         <video
           ref={videoRef}
           src={streamUrl}
