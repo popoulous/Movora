@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { theme } from "../theme";
+import logo from "../assets/movora_logo.png";
 
 // A visual-only boot overlay: dark neon backdrop, the Movora mark with an orbiting
 // ring loader (not a plain spinner), a status line, and the server URL. It never
@@ -19,7 +20,7 @@ interface Props {
 
 const KEYFRAMES = `
 @keyframes mv-orbit { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-@keyframes mv-pulse { 0%, 100% { transform: scale(1); box-shadow: 0 0 30px rgba(122,77,255,0.55); } 50% { transform: scale(1.06); box-shadow: 0 0 56px rgba(236,72,153,0.7); } }
+@keyframes mv-pulse { 0%, 100% { transform: scale(1); filter: drop-shadow(0 0 14px rgba(122,77,255,0.6)); } 50% { transform: scale(1.06); filter: drop-shadow(0 0 28px rgba(236,72,153,0.8)); } }
 @keyframes mv-dot { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
 `;
 
@@ -86,20 +87,16 @@ export default function SplashScreen({
           <span style={dotStyle(120, "#EC4899")} />
           <span style={dotStyle(240, "#a855f7")} />
         </div>
-        <div
+        <img
+          src={logo}
+          alt="Movora"
           style={{
-            width: 108,
-            height: 108,
-            borderRadius: 28,
-            background: theme.gradient,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
+            width: 124,
+            height: 124,
+            display: "block",
             animation: "mv-pulse 2.4s ease-in-out infinite",
           }}
-        >
-          <span style={{ fontSize: 60, fontWeight: 900, color: "#fff", lineHeight: 1 }}>M</span>
-        </div>
+        />
       </div>
 
       <div style={{ marginTop: "1.9rem", fontSize: "2rem", fontWeight: 800, letterSpacing: "0.2em", color: "#fff" }}>MOVORA</div>
