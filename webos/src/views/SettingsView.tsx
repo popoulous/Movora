@@ -216,6 +216,7 @@ export default function SettingsView({ onBack, onCapability }: Props): React.JSX
         background: "radial-gradient(circle at 78% 30%, #14102b 0%, #05060B 58%)",
         display: "flex",
         flexDirection: "column",
+        overflowY: "auto", // scroll on short viewports instead of clipping the buttons
         padding: "3rem 3.5rem",
         color: "#fff",
       }}
@@ -223,10 +224,12 @@ export default function SettingsView({ onBack, onCapability }: Props): React.JSX
       {/* Top bar */}
       <div style={{ display: "flex", alignItems: "center", marginBottom: "2.2rem" }}>
         <div
+          onClick={onBack}
           style={{
             display: "inline-flex",
             alignItems: "center",
             gap: "0.5rem",
+            cursor: "pointer",
             padding: "0.55rem 1.3rem",
             borderRadius: 999,
             fontSize: "1.15rem",
@@ -260,7 +263,7 @@ export default function SettingsView({ onBack, onCapability }: Props): React.JSX
       </div>
 
       {/* Content: card + decorative art */}
-      <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+      <div style={{ display: "flex", flex: "1 0 auto", minHeight: 0 }}>
         <div
           style={{
             width: "62%",
@@ -278,15 +281,15 @@ export default function SettingsView({ onBack, onCapability }: Props): React.JSX
           <InfoRow icon="key" label="Token" value={token} mono />
 
           <div style={{ display: "flex", flexDirection: "column", gap: "0.8rem", marginTop: "1.4rem" }}>
-            <div style={actionStyle(focus === 1)}>
+            <div style={actionStyle(focus === 1)} onClick={() => { setFocus(1); handleRescan(); }}>
               <Icon name="refresh" size={24} />
               {rescanning ? "Keresés…" : "Szerver újrakeresése"}
             </div>
-            <div style={actionStyle(focus === 2)}>
+            <div style={actionStyle(focus === 2)} onClick={() => { setFocus(2); handleUnpair(); }}>
               <Icon name="unlink" size={24} />
               Szétválasztás
             </div>
-            <div style={actionStyle(focus === 3)}>
+            <div style={actionStyle(focus === 3)} onClick={() => { setFocus(3); onCapability(); }}>
               <Icon name="settings" size={24} />
               Képességteszt
             </div>

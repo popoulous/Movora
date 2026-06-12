@@ -10,10 +10,11 @@ body {
   font-family: "Inter", "Helvetica Neue", Arial, sans-serif;
 }
 
-/* Ambient brand glow behind everything (matches the web app's backdrop). */
+/* Ambient brand glow behind everything (matches the web app's backdrop). Each view sets
+   its own explicit height + overflow, so no min-height here — that produced a second,
+   dead scrollbar next to the view's own scroll container. */
 .mv-app {
   position: relative;
-  min-height: 100vh;
   background:
     radial-gradient(60% 50% at 15% 0%, rgba(122, 77, 255, 0.18), transparent 70%),
     radial-gradient(50% 50% at 90% 10%, rgba(236, 72, 153, 0.14), transparent 70%),

@@ -4,7 +4,6 @@ import { useDevice } from "../context/DeviceContext";
 import { useTvInput } from "../hooks";
 import { TopNav, type NavTab } from "../components/TopNav";
 import { theme } from "../theme";
-import { aspectHeight } from "../util";
 
 interface Props {
   libraryId: number;
@@ -21,7 +20,6 @@ const FILTERS = [
   { id: "done", label: "Befejezett" },
 ];
 const COLS = 6;
-const CARD_W = 290;
 
 export default function LibraryView({
   libraryId,
@@ -210,12 +208,14 @@ export default function LibraryView({
                   cursor: "pointer",
                 }}
               >
-                <div style={{ width: "100%", height: aspectHeight(CARD_W, "2/3"), background: "#11131f" }}>
+                {/* 2:3 poster via padding-bottom (Chrome 79 has no CSS aspect-ratio), so it
+                    scales with the card's real width at any resolution instead of stretching. */}
+                <div style={{ position: "relative", width: "100%", paddingBottom: "150%", background: "#11131f" }}>
                   {img(s.cover_image_url) && (
                     <img
                       src={img(s.cover_image_url)}
                       alt=""
-                      style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                      style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", objectFit: "cover", display: "block" }}
                     />
                   )}
                 </div>
