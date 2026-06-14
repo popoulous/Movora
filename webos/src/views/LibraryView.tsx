@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { type SeriesSummary, type Library, mediaUrl } from "../api/client";
 import { useDevice } from "../context/DeviceContext";
+import { useI18n, type Key } from "../i18n";
 import { useTvInput } from "../hooks";
 import { TopNav, type NavTab } from "../components/TopNav";
 import { theme } from "../theme";
@@ -14,11 +15,12 @@ interface Props {
   onBack: () => void;
 }
 
-const FILTERS = [
-  { id: "all", label: "Összes" },
-  { id: "watching", label: "Elkezdett" },
-  { id: "done", label: "Befejezett" },
-];
+const FILTERS = ["all", "watching", "done"] as const;
+const FILTER_KEY: Record<(typeof FILTERS)[number], Key> = {
+  all: "library.all",
+  watching: "library.watching",
+  done: "library.completed",
+};
 const COLS = 6;
 
 export default function LibraryView({
@@ -30,6 +32,7 @@ export default function LibraryView({
   onBack,
 }: Props): React.JSX.Element {
   const { api, config } = useDevice();
+  const { t } = useI18n();
   const [all, setAll] = useState<SeriesSummary[]>([]);
   const [libraries, setLibraries] = useState<Library[]>([]);
   const [loadedFor, setLoadedFor] = useState<number | null>(null);
@@ -60,18 +63,18 @@ export default function LibraryView({
 
   // Top nav: Home + one tab per library + Settings. The active tab is this library.
   const navTabs: NavTab[] = [
-    { id: "home", label: "Főoldal" },
+    { id: "home", label: t("nav.home") },
     ...libraries.map((l) => ({ id: `lib:${l.id}`, label: l.name })),
-    { id: "settings", label: "Beállítások" },
+    { id: "settings", label: t("nav.settings") },
   ];
   const activeId = `lib:${libraryId}`;
   const activeNavIdx = Math.max(
     0,
-    navTabs.findIndex((t) => t.id === activeId),
+    navTabs.findIndex((tab) => tab.id === activeId),
   );
 
   // Apply the active filter.
-  const filter = FILTERS[filterI].id;
+  const filter = FILTERS[filterI];
   const series = all.filter((s) =>
     filter === "done"
       ? s.watch_status === "completed"
@@ -139,14 +142,14 @@ export default function LibraryView({
       <TopNav tabs={navTabs} activeId={activeId} focusIdx={zone === "nav" ? navI : -1} onActivate={openTab} />
 
       <div style={{ padding: "0 2.5rem 0.5rem" }}>
-        <h1 style={{ fontSize: "1.7rem", fontWeight: 800, margin: "0 0 0.8rem" }}>{library?.name ?? "Könyvtár"}</h1>
+        <h1 style={{ fontSize: "1.7rem", fontWeight: 800, margin: "0 0 0.8rem" }}>{library?.name ?? t("library.defaultName")}</h1>
         <div style={{ display: "flex", alignItems: "center" }}>
           {FILTERS.map((f, i) => {
             const active = i === filterI;
             const focused = zone === "filters" && i === filterI;
             return (
               <span
-                key={f.id}
+                key={f}
                 onClick={() => setFilterI(i)}
                 style={{
                   marginRight: "0.7rem",
@@ -164,7 +167,7 @@ export default function LibraryView({
                   boxShadow: focused ? "0 0 14px rgba(122,77,255,0.6)" : "none",
                 }}
               >
-                {f.label}
+                {t(FILTER_KEY[f])}
               </span>
             );
           })}
@@ -173,17 +176,15 @@ export default function LibraryView({
 
       {/* Poster grid (full width) */}
       <div style={{ flex: 1, overflowY: "auto", padding: "0.6rem 2.5rem 3.5rem", minHeight: 0 }}>
-        {loading && !error && <p style={{ color: theme.muted }}>Betöltés…</p>}
-        {error && <p style={{ color: "#f87171" }}>Betöltési hiba: {error}</p>}
+        {loading && !error && <p style={{ color: theme.muted }}>{t("common.loading")}</p>}
+        {error && <p style={{ color: "#f87171" }}>{t("common.loadError", { error })}</p>}
         {!loading && !error && series.length === 0 && (
           <div style={{ padding: "3rem 0", textAlign: "center", color: theme.muted }}>
             <div style={{ fontSize: "1.1rem", fontWeight: 600, color: theme.text }}>
-              {all.length === 0 ? "Ez a könyvtár üres" : "Nincs találat erre a szűrőre"}
+              {all.length === 0 ? t("library.emptyTitle") : t("library.noMatchTitle")}
             </div>
             <div style={{ fontSize: "0.85rem", marginTop: "0.5rem" }}>
-              {all.length === 0
-                ? "Adj hozzá médiát a Movora szerveren, majd indíts egy beolvasást."
-                : "Válassz másik szűrőt a fenti listából."}
+              {all.length === 0 ? t("library.emptyBody") : t("library.noMatchBody")}
             </div>
           </div>
         )}
@@ -233,7 +234,7 @@ export default function LibraryView({
                     {s.display_title ?? s.title}
                   </div>
                   <div style={{ fontSize: "0.7rem", color: theme.muted }}>
-                    {[s.year, `${s.episode_count} ep`].filter(Boolean).join(" · ")}
+                    {[s.year, t("library.epCount", { count: s.episode_count })].filter(Boolean).join(" · ")}
                   </div>
                 </div>
               </div>

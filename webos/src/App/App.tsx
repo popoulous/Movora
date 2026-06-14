@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import ThemeDecorator from "@enact/sandstone/ThemeDecorator";
+import { I18nProvider } from "../i18n";
 import { DeviceProvider, useDevice } from "../context/DeviceContext";
 import WelcomeView from "../views/WelcomeView";
 import HomeView from "../views/HomeView";
@@ -99,9 +100,11 @@ function AppInner(): React.JSX.Element {
 
 function App(): React.JSX.Element {
   return (
-    <DeviceProvider>
-      <AppInner />
-    </DeviceProvider>
+    <I18nProvider>
+      <DeviceProvider>
+        <AppInner />
+      </DeviceProvider>
+    </I18nProvider>
   );
 }
 

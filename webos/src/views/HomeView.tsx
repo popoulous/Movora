@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { type HomeData, type HomeSeries, type Library, mediaUrl } from "../api/client";
 import { useDevice } from "../context/DeviceContext";
+import { useI18n } from "../i18n";
 import { scrollIntoFocus, useTvInput } from "../hooks";
 import { TopNav, type NavTab } from "../components/TopNav";
 import { theme } from "../theme";
@@ -18,6 +19,7 @@ const CONT_W = 280;
 
 export default function HomeView({ onSeries, onPlay, onLibrary, onSettings }: Props): React.JSX.Element {
   const { api, config } = useDevice();
+  const { t } = useI18n();
   const [data, setData] = useState<HomeData | null>(null);
   const [libraries, setLibraries] = useState<Library[]>([]);
   const [libsLoaded, setLibsLoaded] = useState(false);
@@ -45,9 +47,9 @@ export default function HomeView({ onSeries, onPlay, onLibrary, onSettings }: Pr
 
   // Top nav: Home + one tab per actual library + Settings.
   const navTabs: NavTab[] = [
-    { id: "home", label: "Főoldal" },
+    { id: "home", label: t("nav.home") },
     ...libraries.map((l) => ({ id: `lib:${l.id}`, label: l.name })),
-    { id: "settings", label: "Beállítások" },
+    { id: "settings", label: t("nav.settings") },
   ];
 
   // Ordered focus zones (only those with content).
@@ -158,20 +160,20 @@ export default function HomeView({ onSeries, onPlay, onLibrary, onSettings }: Pr
       <TopNav tabs={navTabs} activeId="home" focusIdx={navFocus} onActivate={openTab} zoneIndex={0} />
 
       <div style={{ padding: "0.5rem 2.5rem" }}>
-        {!data && !error && <p style={{ color: theme.muted }}>Betöltés…</p>}
-        {error && <p style={{ color: "#f87171" }}>Betöltési hiba: {error}</p>}
+        {!data && !error && <p style={{ color: theme.muted }}>{t("common.loading")}</p>}
+        {error && <p style={{ color: "#f87171" }}>{t("common.loadError", { error })}</p>}
 
         {/* Continue watching — a row of resumable cards. */}
         {cont.length > 0 && (
           <section style={{ marginBottom: "2rem" }}>
-            <h2 style={{ fontSize: "1.05rem", fontWeight: 700, margin: "0 0 0.8rem", color: theme.text }}>Folytatás</h2>
+            <h2 style={{ fontSize: "1.05rem", fontWeight: 700, margin: "0 0 0.8rem", color: theme.text }}>{t("home.continue")}</h2>
             <div className="mv-row" style={{ display: "flex", overflowX: "auto", padding: "0.4rem 0" }}>
               {cont.map((s, i) => {
                 const sub =
                   s.continue_season_number !== null
-                    ? `${s.continue_season_number}. évad ${s.continue_episode_number}. rész`
+                    ? t("ep.seasonEpisode", { season: s.continue_season_number, episode: s.continue_episode_number ?? 0 })
                     : s.continue_episode_number !== null
-                      ? `${s.continue_episode_number}. rész`
+                      ? t("ep.episodeOnly", { episode: s.continue_episode_number })
                       : s.year
                         ? String(s.year)
                         : undefined;
@@ -193,7 +195,7 @@ export default function HomeView({ onSeries, onPlay, onLibrary, onSettings }: Pr
         {/* Recently added */}
         {recent.length > 0 && (
           <section style={{ marginBottom: "2rem" }}>
-            <h2 style={{ fontSize: "1.05rem", fontWeight: 700, margin: "0 0 0.8rem", color: theme.text }}>Nemrég hozzáadva</h2>
+            <h2 style={{ fontSize: "1.05rem", fontWeight: 700, margin: "0 0 0.8rem", color: theme.text }}>{t("home.recentlyAdded")}</h2>
             <div className="mv-row" style={{ display: "flex", overflowX: "auto", padding: "0.4rem 0" }}>
               {recent.map((s, i) =>
                 posterCard(recentZ, i, label(s), s.cover_image_url, s.year ? String(s.year) : undefined, "2/3", POSTER_W),
@@ -205,7 +207,7 @@ export default function HomeView({ onSeries, onPlay, onLibrary, onSettings }: Pr
         {/* Libraries */}
         {libraries.length > 0 && (
           <section style={{ marginBottom: "1rem" }}>
-            <h2 style={{ fontSize: "1.05rem", fontWeight: 700, margin: "0 0 0.8rem", color: theme.text }}>Könyvtárak</h2>
+            <h2 style={{ fontSize: "1.05rem", fontWeight: 700, margin: "0 0 0.8rem", color: theme.text }}>{t("home.libraries")}</h2>
             <div className="mv-row" style={{ display: "flex", overflowX: "auto", padding: "0.4rem 0" }}>
               {libraries.map((lib, i) => {
                 const focused = focus.z === libsZ && focus.i === i;
@@ -225,7 +227,7 @@ export default function HomeView({ onSeries, onPlay, onLibrary, onSettings }: Pr
                     }}
                   >
                     <div style={{ fontSize: "1.05rem", fontWeight: 700, color: "#fff" }}>{lib.name}</div>
-                    <div style={{ fontSize: "0.78rem", color: theme.muted, marginTop: 4 }}>{lib.series_count} cím</div>
+                    <div style={{ fontSize: "0.78rem", color: theme.muted, marginTop: 4 }}>{t("home.titleCount", { count: lib.series_count })}</div>
                   </div>
                 );
               })}
@@ -237,10 +239,10 @@ export default function HomeView({ onSeries, onPlay, onLibrary, onSettings }: Pr
         {data && libsLoaded && cont.length === 0 && recent.length === 0 && libraries.length === 0 && !error && (
           <div style={{ padding: "4rem 0", textAlign: "center", color: theme.muted }}>
             <div style={{ fontSize: "1.2rem", fontWeight: 700, color: theme.text }}>
-              Még nincs tartalom
+              {t("home.noContentTitle")}
             </div>
             <div style={{ fontSize: "0.9rem", marginTop: "0.6rem" }}>
-              Hozz létre könyvtárat a Movora szerveren, és indíts egy beolvasást.
+              {t("home.noContentBody")}
             </div>
           </div>
         )}

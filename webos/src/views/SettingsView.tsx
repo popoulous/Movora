@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { scrollIntoFocus, useTvInput } from "../hooks";
 import { useDevice } from "../context/DeviceContext";
+import { useI18n, LANGS, LANG_NAMES } from "../i18n";
 import { theme } from "../theme";
 import { Icon } from "../components/Icon";
 import { BackButton } from "../components/BackButton";
@@ -13,9 +14,14 @@ interface Props {
 
 const VERSION = "v0.1.0";
 
-// Focus order: Back, then the action buttons stacked top-to-bottom. The X mirrors Back.
+// Focus order: Back, the language row (◀▶ switches), then the action buttons stacked
+// top-to-bottom. The X mirrors Back.
 const FOCUS_BACK = 0;
-const FOCUS_LAST = 3; // rescan(1), unpair(2), capability(3)
+const FOCUS_LANG = 1;
+const FOCUS_RESCAN = 2;
+const FOCUS_UNPAIR = 3;
+const FOCUS_CAP = 4;
+const FOCUS_LAST = FOCUS_CAP;
 
 function infoRowIcon(name: string): React.JSX.Element {
   return (
@@ -156,6 +162,7 @@ function ServerArt(): React.JSX.Element {
 
 export default function SettingsView({ onBack, onCapability }: Props): React.JSX.Element {
   const { config, save, clear } = useDevice();
+  const { t, lang, setLang } = useI18n();
   const [rescanning, setRescanning] = useState(false);
   const [rescanMsg, setRescanMsg] = useState<string | null>(null);
   const [focus, setFocus] = useState(FOCUS_BACK);
@@ -172,30 +179,43 @@ export default function SettingsView({ onBack, onCapability }: Props): React.JSX
       setRescanning(false);
       if (res.serverUrl !== null && config !== null) {
         save({ ...config, serverUrl: res.serverUrl });
-        setRescanMsg(`Szerver frissítve: ${res.serverUrl}`);
+        setRescanMsg(t("settings.serverUpdated", { url: res.serverUrl }));
       } else if (res.ip === null) {
-        setRescanMsg("Nem sikerült megállapítani a TV hálózati címét.");
+        setRescanMsg(t("settings.ipFail"));
       } else {
-        setRescanMsg("Nem találtam Movora szervert a hálózaton.");
+        setRescanMsg(t("settings.noServerFound"));
       }
     });
   };
 
+  const cycleLang = (dir: number): void => {
+    const idx = LANGS.indexOf(lang);
+    const next = LANGS[Math.max(0, Math.min(LANGS.length - 1, idx + dir))];
+    if (next !== lang) setLang(next);
+  };
+
   const activate = (index: number): void => {
     if (index === FOCUS_BACK) onBack();
-    else if (index === 1) handleRescan();
-    else if (index === 2) handleUnpair();
-    else if (index === 3) onCapability();
+    else if (index === FOCUS_RESCAN) handleRescan();
+    else if (index === FOCUS_UNPAIR) handleUnpair();
+    else if (index === FOCUS_CAP) onCapability();
+    // FOCUS_LANG is changed with ◀▶, so Enter on it does nothing.
   };
 
   const onKey = (e: KeyboardEvent): void => {
     const k = e.key;
     if (k === "ArrowDown") {
       e.preventDefault();
-      setFocus(Math.min(focus + 1, FOCUS_LAST)); // Back -> button 1 -> 2 -> 3
+      setFocus(Math.min(focus + 1, FOCUS_LAST));
     } else if (k === "ArrowUp") {
       e.preventDefault();
-      setFocus(Math.max(focus - 1, FOCUS_BACK)); // up through the stack, back to Back
+      setFocus(Math.max(focus - 1, FOCUS_BACK));
+    } else if (k === "ArrowLeft" && focus === FOCUS_LANG) {
+      e.preventDefault();
+      cycleLang(-1);
+    } else if (k === "ArrowRight" && focus === FOCUS_LANG) {
+      e.preventDefault();
+      cycleLang(1);
     } else if (k === "Enter") {
       e.preventDefault();
       activate(focus);
@@ -232,7 +252,7 @@ export default function SettingsView({ onBack, onCapability }: Props): React.JSX
       {/* Top bar */}
       <div style={{ display: "flex", alignItems: "center", marginBottom: "2.2rem" }}>
         <BackButton focused={backFocused} onClick={onBack} dataSf="0" />
-        <h1 style={{ margin: "0 0 0 1.4rem", fontSize: "2.6rem", fontWeight: 800 }}>Beállítások</h1>
+        <h1 style={{ margin: "0 0 0 1.4rem", fontSize: "2.6rem", fontWeight: 800 }}>{t("settings.title")}</h1>
         <span
           onClick={onBack}
           style={{
@@ -266,22 +286,72 @@ export default function SettingsView({ onBack, onCapability }: Props): React.JSX
             flexDirection: "column",
           }}
         >
-          <InfoRow icon="globe" label="Szerver URL" value={config?.serverUrl ?? "–"} accent />
-          <InfoRow icon="monitor" label="Eszköz neve" value={config?.deviceName ?? "–"} />
-          <InfoRow icon="key" label="Token" value={token} mono />
+          <InfoRow icon="globe" label={t("settings.serverUrl")} value={config?.serverUrl ?? "–"} accent />
+          <InfoRow icon="monitor" label={t("settings.deviceName")} value={config?.deviceName ?? "–"} />
+          <InfoRow icon="key" label={t("settings.token")} value={token} mono />
+
+          {/* Language selector — the row is focusable; ◀▶ switches, applied instantly. */}
+          <div
+            data-sf="1"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              padding: "0.7rem 0.6rem",
+              marginTop: "0.4rem",
+              borderRadius: 16,
+              boxSizing: "border-box",
+              border: focus === FOCUS_LANG ? `2px solid ${theme.accent}` : "2px solid transparent",
+              background: focus === FOCUS_LANG ? "rgba(122,77,255,0.12)" : "transparent",
+              boxShadow: focus === FOCUS_LANG ? "0 0 0 4px rgba(168,85,247,0.22)" : "none",
+              transition: "border-color 120ms ease, background 120ms ease, box-shadow 120ms ease",
+            }}
+          >
+            {infoRowIcon("globe")}
+            <div style={{ marginLeft: "1.1rem", minWidth: 0, flex: 1 }}>
+              <div style={{ fontSize: "0.95rem", color: theme.muted, marginBottom: "0.45rem" }}>{t("settings.language")}</div>
+              <div style={{ display: "flex", flexWrap: "wrap" }}>
+                {LANGS.map((l) => {
+                  const selected = l === lang;
+                  return (
+                    <span
+                      key={l}
+                      onClick={() => {
+                        setFocus(FOCUS_LANG);
+                        setLang(l);
+                      }}
+                      style={{
+                        marginRight: "0.5rem",
+                        marginBottom: "0.4rem",
+                        padding: "0.32rem 0.95rem",
+                        borderRadius: 999,
+                        fontSize: "0.95rem",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        color: selected ? "#fff" : theme.muted,
+                        background: selected ? theme.gradient : "rgba(255,255,255,0.06)",
+                        boxShadow: selected && focus === FOCUS_LANG ? "0 0 14px rgba(122,77,255,0.6)" : "none",
+                      }}
+                    >
+                      {LANG_NAMES[l]}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: "0.8rem", marginTop: "1.4rem" }}>
-            <div data-sf="1" style={actionStyle(focus === 1)} onClick={() => { setFocus(1); handleRescan(); }}>
+            <div data-sf="2" style={actionStyle(focus === FOCUS_RESCAN)} onClick={() => { setFocus(FOCUS_RESCAN); handleRescan(); }}>
               <Icon name="refresh" size={24} />
-              {rescanning ? "Keresés…" : "Szerver újrakeresése"}
+              {rescanning ? t("settings.rescanning") : t("settings.rescan")}
             </div>
-            <div data-sf="2" style={actionStyle(focus === 2)} onClick={() => { setFocus(2); handleUnpair(); }}>
+            <div data-sf="3" style={actionStyle(focus === FOCUS_UNPAIR)} onClick={() => { setFocus(FOCUS_UNPAIR); handleUnpair(); }}>
               <Icon name="unlink" size={24} />
-              Szétválasztás
+              {t("settings.unpair")}
             </div>
-            <div data-sf="3" style={actionStyle(focus === 3)} onClick={() => { setFocus(3); onCapability(); }}>
+            <div data-sf="4" style={actionStyle(focus === FOCUS_CAP)} onClick={() => { setFocus(FOCUS_CAP); onCapability(); }}>
               <Icon name="settings" size={24} />
-              Képességteszt
+              {t("settings.capabilityTest")}
             </div>
           </div>
 
@@ -289,8 +359,7 @@ export default function SettingsView({ onBack, onCapability }: Props): React.JSX
             <p style={{ margin: "1rem 0 0", fontSize: "0.95rem", color: "#c084fc" }}>{rescanMsg}</p>
           )}
           <p style={{ margin: "0.9rem 0 0", fontSize: "0.92rem", lineHeight: 1.5, color: theme.muted }}>
-            Az újrakeresés a hálózaton keresi a szervert és frissíti a címet (a párosítás megmarad).
-            Szétválasztás után az app visszatér a párosítási képernyőre.
+            {t("settings.helpText")}
           </p>
         </div>
 
@@ -315,7 +384,7 @@ export default function SettingsView({ onBack, onCapability }: Props): React.JSX
         >
           M
         </span>
-        Movora webOS kliens · {VERSION}
+        {t("settings.clientVersion", { version: VERSION })}
       </div>
     </div>
   );

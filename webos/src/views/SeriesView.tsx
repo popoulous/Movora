@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { type SeriesDetail, type Library, mediaUrl } from "../api/client";
 import { useDevice } from "../context/DeviceContext";
+import { useI18n } from "../i18n";
 import { scrollIntoFocus, useTvInput } from "../hooks";
 import { BackButton } from "../components/BackButton";
 import { TopNav, type NavTab } from "../components/TopNav";
@@ -31,6 +32,7 @@ export default function SeriesView({
   onBack,
 }: Props): React.JSX.Element {
   const { api, config } = useDevice();
+  const { t } = useI18n();
   const [series, setSeries] = useState<SeriesDetail | null>(null);
   const [libraries, setLibraries] = useState<Library[]>([]);
   const [selectedSeason, setSelectedSeason] = useState(0);
@@ -59,12 +61,12 @@ export default function SeriesView({
     mediaUrl(config?.serverUrl ?? "", config?.deviceToken ?? null, url);
 
   const navTabs: NavTab[] = [
-    { id: "home", label: "Főoldal" },
+    { id: "home", label: t("nav.home") },
     ...libraries.map((l) => ({ id: `lib:${l.id}`, label: l.name })),
-    { id: "settings", label: "Beállítások" },
+    { id: "settings", label: t("nav.settings") },
   ];
 
-  const title = series ? (series.display_title ?? series.title) : "Betöltés…";
+  const title = series ? (series.display_title ?? series.title) : t("common.loading");
   const seasons = series?.seasons ?? [];
   const currentSeason = seasons[Math.min(selectedSeason, seasons.length - 1)];
   const episodes = currentSeason?.episodes ?? [];
@@ -90,8 +92,8 @@ export default function SeriesView({
         : null;
   if (years) metaParts.push(years);
   if (series?.format) metaParts.push(series.format);
-  if (totalEps) metaParts.push(`${totalEps} epizód`);
-  if (series?.episode_duration) metaParts.push(`${series.episode_duration} perc`);
+  if (totalEps) metaParts.push(t("series.episodeCount", { count: totalEps }));
+  if (series?.episode_duration) metaParts.push(t("series.minutes", { count: series.episode_duration }));
 
   // Primary actions: continue (+ from start) or just play.
   const actions: { id: string; label: string; sub?: string; primary?: boolean }[] = [];
@@ -100,14 +102,14 @@ export default function SeriesView({
     for (const sn of seasons) {
       const e = sn.episodes.find((x) => x.id === contId);
       if (e) {
-        sub = `${sn.number}. évad ${e.number}. rész`;
+        sub = t("ep.seasonEpisode", { season: sn.number, episode: e.number });
         break;
       }
     }
-    actions.push({ id: "continue", label: "Folytatás", sub, primary: true });
-    if (firstId != null) actions.push({ id: "restart", label: "Elölről" });
+    actions.push({ id: "continue", label: t("series.continue"), sub, primary: true });
+    if (firstId != null) actions.push({ id: "restart", label: t("series.fromStart") });
   } else if (firstId != null) {
-    actions.push({ id: "play", label: "Lejátszás", primary: true });
+    actions.push({ id: "play", label: t("series.play"), primary: true });
   }
 
   // Focus zones, in vertical order (only those with content).
@@ -338,7 +340,7 @@ export default function SeriesView({
         </div>
       </div>
 
-      {error && <p style={{ padding: "0 2.5rem", color: "#f87171" }}>Betöltési hiba: {error}</p>}
+      {error && <p style={{ padding: "0 2.5rem", color: "#f87171" }}>{t("common.loadError", { error })}</p>}
 
       {series && (
         <div style={{ padding: "0.6rem 2.5rem 0" }}>
@@ -368,7 +370,7 @@ export default function SeriesView({
                       boxShadow: focused ? "0 0 14px rgba(122,77,255,0.6)" : "none",
                     }}
                   >
-                    {sn.number}. évad
+                    {t("ep.seasonNumber", { number: sn.number })}
                   </span>
                 );
               })}
@@ -382,7 +384,9 @@ export default function SeriesView({
               const isCurrent = ep.id === contId;
               const thumb = img(ep.thumbnail_url);
               const label =
-                ep.end_number != null ? `${ep.number}–${ep.end_number}. rész` : `${ep.number}. rész`;
+                ep.end_number != null
+                  ? t("ep.episodeRange", { from: ep.number, to: ep.end_number })
+                  : t("ep.episodeOnly", { episode: ep.number });
               return (
                 <div
                   key={ep.id}
@@ -404,7 +408,7 @@ export default function SeriesView({
                     {thumb && <img src={thumb} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />}
                     {ep.device_ready !== null && (
                       <div
-                        title={ep.device_ready ? "Lejátszható ezen a TV-n" : "Optimalizálás szükséges"}
+                        title={ep.device_ready ? t("series.deviceReadyYes") : t("series.deviceReadyNo")}
                         style={{
                           position: "absolute",
                           top: 6,
@@ -458,7 +462,7 @@ export default function SeriesView({
           {recs.length > 0 && (
             <section style={{ marginTop: "1.6rem" }}>
               <h2 style={{ fontSize: "1.05rem", fontWeight: 700, margin: "0 0 0.7rem", color: theme.text }}>
-                Neked ajánljuk
+                {t("series.recommendations")}
               </h2>
               <div className="mv-row" style={{ display: "flex", overflowX: "auto", paddingBottom: "0.4rem" }}>
                 {recs.map((r, i) => {

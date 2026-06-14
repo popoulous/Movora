@@ -1,7 +1,8 @@
 import React from "react";
 import { theme } from "../theme";
+import { useI18n } from "../i18n";
 
-// One shared back control for the whole app — the minimal "← Vissza" from the
+// One shared back control for the whole app — the minimal "← Back" from the
 // capability/series views. `focused` brightens it into a pill where Back is a D-pad
 // target (e.g. Settings); elsewhere it stays plain muted text and the remote Back key
 // handles it. `dataSf` lets a view tag it for scroll-into-focus.
@@ -14,6 +15,7 @@ export function BackButton({
   onClick?: () => void;
   dataSf?: string;
 }): React.JSX.Element {
+  const { t } = useI18n();
   return (
     <span
       data-sf={dataSf}
@@ -32,7 +34,7 @@ export function BackButton({
         transition: "color 120ms ease, background 120ms ease, border-color 120ms ease",
       }}
     >
-      ← Vissza
+      ← {t("common.back")}
     </span>
   );
 }

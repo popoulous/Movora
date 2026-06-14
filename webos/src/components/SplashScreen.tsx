@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { theme } from "../theme";
+import { useI18n } from "../i18n";
 import logo from "../assets/movora_logo.png";
 
 // A visual-only boot overlay: dark neon backdrop, the Movora mark with an orbiting
@@ -48,6 +49,7 @@ export default function SplashScreen({
   ready = true,
   onDone,
 }: Props): React.JSX.Element {
+  const { t } = useI18n();
   const [minElapsed, setMinElapsed] = useState(false);
 
   useEffect(() => {
@@ -100,10 +102,10 @@ export default function SplashScreen({
       </div>
 
       <div style={{ marginTop: "1.9rem", fontSize: "2rem", fontWeight: 800, letterSpacing: "0.2em", color: "#fff" }}>MOVORA</div>
-      <div style={{ marginTop: "0.7rem", fontSize: "1.05rem", color: theme.muted }}>Médiatár betöltése…</div>
+      <div style={{ marginTop: "0.7rem", fontSize: "1.05rem", color: theme.muted }}>{t("splash.loading")}</div>
       {serverUrl ? (
         <div style={{ marginTop: "0.4rem", fontSize: "0.85rem", color: "rgba(192,132,252,0.9)" }}>
-          Kapcsolódás: {serverUrl}
+          {t("splash.connecting", { url: serverUrl })}
         </div>
       ) : null}
     </div>

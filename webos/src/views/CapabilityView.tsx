@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useTvInput } from "../hooks";
 import { useDevice } from "../context/DeviceContext";
+import { useI18n, type Key, type TFunc } from "../i18n";
 import { theme } from "../theme";
 import { Icon } from "../components/Icon";
 import {
@@ -22,24 +23,24 @@ interface Props {
 type ProbeState = "pending" | "playing" | ProbeResult;
 type Answer = "yes" | "no";
 
-const CAT_LABEL: Record<string, string> = {
-  video: "Videó codecek / felbontás",
-  container: "Konténerek",
-  audio: "Audió codecek — hallgasd meg (van-e tényleg hang)",
-  subtitle: "Feliratok",
+const CAT_KEY: Record<string, Key> = {
+  video: "cap.cat_video",
+  container: "cap.cat_container",
+  audio: "cap.cat_audio",
+  subtitle: "cap.cat_subtitle",
 };
 const CATEGORIES = ["video", "container", "audio", "subtitle"];
 
-function verdict(category: string, s: ProbeState): { text: string; color: string } {
+function verdict(t: TFunc, category: string, s: ProbeState): { text: string; color: string } {
   if (s === "pending") return { text: "…", color: theme.muted };
-  if (s === "playing") return { text: "próba…", color: "#c084fc" };
+  if (s === "playing") return { text: t("cap.verdict_probing"), color: "#c084fc" };
   if (category === "subtitle") {
     return (s.cues ?? 0) > 0
-      ? { text: `Renderelhető (${s.cues} sor)`, color: "#4ade80" }
-      : { text: "Konvertálás kell", color: "#fbbf24" };
+      ? { text: t("cap.verdict_subOk", { count: s.cues ?? 0 }), color: "#4ade80" }
+      : { text: t("cap.verdict_subConvert"), color: "#fbbf24" };
   }
-  if (!s.played) return { text: "Nem megy", color: "#f87171" };
-  return { text: "Megy", color: "#4ade80" };
+  if (!s.played) return { text: t("cap.verdict_fail"), color: "#f87171" };
+  return { text: t("cap.verdict_ok"), color: "#4ade80" };
 }
 
 function Row({ label, sub, right }: { label: string; sub?: string; right: { text: string; color: string } }): React.JSX.Element {
@@ -110,6 +111,7 @@ function pillStyle(active: boolean, selected: Answer | null, kind: Answer): Reac
 
 export default function CapabilityView({ onBack }: Props): React.JSX.Element {
   const { config, api } = useDevice();
+  const { t } = useI18n();
   const base = config?.serverUrl ?? "";
   const [samples, setSamples] = useState<ServerSample[]>([]);
   const [results, setResults] = useState<Record<string, ProbeState>>({}); // video/container/subtitle
@@ -279,12 +281,12 @@ export default function CapabilityView({ onBack }: Props): React.JSX.Element {
   }).length;
   const sendLabel =
     sent === "sending"
-      ? "Küldés…"
+      ? t("cap.sending")
       : sent === "ok"
-        ? "Elküldve — kész"
+        ? t("cap.sent")
         : sent === "error"
-          ? "Hiba — Enter az újraküldéshez"
-          : "Profil elküldése";
+          ? t("cap.sendError")
+          : t("cap.send");
 
   return (
     <div ref={scrollRef} className="mv-app" style={{ height: "100vh", overflowY: "auto", padding: "2rem 2.5rem 3rem" }}>
@@ -299,16 +301,13 @@ export default function CapabilityView({ onBack }: Props): React.JSX.Element {
       <div style={{ marginBottom: "0.5rem" }}>
         <BackButton onClick={onBack} />
       </div>
-      <h1 style={{ fontSize: "1.8rem", fontWeight: 800, margin: "0 0 0.4rem", color: "#fff" }}>Képességteszt</h1>
-      <p style={{ color: theme.muted, fontSize: "0.85rem", margin: "0 0 1rem", maxWidth: 880 }}>
-        A videó/konténer/felirat mintákat a TV automatikusan próbálja. Az <b style={{ color: theme.text }}>audiónál</b> nincs
-        megbízható gépi mérés ezen a TV-n, ezért minden mintát lejátszhatsz, és <b style={{ color: theme.text }}>füllel</b> jelölöd
-        be: <b style={{ color: theme.text }}>Igen</b> (szól) vagy <b style={{ color: theme.text }}>Nem</b> (néma). A végén a
-        <b style={{ color: theme.text }}> Profil elküldése</b> gomb küldi el a szervernek.
+      <h1 style={{ fontSize: "1.8rem", fontWeight: 800, margin: "0 0 0.4rem", color: "#fff" }}>{t("cap.title")}</h1>
+      <p style={{ color: theme.muted, fontSize: "0.85rem", margin: "0 0 1rem", maxWidth: 880, lineHeight: 1.5 }}>
+        {t("cap.intro")}
       </p>
 
-      {!base && <p style={{ color: "#fbbf24", fontSize: "0.9rem" }}>Nincs szerverkapcsolat — előbb párosíts.</p>}
-      {base && samples.length === 0 && <p style={{ color: theme.muted, fontSize: "0.9rem" }}>Minták betöltése…</p>}
+      {!base && <p style={{ color: "#fbbf24", fontSize: "0.9rem" }}>{t("cap.noServer")}</p>}
+      {base && samples.length === 0 && <p style={{ color: theme.muted, fontSize: "0.9rem" }}>{t("cap.loadingSamples")}</p>}
 
       {base && probing && samples.length > 0 && (
         <div
@@ -323,7 +322,7 @@ export default function CapabilityView({ onBack }: Props): React.JSX.Element {
             color: "#fff",
           }}
         >
-          Videó / konténer / felirat tesztek futnak… ({autoDone}/{autoSamples.length}) — az audió ezután jön.
+          {t("cap.autoRunning", { done: autoDone, total: autoSamples.length })}
         </div>
       )}
 
@@ -332,7 +331,7 @@ export default function CapabilityView({ onBack }: Props): React.JSX.Element {
         if (items.length === 0) return null;
         return (
           <div key={cat} style={{ marginTop: "1.1rem", marginBottom: "0.4rem" }}>
-            <div style={{ fontSize: "1rem", fontWeight: 700, color: "#fff", marginBottom: "0.5rem" }}>{CAT_LABEL[cat]}</div>
+            <div style={{ fontSize: "1rem", fontWeight: 700, color: "#fff", marginBottom: "0.5rem" }}>{t(CAT_KEY[cat])}</div>
             {cat === "audio"
               ? items.map((s, i) => {
                   const focused = !probing && fRow === i;
@@ -340,10 +339,10 @@ export default function CapabilityView({ onBack }: Props): React.JSX.Element {
                   const ans = answers[s.id] ?? null;
                   const av =
                     ans === "yes"
-                      ? { text: "Van hang", color: "#4ade80" }
+                      ? { text: t("cap.audioYes"), color: "#4ade80" }
                       : ans === "no"
-                        ? { text: "Nincs hang", color: "#f87171" }
-                        : { text: "Hallgasd meg", color: theme.muted };
+                        ? { text: t("cap.audioNo"), color: "#f87171" }
+                        : { text: t("cap.audioListen"), color: theme.muted };
                   return (
                     <div
                       key={s.id}
@@ -369,12 +368,12 @@ export default function CapabilityView({ onBack }: Props): React.JSX.Element {
                       <div style={playBtnStyle(focused && fCol === 0, isPlaying)}>
                         <Icon name={isPlaying ? "pause" : "play"} size={22} />
                       </div>
-                      <div style={pillStyle(focused && fCol === 1, ans, "yes")}>Igen</div>
-                      <div style={pillStyle(focused && fCol === 2, ans, "no")}>Nem</div>
+                      <div style={pillStyle(focused && fCol === 1, ans, "yes")}>{t("cap.yes")}</div>
+                      <div style={pillStyle(focused && fCol === 2, ans, "no")}>{t("cap.no")}</div>
                     </div>
                   );
                 })
-              : items.map((s) => <Row key={s.id} label={s.label} sub={s.mime} right={verdict(cat, results[s.id] ?? "pending")} />)}
+              : items.map((s) => <Row key={s.id} label={s.label} sub={s.mime} right={verdict(t, cat, results[s.id] ?? "pending")} />)}
           </div>
         );
       })}
@@ -404,13 +403,13 @@ export default function CapabilityView({ onBack }: Props): React.JSX.Element {
             {sendLabel}
           </div>
           <div style={{ color: theme.muted, fontSize: "0.82rem", marginTop: "0.5rem" }}>
-            Audió megválaszolva: {answered}/{audioSamples.length}
+            {t("cap.answered", { done: answered, total: audioSamples.length })}
           </div>
         </div>
       )}
 
       <div style={{ color: theme.muted, fontSize: "0.78rem", marginTop: "1.2rem" }}>
-        ▲▼ Sorok · ◀▶ Lejátszás / Igen / Nem · Enter aktivál · Back Vissza
+        {t("cap.hint")}
       </div>
     </div>
   );

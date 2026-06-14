@@ -13,6 +13,7 @@ const Input = InputBase as unknown as React.ComponentType<{
 }>;
 import { createApiClient, type PairStart } from "../api/client";
 import { useDevice } from "../context/DeviceContext";
+import { useI18n } from "../i18n";
 import { discoverServer } from "../discovery";
 
 type Step = "discover" | "url" | "name" | "pairing" | "error";
@@ -23,6 +24,7 @@ interface Props {
 
 export default function WelcomeView({ onDone }: Props): React.JSX.Element {
   const { save } = useDevice();
+  const { t } = useI18n();
 
   const [step, setStep] = useState<Step>("discover");
   const [scanning, setScanning] = useState(true);
@@ -30,7 +32,7 @@ export default function WelcomeView({ onDone }: Props): React.JSX.Element {
   const [scanPct, setScanPct] = useState(0);
   const [attempt, setAttempt] = useState(0);
   const [serverUrl, setServerUrl] = useState("http://");
-  const [deviceName, setDeviceName] = useState("Living Room TV");
+  const [deviceName, setDeviceName] = useState(() => t("welcome.defaultDeviceName"));
   const [pairInfo, setPairInfo] = useState<PairStart | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -75,7 +77,7 @@ export default function WelcomeView({ onDone }: Props): React.JSX.Element {
   function handleUrlNext(): void {
     const url = serverUrl.trim().replace(/\/$/, "");
     if (!url.startsWith("http")) {
-      setErrorMsg("A szerver URL http:// vagy https:// -sel kell kezdődjön.");
+      setErrorMsg(t("welcome.urlScheme"));
       setStep("error");
       return;
     }
@@ -91,10 +93,7 @@ export default function WelcomeView({ onDone }: Props): React.JSX.Element {
       setStep("pairing");
       startPolling(info.code);
     } catch {
-      setErrorMsg(
-        "Nem sikerült párosítást indítani. Ellenőrizd a szerver URL-t, " +
-          "és győzödj meg róla, hogy a szerver v2a vagy újabb verziót futtat.",
-      );
+      setErrorMsg(t("welcome.pairStartFail"));
       setStep("error");
     }
   }
@@ -111,7 +110,7 @@ export default function WelcomeView({ onDone }: Props): React.JSX.Element {
             onDone();
           } else if (res.status === "expired") {
             clearInterval(pollRef.current!);
-            setErrorMsg("A párosítási kód lejárt. Próbáld újra.");
+            setErrorMsg(t("welcome.codeExpired"));
             setStep("error");
           }
         })
@@ -124,13 +123,13 @@ export default function WelcomeView({ onDone }: Props): React.JSX.Element {
   if (step === "discover" && scanning) {
     return (
       <Panel>
-        <Header title="Movora" subtitle="Szerver keresése a hálózaton…" />
+        <Header title="Movora" subtitle={t("welcome.searching")} />
         <div style={{ padding: "2rem", textAlign: "center" }}>
           <Spinner component="div" />
           <p style={{ marginTop: "1.5rem", opacity: 0.7 }}>
             {scanIp !== null
-              ? `TV címe: ${scanIp} · alháló vizsgálata (${scanPct}%)`
-              : "Hálózati cím megállapítása…"}
+              ? t("welcome.tvAddress", { ip: scanIp, percent: scanPct })
+              : t("welcome.determiningAddress")}
           </p>
         </div>
       </Panel>
@@ -142,17 +141,16 @@ export default function WelcomeView({ onDone }: Props): React.JSX.Element {
     const subnet = scanIp !== null ? scanIp.replace(/\.\d+$/, "") : null;
     return (
       <Panel>
-        <Header title="Nem találtam szervert" />
+        <Header title={t("welcome.noServerTitle")} />
         <div style={{ padding: "2rem", maxWidth: 600 }}>
           <p style={{ marginBottom: "1.5rem", opacity: 0.8 }}>
             {scanIp === null
-              ? "Nem sikerült megállapítani a TV hálózati címét. Add meg kézzel a szerver URL-t."
-              : `Nem találtam Movora szervert a(z) ${subnet}.x hálózaton. ` +
-                "Ellenőrizd, hogy a szerver fut és a TV-vel azonos hálózaton van."}
+              ? t("welcome.noIpBody")
+              : t("welcome.noServerBody", { subnet: subnet ?? "" })}
           </p>
           <div style={{ display: "flex", gap: "1rem" }}>
-            <Button onClick={rescan}>Újrakeresés</Button>
-            <Button onClick={() => setStep("url")}>Kézi megadás</Button>
+            <Button onClick={rescan}>{t("welcome.rescan")}</Button>
+            <Button onClick={() => setStep("url")}>{t("welcome.manualEntry")}</Button>
           </div>
         </div>
       </Panel>
@@ -162,7 +160,7 @@ export default function WelcomeView({ onDone }: Props): React.JSX.Element {
   if (step === "url") {
     return (
       <Panel>
-        <Header title="Movora" subtitle="Add meg a szerver URL-t" />
+        <Header title="Movora" subtitle={t("welcome.enterUrl")} />
         <div style={{ padding: "2rem", maxWidth: 600 }}>
           <Input
             value={serverUrl}
@@ -171,8 +169,8 @@ export default function WelcomeView({ onDone }: Props): React.JSX.Element {
             style={{ marginBottom: "1.5rem", width: "100%" }}
           />
           <div style={{ display: "flex", gap: "1rem" }}>
-            <Button onClick={handleUrlNext}>Tovább</Button>
-            <Button onClick={rescan}>Automatikus keresés</Button>
+            <Button onClick={handleUrlNext}>{t("welcome.next")}</Button>
+            <Button onClick={rescan}>{t("welcome.autoSearch")}</Button>
           </div>
         </div>
       </Panel>
@@ -182,11 +180,11 @@ export default function WelcomeView({ onDone }: Props): React.JSX.Element {
   if (step === "name") {
     return (
       <Panel>
-        <Header title="Eszköz neve" subtitle="Milyen névvel jelenjen meg a párosítás oldalon?" />
+        <Header title={t("welcome.deviceNameTitle")} subtitle={t("welcome.deviceNamePrompt")} />
         <div style={{ padding: "2rem", maxWidth: 600 }}>
           {scanIp !== null && serverUrl.startsWith("http") && (
             <p style={{ marginBottom: "1rem", opacity: 0.6, fontSize: "0.85rem" }}>
-              Szerver: {serverUrl}
+              {t("welcome.serverLabel", { url: serverUrl })}
             </p>
           )}
           <Input
@@ -194,7 +192,7 @@ export default function WelcomeView({ onDone }: Props): React.JSX.Element {
             onChange={({ value }) => setDeviceName(value)}
             style={{ marginBottom: "1.5rem", width: "100%" }}
           />
-          <Button onClick={() => void handleStartPairing()}>Párosítás indítása</Button>
+          <Button onClick={() => void handleStartPairing()}>{t("welcome.startPairing")}</Button>
         </div>
       </Panel>
     );
@@ -203,7 +201,7 @@ export default function WelcomeView({ onDone }: Props): React.JSX.Element {
   if (step === "pairing" && pairInfo) {
     return (
       <Panel>
-        <Header title="Párosítás" subtitle="Nyisd meg a Movora webes felületet, és fogadd el a párosítást." />
+        <Header title={t("welcome.pairingTitle")} subtitle={t("welcome.pairingSubtitle")} />
         <div style={{ padding: "2rem", textAlign: "center" }}>
           <div
             style={{
@@ -217,7 +215,7 @@ export default function WelcomeView({ onDone }: Props): React.JSX.Element {
             {pairInfo.code}
           </div>
           <Spinner component="div" />
-          <p style={{ marginTop: "1.5rem", opacity: 0.7 }}>Várakozás a jóváhagyásra…</p>
+          <p style={{ marginTop: "1.5rem", opacity: 0.7 }}>{t("welcome.waitingApproval")}</p>
         </div>
       </Panel>
     );
@@ -226,10 +224,10 @@ export default function WelcomeView({ onDone }: Props): React.JSX.Element {
   // step === "error"
   return (
     <Panel>
-      <Header title="Hiba" />
+      <Header title={t("welcome.errorTitle")} />
       <div style={{ padding: "2rem", maxWidth: 600 }}>
         <p style={{ marginBottom: "1.5rem", color: "#f87171" }}>{errorMsg}</p>
-        <Button onClick={() => setStep("url")}>Vissza</Button>
+        <Button onClick={() => setStep("url")}>{t("common.back")}</Button>
       </div>
     </Panel>
   );

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { type PlaybackInfo, type Episode, type SeriesDetail, mediaUrl } from "../api/client";
 import { useDevice } from "../context/DeviceContext";
+import { useI18n, type Key } from "../i18n";
 import { theme } from "../theme";
 import { aspectHeight } from "../util";
 import { Icon } from "../components/Icon";
@@ -52,16 +53,24 @@ const BG_COLOR: Record<SubBg, string> = {
 // Move the whole cue container up from its default bottom position: bottom ->
 // roughly screen centre -> near the top.
 const POS_BASE: Record<SubPos, string> = { low: "-2vh", mid: "-42vh", high: "-82vh" };
-const SIZE_LABEL: Record<SubSize, string> = {
-  s: "Kicsi",
-  m: "Közepes",
-  l: "Nagy",
-  xl: "Óriás",
-  xxl: "Hatalmas",
-  xxxl: "Maximális",
+const SIZE_KEY: Record<SubSize, Key> = {
+  s: "player.size_s",
+  m: "player.size_m",
+  l: "player.size_l",
+  xl: "player.size_xl",
+  xxl: "player.size_xxl",
+  xxxl: "player.size_xxxl",
 };
-const BG_LABEL: Record<SubBg, string> = { none: "Nincs", box: "Áttetsző", solid: "Tömör" };
-const POS_LABEL: Record<SubPos, string> = { low: "Lent", mid: "Közép", high: "Fent" };
+const BG_KEY: Record<SubBg, Key> = {
+  none: "player.bg_none",
+  box: "player.bg_box",
+  solid: "player.bg_solid",
+};
+const POS_KEY: Record<SubPos, Key> = {
+  low: "player.pos_low",
+  mid: "player.pos_mid",
+  high: "player.pos_high",
+};
 
 function loadSubStyle(): SubStyle {
   try {
@@ -89,6 +98,7 @@ function fmt(sec: number): string {
 
 export default function PlayerView({ episodeId, onBack, onNext }: Props): React.JSX.Element {
   const { api, config } = useDevice();
+  const { t } = useI18n();
   const [info, setInfo] = useState<PlaybackInfo | null>(null);
   const [series, setSeries] = useState<SeriesDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -192,7 +202,7 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
 
   const flashToast = (text: string): void => {
     setToast(text);
-    setTimeout(() => setToast((t) => (t === text ? null : t)), 2000);
+    setTimeout(() => setToast((prev) => (prev === text ? null : prev)), 2000);
   };
 
   const handleLoadedMetadata = (): void => {
@@ -219,19 +229,19 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
   const handleTimeUpdate = (): void => {
     const v = videoRef.current;
     if (!v || !info || !api) return;
-    const t = v.currentTime;
-    setCur(t);
-    if (info.intro_start != null && info.intro_end != null && t >= info.intro_start && t < info.intro_end) {
+    const pos = v.currentTime;
+    setCur(pos);
+    if (info.intro_start != null && info.intro_end != null && pos >= info.intro_start && pos < info.intro_end) {
       setSkip("intro");
-    } else if (info.outro_start != null && t >= info.outro_start) {
+    } else if (info.outro_start != null && pos >= info.outro_start) {
       setSkip("outro");
     } else {
       setSkip(null);
       setSkipFocused(false); // the skip window passed
     }
-    if (t - lastSaved.current >= SAVE_INTERVAL_S) {
-      lastSaved.current = t;
-      void api.recordWatch(episodeId, { position_seconds: t });
+    if (pos - lastSaved.current >= SAVE_INTERVAL_S) {
+      lastSaved.current = pos;
+      void api.recordWatch(episodeId, { position_seconds: pos });
     }
   };
 
@@ -344,9 +354,9 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
     else v.pause();
   };
 
-  const seekTo = (t: number): void => {
+  const seekTo = (target: number): void => {
     const v = videoRef.current;
-    if (v) v.currentTime = Math.max(0, Math.min(t, v.duration || t));
+    if (v) v.currentTime = Math.max(0, Math.min(target, v.duration || target));
   };
 
   const seekBy = (d: number): void => {
@@ -359,7 +369,7 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
     if (!v) return;
     const n = v.textTracks.length;
     if (n === 0) {
-      flashToast("Nincs felirat");
+      flashToast(t("player.noSubtitles"));
       return;
     }
     const next = subIdx + 1 >= n ? -1 : subIdx + 1;
@@ -368,7 +378,11 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
     // Remember the choice (by language/label) so the next episode applies it too.
     const tt = next === -1 ? null : v.textTracks[next];
     localStorage.setItem(SUB_PREF_KEY, next === -1 ? "off" : tt?.language || tt?.label || String(next));
-    flashToast(next === -1 ? "Felirat: ki" : `Felirat: ${tt?.label || `#${next + 1}`}`);
+    flashToast(
+      next === -1
+        ? t("player.subtitlesOff")
+        : t("player.subtitles", { label: tt?.label || `#${next + 1}` }),
+    );
   };
 
   const doSkip = (): void => {
@@ -557,7 +571,7 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
   if (error) {
     return (
       <div style={{ position: "fixed", inset: 0, background: theme.bg, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#f87171", gap: "1rem" }}>
-        <p>Lejátszási hiba: {error}</p>
+        <p>{t("player.loadError", { error })}</p>
         <BackButton onClick={onBack} />
       </div>
     );
@@ -570,8 +584,8 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
   const prepEta = info?.prepare_eta_seconds ?? null;
   const prepareLabel =
     prepProgress > 0
-      ? `${prepProgress}%${prepEta ? ` · kb. ${Math.max(1, Math.round(prepEta / 60))} perc` : ""}`
-      : "Sorban áll…";
+      ? `${prepProgress}%${prepEta ? ` · ${t("player.etaApprox", { minutes: Math.max(1, Math.round(prepEta / 60)) })}` : ""}`
+      : t("player.queued");
   const subShift = panelOpen ? (panelH > 0 ? `-${panelH + 20}px` : "-46vh") : POS_BASE[subStyle.pos];
   const cueCss = `video::cue { font-size: ${SIZE_VH[subStyle.size]}; background-color: ${BG_COLOR[subStyle.bg]}; color: #fff; text-shadow: -1px -1px 2px #000, 1px -1px 2px #000, -1px 1px 2px #000, 1px 1px 2px #000, 0 2px 5px rgba(0,0,0,0.9); }`;
   const rootStyle = {
@@ -586,14 +600,14 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
     <div ref={rootRef} style={rootStyle}>
       <style>{cueCss}</style>
       {!info && !preparing && !blocked && (
-        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: theme.muted }}>Betöltés…</div>
+        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: theme.muted }}>{t("common.loading")}</div>
       )}
 
       {blocked && (
         <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "1.1rem", background: theme.bg, textAlign: "center", padding: "2rem" }}>
-          <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "#fff" }}>Ez a rész itt nem játszható le</div>
+          <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "#fff" }}>{t("player.blockedTitle")}</div>
           <div style={{ fontSize: "1rem", color: theme.muted, maxWidth: 680, lineHeight: 1.5 }}>
-            A TV nem tudja közvetlenül lejátszani ezt a formátumot, és az automatikus optimalizálás ki van kapcsolva. Kapcsold be a Beállításokban, vagy válassz másik részt.
+            {t("player.blockedBody")}
           </div>
           <BackButton onClick={onBack} />
         </div>
@@ -601,9 +615,9 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
 
       {preparing && (
         <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "1.1rem", background: theme.bg, textAlign: "center", padding: "2rem" }}>
-          <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "#fff" }}>Optimalizálás folyamatban…</div>
+          <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "#fff" }}>{t("player.preparingTitle")}</div>
           <div style={{ fontSize: "1rem", color: theme.muted, maxWidth: 680, lineHeight: 1.5 }}>
-            A TV nem tudja közvetlenül lejátszani ezt a részt, ezért a háttérben készül egy kompatibilis verzió. Amint kész, automatikusan elindul.
+            {t("player.preparingBody")}
           </div>
           <div style={{ width: 440, marginTop: "0.2rem" }}>
             <div style={{ height: 12, borderRadius: 999, background: "rgba(255,255,255,0.1)", overflow: "hidden" }}>
@@ -666,7 +680,7 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
           }}
         >
           <Icon name="skip" size={18} />
-          {(skip === "intro" ? "Intro kihagyása" : "Következő rész") + (skipFocused ? " ⏎" : " ▼")}
+          {(skip === "intro" ? t("player.skipIntro") : t("player.nextEpisode")) + (skipFocused ? " ⏎" : " ▼")}
         </div>
       )}
 
@@ -687,7 +701,7 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
           <div style={{ marginBottom: "0.9rem" }}>
             <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "#fff" }}>{info.series_title}</div>
             <div style={{ fontSize: "0.95rem", color: theme.muted, marginTop: 2 }}>
-              {info.season_number}. évad · {info.episode_number}. rész
+              {t("ep.seasonEpisode", { season: info.season_number, episode: info.episode_number })}
               {info.episode_title ? ` — ${info.episode_title}` : ""}
             </div>
           </div>
@@ -747,11 +761,11 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
           {/* Subtitle settings sub-view (gear) replaces the episode strip */}
           {settingsOpen ? (
             <div>
-              <div style={{ fontSize: "0.95rem", fontWeight: 700, color: "#fff", marginBottom: "0.7rem" }}>Felirat beállítások</div>
+              <div style={{ fontSize: "0.95rem", fontWeight: 700, color: "#fff", marginBottom: "0.7rem" }}>{t("player.subtitleSettings")}</div>
               {[
-                { label: "Méret", options: SIZES.map((v) => ({ v: v as string, l: SIZE_LABEL[v] })), cur: subStyle.size as string },
-                { label: "Háttér", options: BGS.map((v) => ({ v: v as string, l: BG_LABEL[v] })), cur: subStyle.bg as string },
-                { label: "Pozíció", options: POSS.map((v) => ({ v: v as string, l: POS_LABEL[v] })), cur: subStyle.pos as string },
+                { label: t("player.size"), options: SIZES.map((v) => ({ v: v as string, l: t(SIZE_KEY[v]) })), cur: subStyle.size as string },
+                { label: t("player.background"), options: BGS.map((v) => ({ v: v as string, l: t(BG_KEY[v]) })), cur: subStyle.bg as string },
+                { label: t("player.position"), options: POSS.map((v) => ({ v: v as string, l: t(POS_KEY[v]) })), cur: subStyle.pos as string },
               ].map((def, ri) => (
                 <div
                   key={def.label}
@@ -791,17 +805,20 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
                   </div>
                 </div>
               ))}
-              <div style={{ marginTop: "0.5rem", color: theme.muted, fontSize: "0.78rem" }}>▲▼ Sor · ◀▶ Érték · Back Bezár</div>
+              <div style={{ marginTop: "0.5rem", color: theme.muted, fontSize: "0.78rem" }}>{t("player.settingsHint")}</div>
             </div>
           ) : (
             <>
-              <div style={{ fontSize: "0.9rem", fontWeight: 700, color: "#fff", marginBottom: "0.6rem" }}>Részek</div>
+              <div style={{ fontSize: "0.9rem", fontWeight: 700, color: "#fff", marginBottom: "0.6rem" }}>{t("player.episodes")}</div>
               <div className="mv-row" style={{ display: "flex", overflowX: "auto", paddingBottom: "0.3rem" }}>
                 {flat.map((ep, i) => {
               const focused = row === "episodes" && i === epFocus;
               const isCurrent = ep.id === episodeId;
               const thumb = mediaUrl(base, token, ep.thumbnail_url);
-              const label = ep.end_number != null ? `${ep.number}–${ep.end_number}.` : `${ep.number}.`;
+              const label =
+                ep.end_number != null
+                  ? t("ep.episodeRange", { from: ep.number, to: ep.end_number })
+                  : t("ep.episodeOnly", { episode: ep.number });
               return (
                 <div
                   key={ep.id}
@@ -831,7 +848,7 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
                   )}
                   <div style={{ padding: "0.45rem 0.6rem" }}>
                     <div style={{ fontWeight: 600, fontSize: "0.82rem" }}>
-                      {label} rész{isCurrent ? " ●" : ""}{ep.watched ? " ✓" : ""}
+                      {label}{isCurrent ? " ●" : ""}{ep.watched ? " ✓" : ""}
                     </div>
                     {ep.title && (
                       <div style={{ fontSize: "0.7rem", color: theme.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ep.title}</div>
@@ -849,12 +866,14 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
       {/* Ended overlay */}
       {ended && (
         <div style={{ position: "absolute", inset: 0, background: "rgba(5,6,11,0.82)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#fff", gap: "1rem" }}>
-          <p style={{ fontSize: "1.6rem", fontWeight: 800 }}>Epizód vége</p>
+          <p style={{ fontSize: "1.6rem", fontWeight: 800 }}>{t("player.episodeEnded")}</p>
           <p style={{ color: theme.muted }}>
-            {nextEpisodeId !== null ? `Következő rész ${countdown} mp múlva… (Enter)` : `Vissza ${countdown} mp múlva…`}
+            {nextEpisodeId !== null
+              ? t("player.nextIn", { seconds: countdown })
+              : t("player.backIn", { seconds: countdown })}
           </p>
           <button onClick={() => (nextEpisodeId !== null ? onNext(nextEpisodeId) : onBack())} style={{ ...pillStyle, background: theme.gradient, border: "none" }}>
-            {nextEpisodeId !== null ? "Következő rész" : "Vissza"}
+            {nextEpisodeId !== null ? t("player.nextEpisode") : t("common.back")}
           </button>
         </div>
       )}
