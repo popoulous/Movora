@@ -17,7 +17,7 @@ selection** (per-series remembered audio language), backed by `react-native-vide
 apps/android/
   index.js                 # AppRegistry entry
   app.json                 # app name
-  package.json             # deps (react-native-tvos, react-native-video, react-navigation…)
+  package.json             # deps (react-native, react-native-video, react-navigation…)
   src/
     App.tsx                # providers + navigation stack
     theme.ts               # Movora palette (shared look with web/webOS)
@@ -49,10 +49,9 @@ drop it in:
 cd apps/android
 npm install
 
-# Generate a throwaway RN project (TV fork) to copy the native android/ from:
+# Generate a throwaway RN project to copy the native android/ from:
 cd ..
-npx @react-native-community/cli@latest init MovoraNative \
-    --version "react-native-tvos@0.76.6-0" --skip-install
+npx @react-native-community/cli@latest init MovoraNative --version 0.76.6 --skip-install
 cp -r MovoraNative/android apps/android/android
 rm -rf MovoraNative
 ```
@@ -64,8 +63,9 @@ Then in `apps/android/android`:
    - add `<uses-feature android:name="android.software.leanback" android:required="false"/>`
      and `<uses-feature android:name="android.hardware.touchscreen" android:required="false"/>`
    - add a `LEANBACK_LAUNCHER` intent-filter to the main activity and an `android:banner`.
-3. **react-native-tvos** is already aliased in `package.json` (`react-native` →
-   `react-native-tvos`), so it runs on both phones and Android TV.
+3. **Android TV** runs the same app — plain React Native works on TV (D-pad focus via
+   `Pressable`). For advanced TV focus later, swap `react-native` for the
+   `react-native-tvos` fork (adds `TVFocusGuideView`, `hasTVPreferredFocus`).
 4. `react-native-video` v6 is autolinked; no extra native config for basic playback.
 
 ## Run
