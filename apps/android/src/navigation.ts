@@ -7,4 +7,5 @@ export type RootStackParamList = {
   Series: {seriesId: number};
   Player: {episodeId: number};
   Settings: undefined;
+  Capability: undefined;
 };

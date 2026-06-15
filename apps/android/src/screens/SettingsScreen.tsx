@@ -27,6 +27,10 @@ export default function SettingsScreen({navigation}: Props): React.JSX.Element {
         <Row label="Eszköz" value={config?.deviceName ?? '—'} />
       </View>
 
+      <Pressable style={styles.action} onPress={() => navigation.navigate('Capability')}>
+        <Text style={styles.actionText}>Képességteszt</Text>
+      </Pressable>
+
       <Pressable
         style={styles.unpair}
         onPress={() => {
@@ -58,6 +62,8 @@ const styles = StyleSheet.create({
   row: {flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: theme.border},
   rowLabel: {color: theme.muted, fontSize: 15},
   rowValue: {color: theme.text, fontSize: 15, flexShrink: 1, marginLeft: 16},
-  unpair: {marginTop: 24, backgroundColor: 'rgba(248,113,113,0.15)', borderRadius: 999, paddingVertical: 14, alignItems: 'center'},
+  action: {marginTop: 16, backgroundColor: theme.surface, borderRadius: 999, paddingVertical: 14, alignItems: 'center', borderWidth: 1, borderColor: theme.border},
+  actionText: {color: theme.text, fontWeight: '700', fontSize: 16},
+  unpair: {marginTop: 16, backgroundColor: 'rgba(248,113,113,0.15)', borderRadius: 999, paddingVertical: 14, alignItems: 'center'},
   unpairText: {color: '#f87171', fontWeight: '700', fontSize: 16},
 });

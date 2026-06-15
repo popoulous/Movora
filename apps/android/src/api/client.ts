@@ -137,6 +137,33 @@ export interface PairStart {
 
 export type PairStatus = 'waiting' | 'approved' | 'expired';
 
+// Capability probe — the device plays each sample clip and reports what decoded, so the
+// backend's CompatibilitySelector knows the device's real profile (see apps/webos).
+export interface ServerSample {
+  id: string;
+  category: string; // "video" | "container" | "audio" | "subtitle"
+  label: string;
+  mime: string;
+  filename: string;
+}
+
+export interface CapabilityProbeOutcome {
+  played: boolean;
+  video_bytes: number;
+  audio_bytes: number;
+  has_audio: boolean | null;
+  audio_rms: number | null;
+  cues: number | null;
+}
+
+export interface CapabilityReportBody {
+  probe: Record<string, CapabilityProbeOutcome>;
+  supports_ass: boolean;
+  supports_srt: boolean;
+  supports_vtt: boolean;
+  user_agent: string;
+}
+
 // A 401 anywhere means the device token was revoked; the app listens to unpair + return
 // to the welcome screen (the webOS client used a window event, RN uses this hook).
 let onUnauthorized: () => void = () => undefined;
@@ -164,6 +191,11 @@ export function mediaUrl(
   }
   const sep = url.includes('?') ? '&' : '?';
   return `${root}${url}${sep}token=${encodeURIComponent(token)}`;
+}
+
+// A capability sample clip URL (the endpoint is public — no token needed).
+export function sampleUrl(base: string, id: string): string {
+  return `${base.replace(/\/$/, '')}/api/capabilities/samples/${encodeURIComponent(id)}`;
 }
 
 export function createApiClient(baseUrl: string, token: string | null) {
@@ -232,6 +264,16 @@ export function createApiClient(baseUrl: string, token: string | null) {
       fetch(`${base}/api/devices/pair/${code}/status`, {headers: authHeaders()}).then(
         asJson<{status: PairStatus; device_token?: string}>,
       ),
+
+    getCapabilitySamples: () =>
+      fetch(`${base}/api/capabilities/samples`).then(asJson<ServerSample[]>),
+
+    reportCapabilities: (body: CapabilityReportBody) =>
+      fetch(`${base}/api/devices/me/capabilities`, {
+        method: 'POST',
+        headers: jsonHeaders(),
+        body: JSON.stringify(body),
+      }).then(checkOk),
   };
 }
 

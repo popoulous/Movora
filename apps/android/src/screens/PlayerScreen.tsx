@@ -18,7 +18,7 @@ import Video, {
   type VideoRef,
 } from 'react-native-video';
 
-import {mediaUrl, type PlaybackInfo} from '../api/client';
+import {mediaUrl, type Episode, type PlaybackInfo, type SeriesDetail} from '../api/client';
 import {useDevice} from '../context/DeviceContext';
 import type {RootStackParamList} from '../navigation';
 import {theme} from '../theme';
@@ -31,7 +31,13 @@ type RnTextTrack = NonNullable<React.ComponentProps<typeof Video>['textTracks']>
 
 const SAVE_INTERVAL_S = 10;
 const PREPARE_POLL_MS = 4000;
+const COUNTDOWN_START = 10;
 const AUDIO_PREF_PREFIX = 'movora_audio_pref_'; // + seriesId -> language
+const SUB_SIZE_KEY = 'movora_sub_size';
+
+type SubSize = 's' | 'm' | 'l';
+const SIZE_PX: Record<SubSize, number> = {s: 16, m: 22, l: 30};
+const SIZES: SubSize[] = ['s', 'm', 'l'];
 
 interface TrackOption {
   index: number;
@@ -44,17 +50,31 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
   const {episodeId} = route.params;
   const videoRef = useRef<VideoRef>(null);
   const lastSaved = useRef(0);
+  const cdTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [info, setInfo] = useState<PlaybackInfo | null>(null);
+  const [series, setSeries] = useState<SeriesDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [preparing, setPreparing] = useState(false);
   const [audioTracks, setAudioTracks] = useState<TrackOption[]>([]);
   const [audioIndex, setAudioIndex] = useState<number>(-1);
   const [textIndex, setTextIndex] = useState<number>(-1); // -1 = off
   const [picker, setPicker] = useState<'audio' | 'text' | null>(null);
+  const [subSize, setSubSize] = useState<SubSize>('m');
+  const [skip, setSkip] = useState<'intro' | 'outro' | null>(null);
+  const [ended, setEnded] = useState(false);
+  const [countdown, setCountdown] = useState(COUNTDOWN_START);
 
   const base = config?.serverUrl ?? '';
   const token = config?.deviceToken ?? null;
+
+  useEffect(() => {
+    AsyncStorage.getItem(SUB_SIZE_KEY).then(v => {
+      if (v === 's' || v === 'm' || v === 'l') {
+        setSubSize(v);
+      }
+    });
+  }, []);
 
   // Load playback info; if a device variant is still building, poll until it's ready.
   useEffect(() => {
@@ -63,6 +83,8 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
     }
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    setEnded(false);
+    setSkip(null);
     const load = (): void => {
       api
         .getPlayback(episodeId)
@@ -78,7 +100,12 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
           }
           setPreparing(false);
           setInfo(i);
-          setError(i.variant_status === 'unavailable' ? 'Ez a rész nem játszható le ezen az eszközön.' : null);
+          setError(
+            i.variant_status === 'unavailable'
+              ? 'Ez a rész nem játszható le ezen az eszközön.'
+              : null,
+          );
+          api.getSeries(i.series_id).then(setSeries).catch(() => undefined);
         })
         .catch((e: unknown) => !cancelled && setError(String(e)));
     };
@@ -91,18 +118,47 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
     };
   }, [api, episodeId]);
 
-  // Backend subtitles are served separately; pass them to the player as external tracks.
+  // Neighbouring episodes for prev/next + auto-advance.
+  const {prevId, nextId} = useMemo(() => {
+    const flat: Episode[] = series ? series.seasons.flatMap(s => s.episodes) : [];
+    const idx = flat.findIndex(e => e.id === episodeId);
+    return {
+      prevId: idx > 0 ? flat[idx - 1].id : null,
+      nextId: idx >= 0 && idx + 1 < flat.length ? flat[idx + 1].id : null,
+    };
+  }, [series, episodeId]);
+
   const textTracks = useMemo<RnTextTrack[]>(
     () =>
       (info?.subtitle_tracks ?? []).map(t => ({
         title: t.label,
-        // Backend language codes may be 2/3-letter or null; cast to the lib's strict type.
         language: (t.language ?? 'und') as RnTextTrack['language'],
         type: TextTrackType.VTT,
         uri: mediaUrl(base, token, t.format === 'ass' ? `${t.url}&as=vtt` : t.url) ?? '',
       })),
     [info, base, token],
   );
+
+  // Countdown to auto-advance once the episode ends.
+  useEffect(() => {
+    if (!ended) {
+      return undefined;
+    }
+    setCountdown(COUNTDOWN_START);
+    cdTimer.current = setInterval(() => setCountdown(c => Math.max(0, c - 1)), 1000);
+    return () => {
+      if (cdTimer.current) {
+        clearInterval(cdTimer.current);
+      }
+    };
+  }, [ended]);
+
+  useEffect(() => {
+    if (ended && countdown === 0) {
+      goNext();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ended, countdown]);
 
   const onLoad = (data: OnLoadData): void => {
     if (info && info.resume_position > 5) {
@@ -133,13 +189,49 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
     }
   };
 
+  const cycleSize = (): void => {
+    const next = SIZES[(SIZES.indexOf(subSize) + 1) % SIZES.length];
+    setSubSize(next);
+    void AsyncStorage.setItem(SUB_SIZE_KEY, next);
+  };
+
   const onProgress = (data: OnProgressData): void => {
-    if (!api) {
-      return;
+    const pos = data.currentTime;
+    if (info) {
+      if (info.intro_start != null && info.intro_end != null && pos >= info.intro_start && pos < info.intro_end) {
+        setSkip('intro');
+      } else if (info.outro_start != null && pos >= info.outro_start) {
+        setSkip('outro');
+      } else {
+        setSkip(null);
+      }
     }
-    if (data.currentTime - lastSaved.current >= SAVE_INTERVAL_S) {
-      lastSaved.current = data.currentTime;
-      void api.recordWatch(episodeId, {position_seconds: data.currentTime});
+    if (api && pos - lastSaved.current >= SAVE_INTERVAL_S) {
+      lastSaved.current = pos;
+      void api.recordWatch(episodeId, {position_seconds: pos});
+    }
+  };
+
+  const doSkip = (): void => {
+    if (skip === 'intro' && info?.intro_end != null) {
+      videoRef.current?.seek(info.intro_end);
+      setSkip(null);
+    } else if (skip === 'outro') {
+      goNext();
+    }
+  };
+
+  const goTo = (id: number | null): void => {
+    if (id != null) {
+      navigation.replace('Player', {episodeId: id});
+    }
+  };
+
+  const goNext = (): void => {
+    if (nextId != null) {
+      goTo(nextId);
+    } else {
+      navigation.goBack();
     }
   };
 
@@ -147,7 +239,7 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
     if (api) {
       void api.recordWatch(episodeId, {watched: true});
     }
-    navigation.goBack();
+    setEnded(true);
   };
 
   const streamUrl = info ? mediaUrl(base, token, info.stream_url) : undefined;
@@ -162,7 +254,6 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
       </View>
     );
   }
-
   if (preparing) {
     return (
       <View style={styles.center}>
@@ -174,7 +265,6 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
       </View>
     );
   }
-
   if (!info || !streamUrl) {
     return (
       <View style={styles.center}>
@@ -200,6 +290,7 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
             : {type: SelectedTrackType.DISABLED}
         }
         textTracks={textTracks}
+        subtitleStyle={{fontSize: SIZE_PX[subSize], paddingBottom: 24}}
         onLoad={onLoad}
         onProgress={onProgress}
         onEnd={onEnd}
@@ -211,18 +302,64 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
           <Text style={styles.topItem}>‹ Vissza</Text>
         </Pressable>
         <View style={styles.topRight}>
+          {prevId != null && (
+            <Pressable onPress={() => goTo(prevId)} hitSlop={12}>
+              <Text style={styles.topItem}>⏮ Előző</Text>
+            </Pressable>
+          )}
           {audioTracks.length > 1 && (
             <Pressable onPress={() => setPicker('audio')} hitSlop={12}>
               <Text style={styles.topItem}>Hang</Text>
             </Pressable>
           )}
           {textTracks.length > 0 && (
-            <Pressable onPress={() => setPicker('text')} hitSlop={12}>
-              <Text style={styles.topItem}>Felirat</Text>
+            <>
+              <Pressable onPress={() => setPicker('text')} hitSlop={12}>
+                <Text style={styles.topItem}>Felirat</Text>
+              </Pressable>
+              <Pressable onPress={cycleSize} hitSlop={12}>
+                <Text style={styles.topItem}>Méret: {subSize.toUpperCase()}</Text>
+              </Pressable>
+            </>
+          )}
+          {nextId != null && (
+            <Pressable onPress={() => goTo(nextId)} hitSlop={12}>
+              <Text style={styles.topItem}>Következő ⏭</Text>
             </Pressable>
           )}
         </View>
       </View>
+
+      {skip !== null && !ended && (
+        <Pressable style={styles.skip} onPress={doSkip}>
+          <Text style={styles.skipText}>
+            {skip === 'intro' ? 'Intró átugrása' : 'Következő rész'} ⏭
+          </Text>
+        </Pressable>
+      )}
+
+      {ended && (
+        <View style={styles.endedOverlay}>
+          <Text style={styles.endedTitle}>A rész véget ért</Text>
+          <Text style={styles.endedSub}>
+            {nextId != null
+              ? `Következő rész ${countdown} mp múlva…`
+              : `Vissza ${countdown} mp múlva…`}
+          </Text>
+          <View style={styles.endedRow}>
+            <Pressable style={styles.endedBtn} onPress={goNext}>
+              <Text style={styles.endedBtnText}>
+                {nextId != null ? 'Lejátszás most' : 'Vissza'}
+              </Text>
+            </Pressable>
+            {nextId != null && (
+              <Pressable style={styles.endedCancel} onPress={() => setEnded(false)}>
+                <Text style={styles.backText}>Mégse</Text>
+              </Pressable>
+            )}
+          </View>
+        </View>
+      )}
 
       <TrackPicker
         visible={picker === 'audio'}
@@ -309,8 +446,17 @@ const styles = StyleSheet.create({
   backBtn: {paddingVertical: 10, paddingHorizontal: 20, backgroundColor: theme.surface, borderRadius: 999},
   backText: {color: theme.text, fontSize: 15},
   topBar: {position: 'absolute', top: 0, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-between', padding: 16},
-  topRight: {flexDirection: 'row', gap: 20},
-  topItem: {color: '#fff', fontSize: 16, fontWeight: '600', textShadowColor: '#000', textShadowRadius: 4},
+  topRight: {flexDirection: 'row', gap: 18, flexWrap: 'wrap'},
+  topItem: {color: '#fff', fontSize: 15, fontWeight: '600', textShadowColor: '#000', textShadowRadius: 4},
+  skip: {position: 'absolute', right: 24, bottom: 90, backgroundColor: theme.accent, borderRadius: 999, paddingVertical: 12, paddingHorizontal: 22},
+  skipText: {color: '#fff', fontWeight: '700', fontSize: 15},
+  endedOverlay: {position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(5,6,11,0.85)', alignItems: 'center', justifyContent: 'center', gap: 14},
+  endedTitle: {color: '#fff', fontSize: 24, fontWeight: '800'},
+  endedSub: {color: theme.muted, fontSize: 16},
+  endedRow: {flexDirection: 'row', gap: 12, marginTop: 8},
+  endedBtn: {backgroundColor: theme.accent, borderRadius: 999, paddingVertical: 12, paddingHorizontal: 26},
+  endedBtnText: {color: '#fff', fontWeight: '700', fontSize: 16},
+  endedCancel: {backgroundColor: theme.surface, borderRadius: 999, paddingVertical: 12, paddingHorizontal: 22},
   backdrop: {flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end'},
   sheet: {backgroundColor: '#0C0E19', borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 20, maxHeight: '60%'},
   sheetTitle: {color: '#fff', fontSize: 18, fontWeight: '700', marginBottom: 12},

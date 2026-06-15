@@ -6,6 +6,7 @@ import {SafeAreaProvider} from 'react-native-safe-area-context';
 
 import {DeviceProvider, useDevice} from './context/DeviceContext';
 import type {RootStackParamList} from './navigation';
+import CapabilityScreen from './screens/CapabilityScreen';
 import HomeScreen from './screens/HomeScreen';
 import LibraryScreen from './screens/LibraryScreen';
 import PlayerScreen from './screens/PlayerScreen';
@@ -41,6 +42,7 @@ function Root(): React.JSX.Element {
           <Stack.Screen name="Series" component={SeriesScreen} />
           <Stack.Screen name="Player" component={PlayerScreen} />
           <Stack.Screen name="Settings" component={SettingsScreen} />
+          <Stack.Screen name="Capability" component={CapabilityScreen} />
         </Stack.Group>
       ) : (
         <Stack.Screen name="Welcome" component={WelcomeScreen} />
