@@ -47,6 +47,51 @@ class SubtitleTrackInfo:
     fmt: str  # source format: "ass" | "srt"
 
 
+# ffprobe on a large, network-hosted source costs seconds; the embedded tracks and font
+# attachments don't change unless the file does. Memoize per (path, mtime, size) for the
+# server's lifetime so repeat playbacks don't re-probe (a fresh stat() catches edits).
+_embedded_probe_cache: dict[str, tuple[tuple[float, int], list[SubtitleTrackInfo]]] = {}
+_fonts_probe_cache: dict[str, tuple[tuple[float, int], list[FontAttachment]]] = {}
+
+
+def _file_fingerprint(path: Path) -> tuple[float, int]:
+    try:
+        st = path.stat()
+        return (st.st_mtime, st.st_size)
+    except OSError:
+        return (0.0, 0)
+
+
+def discover_embedded_cached(media_path: Path) -> list[SubtitleTrackInfo]:
+    """``discover_embedded`` memoized per file fingerprint (see the cache note above)."""
+    key = str(media_path)
+    fingerprint = _file_fingerprint(media_path)
+    hit = _embedded_probe_cache.get(key)
+    if hit is not None and hit[0] == fingerprint:
+        return hit[1]
+    result = discover_embedded(media_path)
+    _embedded_probe_cache[key] = (fingerprint, result)
+    return result
+
+
+def discover_fonts_cached(media_path: Path) -> list[FontAttachment]:
+    """``discover_fonts`` memoized per file fingerprint (see the cache note above)."""
+    key = str(media_path)
+    fingerprint = _file_fingerprint(media_path)
+    hit = _fonts_probe_cache.get(key)
+    if hit is not None and hit[0] == fingerprint:
+        return hit[1]
+    result = discover_fonts(media_path)
+    _fonts_probe_cache[key] = (fingerprint, result)
+    return result
+
+
+def discover_tracks_cached(media_path: Path) -> list[SubtitleTrackInfo]:
+    """Like ``discover_tracks`` but the (ffprobe-backed) embedded part is memoized; sidecars
+    stay live since a user can drop a new .srt next to the file at any time."""
+    return discover_sidecar(media_path) + discover_embedded_cached(media_path)
+
+
 def discover_tracks(media_path: Path) -> list[SubtitleTrackInfo]:
     return discover_sidecar(media_path) + discover_embedded(media_path)
 

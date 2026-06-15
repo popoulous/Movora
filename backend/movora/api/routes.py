@@ -86,8 +86,8 @@ from movora.normalize import (
 )
 from movora.subtitles import (
     SoftAssOrSrtResolver,
-    discover_fonts,
-    discover_tracks,
+    discover_fonts_cached,
+    discover_tracks_cached,
     extract_fonts,
     load_subtitle,
     srt_to_vtt,
@@ -617,13 +617,12 @@ def episode_playback(
         cover_image_url=series.cover_image_url,
         score=series.score,
     )
-    elapsed = time.monotonic() - started
-    if elapsed > 3.0:
-        # Surfaces the real cause of a slow "press play -> starts" (usually ffprobe on a
-        # large/networked source for subtitle/font/codec discovery), recorded to movora.log.
-        logging.getLogger("movora").warning(
-            "slow /playback %.1fs (episode %s)", elapsed, episode_id
-        )
+    # Log every playback decision + timing so a slow "press play -> starts" is attributable
+    # (status=direct/ready means it streams now; preparing means a variant is building).
+    logging.getLogger("movora").info(
+        "playback episode=%s status=%s direct=%s %.1fs",
+        episode_id, status, source.direct_play, time.monotonic() - started,
+    )
     return result
 
 
@@ -905,7 +904,7 @@ def _font_urls(episode_id: int, media_file: MediaFile, request: Request) -> list
             else []
         )
     else:
-        names = [font.filename for font in discover_fonts(Path(media_file.path))]
+        names = [font.filename for font in discover_fonts_cached(Path(media_file.path))]
     return [f"/api/episodes/{episode_id}/fonts/{quote(name)}" for name in names]
 
 
@@ -918,7 +917,7 @@ def _subtitle_tracks(episode_id: int, media_path: Path) -> list[SubtitleTrackRea
             format="ass" if track.fmt == "ass" else "vtt",
             url=f"/api/episodes/{episode_id}/subtitles?track={quote(track.id)}",
         )
-        for track in discover_tracks(media_path)
+        for track in discover_tracks_cached(media_path)
     ]
 
 
