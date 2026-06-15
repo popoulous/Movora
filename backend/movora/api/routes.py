@@ -68,6 +68,7 @@ from movora.device_variants import (
     populate_series_codecs,
     prepare_browser_normalize,
     run_device_prefetch,
+    warm_episode_subtitles,
 )
 from movora.domain import CapabilityProfile
 from movora.filesystem import list_directories
@@ -587,6 +588,12 @@ def episode_playback(
     ):
         # Optimization is off and nothing is building -> not playable here (don't spin).
         status = "unavailable"
+
+    # Warm the embedded-subtitle cache regardless of the optimize setting: extraction from a
+    # large remux on a network share is slow, so we do it once off-request and the player's
+    # subtitle call then reads a local file. Sidecars / preserved assets need no extraction.
+    if not media_file.original_deleted:
+        _schedule(warm_episode_subtitles, episode_id)
     return PlaybackInfo(
         media_file_id=media_file.id,
         stream_url=f"/api/episodes/{episode_id}/stream",
@@ -832,7 +839,11 @@ def episode_subtitle(
     _require_episode_access(session, user, episode_id)
     media_file = _episode_media_file(session, episode_id)
     try:
-        content, fmt = load_subtitle(_subtitle_base(media_file, request), track)
+        content, fmt = load_subtitle(
+            _subtitle_base(media_file, request),
+            track,
+            cache_dir=_assets_dir(request, media_file.id),
+        )
     except (FileNotFoundError, ValueError) as exc:
         raise HTTPException(status_code=404, detail="subtitle track not found") from exc
     except RuntimeError as exc:  # ffmpeg missing -> embedded tracks unextractable

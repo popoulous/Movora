@@ -24,6 +24,12 @@ from movora.subtitles.encoding import normalize_bytes
 SUBTITLE_EXTENSIONS = {".ass", ".srt"}
 FONT_EXTENSIONS = {".ttf", ".otf", ".ttc"}
 
+# Serving path: keep the demux short so a subtitle request never hangs the player.
+EMBEDDED_EXTRACT_TIMEOUT = 120
+# Background warming: demuxing subtitles out of a large remux on a network share can
+# take minutes, so the off-request path gets a generous budget.
+EMBEDDED_WARM_TIMEOUT = 600
+
 
 @dataclass(frozen=True)
 class FontAttachment:
@@ -170,7 +176,12 @@ def extract_fonts(
 
 
 def extract_embedded(
-    media_path: Path, stream_index: int, fmt: str, *, ffmpeg_path: str | None = None
+    media_path: Path,
+    stream_index: int,
+    fmt: str,
+    *,
+    ffmpeg_path: str | None = None,
+    timeout: int = EMBEDDED_EXTRACT_TIMEOUT,
 ) -> str:
     exe = ffmpeg_path or shutil.which("ffmpeg")
     if exe is None:
@@ -179,7 +190,7 @@ def extract_embedded(
     result = subprocess.run(
         [exe, "-nostdin", "-v", "quiet", "-i", str(media_path), "-map", f"0:{stream_index}",
          "-f", out_fmt, "-"],
-        capture_output=True, text=True, encoding="utf-8", timeout=120,
+        capture_output=True, text=True, encoding="utf-8", timeout=timeout,
         stdin=subprocess.DEVNULL,
     )
     return result.stdout
@@ -217,8 +228,32 @@ def preserve_embedded_assets(
     extract_fonts(media_path, dest_dir, ffmpeg_path=ffmpeg_path)
 
 
-def load_subtitle(media_path: Path, track_id: str) -> tuple[str, str]:
-    """Resolve a track id to ``(content, source_format)``."""
+def _embedded_cache_path(cache_dir: Path, index_str: str, fmt: str) -> Path:
+    # A bare name (not the media stem) so discover_sidecar never picks a cache file up as a track.
+    return cache_dir / f"embedded.{index_str}.{'ass' if fmt == 'ass' else 'srt'}"
+
+
+def _cache_write(path: Path, text: str) -> None:
+    """Write atomically so a concurrent reader sees either the old file or the complete new one."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    tmp.replace(path)
+
+
+def load_subtitle(
+    media_path: Path,
+    track_id: str,
+    *,
+    cache_dir: Path | None = None,
+    timeout: int = EMBEDDED_EXTRACT_TIMEOUT,
+) -> tuple[str, str]:
+    """Resolve a track id to ``(content, source_format)``.
+
+    For embedded tracks a ``cache_dir`` (the media file's assets dir) makes the first
+    extraction a one-off: the demuxed text is cached and reused, so the player doesn't
+    re-demux the (possibly huge, network-hosted) original on every subtitle request.
+    """
     origin, _, ref = track_id.partition(":")
     if origin == "external":
         sub_path = (media_path.parent / ref).resolve()
@@ -231,7 +266,39 @@ def load_subtitle(media_path: Path, track_id: str) -> tuple[str, str]:
             raise FileNotFoundError(track_id)
         return normalize_bytes(sub_path.read_bytes()), sub_path.suffix.lower().lstrip(".")
     if origin == "embedded":
-        index_str, _, fmt = ref.partition(":")
-        fmt = fmt or "srt"
-        return extract_embedded(media_path, int(index_str), fmt), fmt
+        index_str, _, raw_fmt = ref.partition(":")
+        fmt = "ass" if raw_fmt == "ass" else "srt"
+        if cache_dir is not None:
+            cached = _embedded_cache_path(cache_dir, index_str, fmt)
+            if cached.is_file() and cached.stat().st_size > 0:
+                return cached.read_text(encoding="utf-8"), fmt
+            content = extract_embedded(media_path, int(index_str), fmt, timeout=timeout)
+            if content.strip():
+                _cache_write(cached, content)
+            return content, fmt
+        return extract_embedded(media_path, int(index_str), fmt, timeout=timeout), fmt
     raise ValueError(f"unknown subtitle track id: {track_id}")
+
+
+def warm_embedded_cache(
+    media_path: Path, cache_dir: Path, *, timeout: int = EMBEDDED_WARM_TIMEOUT
+) -> None:
+    """Pre-extract a file's embedded subtitle tracks into ``cache_dir`` (idempotent).
+
+    Meant to run off the playback path: pay the slow demux once here instead of on the
+    user's first subtitle request (which keeps a short timeout and would otherwise fail
+    on a large remux). Already-cached tracks are skipped.
+    """
+    if not media_path.is_file():
+        return
+    for track in discover_embedded(media_path):
+        index_str = track.id.partition(":")[2].partition(":")[0]  # "embedded:<index>:<fmt>"
+        cached = _embedded_cache_path(cache_dir, index_str, track.fmt)
+        if cached.is_file() and cached.stat().st_size > 0:
+            continue
+        try:
+            content = extract_embedded(media_path, int(index_str), track.fmt, timeout=timeout)
+        except (OSError, ValueError, subprocess.SubprocessError):
+            continue
+        if content.strip():
+            _cache_write(cached, content)
