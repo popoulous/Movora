@@ -223,7 +223,7 @@ export default function SeriesView({
             <div
               style={{
                 position: "absolute",
-                inset: 0,
+                top: 0, left: 0, right: 0, bottom: 0,
                 background:
                   "linear-gradient(to right, #05060B 26%, rgba(5,6,11,0.55) 52%, rgba(5,6,11,0.05) 100%)",
               }}

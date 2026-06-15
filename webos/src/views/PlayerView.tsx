@@ -658,7 +658,7 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
   const cueCss = `video::cue { font-size: ${SIZE_VH[subStyle.size]}; background-color: ${BG_COLOR[subStyle.bg]}; color: #fff; text-shadow: -1px -1px 2px #000, 1px -1px 2px #000, -1px 1px 2px #000, 1px 1px 2px #000, 0 2px 5px rgba(0,0,0,0.9); }`;
   const rootStyle = {
     position: "fixed",
-    inset: 0,
+    top: 0, left: 0, right: 0, bottom: 0,
     background: "#000",
     outline: "none",
     "--sub-shift": subShift,
