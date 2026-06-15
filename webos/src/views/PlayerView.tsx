@@ -483,7 +483,8 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
     { id: "prev", icon: "prev" },
     { id: "play", icon: paused ? "play" : "pause", big: true },
     { id: "next", icon: "next" },
-    ...(skip !== null ? [{ id: "skip", icon: "skip" }] : []),
+    // Skip-intro is its own action; skip-outro would duplicate the Next button, so only intro.
+    ...(skip === "intro" ? [{ id: "skip", icon: "skip" }] : []),
     { id: "set", icon: "settings" },
   ];
 
