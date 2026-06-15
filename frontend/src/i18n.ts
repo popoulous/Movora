@@ -266,6 +266,7 @@ const en = {
     loading: "Loading…",
     subtitles: "Subtitles",
     subtitlesOff: "Off",
+    audio: "Audio",
     notPlayable:
       "This file isn't web-playable yet (e.g. HEVC/10-bit). Optimize it for Direct Play — the original is kept.",
     normalizeNow: "Optimize for playback",
@@ -558,6 +559,7 @@ const hu: typeof en = {
     loading: "Betöltés…",
     subtitles: "Feliratok",
     subtitlesOff: "Ki",
+    audio: "Hang",
     notPlayable:
       "Ez a fájl böngészőben még nem játszható (pl. HEVC/10-bit). Optimalizáld Direct Play-re — az eredeti megmarad.",
     normalizeNow: "Optimalizálás lejátszáshoz",

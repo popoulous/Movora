@@ -27,6 +27,29 @@ interface SubStyle {
 
 const SIZE_SCALE: Record<SubSize, number> = { s: 0.8, m: 1, l: 1.3 };
 
+const AUDIO_PREF_PREFIX = "movora_audio_pref_"; // + seriesId -> remembered audio language
+
+// HTMLMediaElement.audioTracks is non-standard and absent from the TS DOM lib (and from
+// Chromium). We feature-detect it: where a browser exposes it the selector works; elsewhere
+// it simply doesn't appear.
+interface AudioTrackLike {
+  language: string;
+  label: string;
+  enabled: boolean;
+}
+interface AudioTrackListLike {
+  readonly length: number;
+  [index: number]: AudioTrackLike;
+}
+interface AudioMeta {
+  language: string;
+  label: string;
+}
+function videoAudioTracks(video: HTMLVideoElement): AudioTrackListLike | null {
+  const at = (video as unknown as { audioTracks?: AudioTrackListLike }).audioTracks;
+  return at !== undefined && typeof at.length === "number" ? at : null;
+}
+
 function loadSubStyle(): SubStyle {
   try {
     const raw = localStorage.getItem("subtitleStyle");
@@ -183,6 +206,59 @@ export function PlayerPage(): JSX.Element {
     localStorage.setItem("subtitleStyle", JSON.stringify(next));
   };
 
+  const [audioTracks, setAudioTracks] = useState<AudioMeta[]>([]);
+  const [audioId, setAudioId] = useState(-1);
+
+  // Read the audio tracks (where the browser exposes them) and apply the series'
+  // remembered language. Runs on loadedmetadata, alongside resume().
+  const detectAudio = (): void => {
+    const video = videoRef.current;
+    if (video === null || playback === null) return;
+    const at = videoAudioTracks(video);
+    if (at === null || at.length === 0) {
+      setAudioTracks([]);
+      setAudioId(-1);
+      return;
+    }
+    const list: AudioMeta[] = [];
+    for (let i = 0; i < at.length; i += 1) {
+      list.push({ language: at[i].language || "", label: at[i].label || "" });
+    }
+    const pref = localStorage.getItem(AUDIO_PREF_PREFIX + playback.series_id);
+    let picked = -1;
+    if (pref !== null) {
+      for (let i = 0; i < at.length; i += 1) {
+        if ((at[i].language || "") === pref) {
+          picked = i;
+          break;
+        }
+      }
+    }
+    if (picked === -1) {
+      for (let i = 0; i < at.length; i += 1) {
+        if (at[i].enabled) {
+          picked = i;
+          break;
+        }
+      }
+      if (picked === -1) picked = 0;
+    }
+    for (let i = 0; i < at.length; i += 1) at[i].enabled = i === picked;
+    setAudioTracks(list);
+    setAudioId(picked);
+  };
+
+  const selectAudio = (index: number): void => {
+    const video = videoRef.current;
+    if (video === null || playback === null) return;
+    const at = videoAudioTracks(video);
+    if (at === null || index >= at.length) return;
+    for (let i = 0; i < at.length; i += 1) at[i].enabled = i === index;
+    setAudioId(index);
+    // Remember the language for this series so the next episode keeps the same track.
+    localStorage.setItem(AUDIO_PREF_PREFIX + playback.series_id, at[index].language || "");
+  };
+
   // Every subtitle (ASS and SRT/VTT alike) is rendered by JASSUB as a canvas overlay; the
   // instance is recreated on track change and destroyed on cleanup.
   useEffect(() => {
@@ -291,7 +367,10 @@ export function PlayerPage(): JSX.Element {
               src={playback.stream_url}
               controls
               autoPlay
-              onLoadedMetadata={resume}
+              onLoadedMetadata={() => {
+                resume();
+                detectAudio();
+              }}
               onTimeUpdate={handleTimeUpdate}
               onEnded={markWatched}
               className="aspect-video w-full"
@@ -363,6 +442,20 @@ export function PlayerPage(): JSX.Element {
                   </button>
                 ))}
                 <SubtitleStyleControl style={subStyle} onChange={setSubStyle} t={t} />
+              </>
+            )}
+            {audioTracks.length > 1 && (
+              <>
+                <span className="text-sm text-neutral-400">{t("player.audio")}:</span>
+                {audioTracks.map((track, i) => (
+                  <button
+                    key={`${track.language}-${i}`}
+                    onClick={() => selectAudio(i)}
+                    className={chipClass(audioId === i)}
+                  >
+                    {track.label || track.language || `#${i + 1}`}
+                  </button>
+                ))}
               </>
             )}
             {nextEpisode !== null && (
