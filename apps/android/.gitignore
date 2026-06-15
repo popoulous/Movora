@@ -1,0 +1,30 @@
+# React Native / Node
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Metro
+.metro-health-check*
+metro.config.js.bak
+
+# Generated native projects (run the RN CLI to create android/ and ios/ — see README)
+android/build/
+android/app/build/
+android/.gradle/
+android/local.properties
+android/.cxx/
+*.keystore
+!debug.keystore
+ios/Pods/
+ios/build/
+
+# Bundles / artifacts
+*.apk
+*.aab
+*.jsbundle
+
+# Misc
+.DS_Store
+*.log
+.idea/
+.vscode/
