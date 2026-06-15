@@ -239,11 +239,12 @@ __marimo__/
 # TypeScript incremental build cache
 frontend/tsconfig.tsbuildinfo
 
-# webOS app build output
-webos/dist/
-webos/node_modules/
+# webOS app build output (the TV app now lives under apps/webos)
+apps/webos/dist/
+apps/webos/node_modules/
 
 # Local dev launcher scripts (Windows)
 /dev-backend.bat
 /dev-frontend.bat
 /reset-db.bat
+/dev-frontend_prev.bat
