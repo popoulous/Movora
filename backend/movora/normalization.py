@@ -13,6 +13,7 @@ once at ingest, so playback stays Direct Play.
 from __future__ import annotations
 
 from movora.domain import CapabilityProfile
+from movora.ffprobe import audio_stream_list
 from movora.recipes import DEFAULT_RECIPE
 
 # What a browser <video> Direct Plays: 8-bit H.264 video + AAC audio, in mp4. The
@@ -58,7 +59,13 @@ class RemuxFirstPlanner:
         self._video_encoder = video_encoder
 
     def plan(self, probe: dict[str, object], target: CapabilityProfile) -> list[str]:
-        args = ["-map", "0:v:0", "-map", "0:a:0?"]
+        audio = audio_stream_list(probe)
+        multi = isinstance(probe.get("audio_streams"), list)
+        args = ["-map", "0:v:0"]
+        for i in range(len(audio)):
+            # Keep every audio track (dual-audio anime, commentary). The legacy single-track
+            # view maps optionally so a video-only file doesn't fail.
+            args += ["-map", f"0:a:{i}" if multi else "0:a:0?"]
         if _video_compatible(probe, target):
             args += ["-c:v", "copy"]
         else:
@@ -66,10 +73,11 @@ class RemuxFirstPlanner:
                 "-c:v", self._video_encoder, *self._video_quality_args(),
                 "-pix_fmt", self._pix_fmt(),
             ]
-        if _audio_compatible(probe, target):
-            args += ["-c:a", "copy"]
-        else:
-            args += ["-c:a", "aac", "-b:a", "192k", "-ac", "2"]
+        for i, (codec, _channels) in enumerate(audio):
+            if codec is not None and codec in target.audio_codecs:
+                args += [f"-c:a:{i}", "copy"]  # already AAC -> keep it
+            else:
+                args += [f"-c:a:{i}", "aac", f"-b:a:{i}", "192k", f"-ac:a:{i}", "2"]
         # +faststart moves the moov atom to the front so the browser can seek at once.
         args += ["-movflags", "+faststart"]
         return args

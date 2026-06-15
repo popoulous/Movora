@@ -18,6 +18,7 @@ from dataclasses import dataclass
 
 from movora.compat import audio_token, video_token
 from movora.domain import CapabilityProfile
+from movora.ffprobe import audio_stream_list
 
 # Audio codecs an mp4 can safely carry; anything else (FLAC/PCM/Vorbis/Opus) forces mkv.
 _MP4_AUDIO = frozenset({"aac", "ac3", "eac3", "mp3", "alac"})
@@ -31,10 +32,14 @@ _VIDEO_QUALITY: dict[str, list[str]] = {
     "h264_amf": ["-rc", "cqp", "-qp_i", "23", "-qp_p", "23"],
     "h264_videotoolbox": ["-q:v", "60"],
 }
-_AUDIO_ENCODE: dict[str, list[str]] = {
-    "ac3": ["-c:a", "ac3", "-b:a", "448k"],  # keeps 5.1
-    "aac": ["-c:a", "aac", "-b:a", "192k", "-ac", "2"],  # stereo downmix
-}
+
+
+@dataclass(frozen=True)
+class AudioTrackPlan:
+    """One output audio stream: its codec token and whether it's a bit-for-bit copy."""
+
+    codec: str  # e.g. "ac3" / "aac" / a copied source token like "flac"
+    copy: bool
 
 
 @dataclass(frozen=True)
@@ -43,9 +48,9 @@ class VariantTarget:
 
     container: str  # bare suffix, e.g. "mp4" / "mkv"
     video_codec: str  # bit-depth-aware token, e.g. "h264" (re-encoded) or "hevc-10" (copied)
-    audio_codec: str  # e.g. "aac" / "ac3" (or the copied source token)
+    audio_codec: str  # representative (first track) -> the variant row's column + recipe id
     video_copy: bool
-    audio_copy: bool
+    audio_tracks: tuple[AudioTrackPlan, ...]  # every audio track is kept, copied or encoded
 
 
 def _probe_str(probe: dict[str, object], key: str) -> str | None:
@@ -58,31 +63,50 @@ def _probe_int(probe: dict[str, object], key: str) -> int | None:
     return value if isinstance(value, int) else None
 
 
+def _plan_audio_track(
+    src_codec: str | None, channels: int, profile: CapabilityProfile
+) -> AudioTrackPlan:
+    """Copy a track the device already plays (lossless); else AC-3 to keep 5.1, else stereo AAC."""
+    if src_codec is not None and src_codec in profile.audio_codecs:
+        return AudioTrackPlan(src_codec, copy=True)
+    if channels > 2 and "ac3" in profile.audio_codecs:
+        return AudioTrackPlan("ac3", copy=False)  # preserve 5.1
+    return AudioTrackPlan("aac", copy=False)  # universal stereo fallback
+
+
 def variant_target(probe: dict[str, object], profile: CapabilityProfile) -> VariantTarget:
     """Decide, per stream, copy-vs-encode and the resulting output format (no encoder needed)."""
     src_video = video_token(_probe_str(probe, "video_codec"), _probe_str(probe, "video_pix_fmt"))
-    src_audio = audio_token(_probe_str(probe, "audio_codec"))
-    channels = _probe_int(probe, "audio_channels") or 2
-
     if src_video is not None and src_video in profile.video_codecs:
         out_video, video_copy = src_video, True
     else:
         out_video, video_copy = "h264", False  # universal 8-bit fallback
 
-    if src_audio is not None and src_audio in profile.audio_codecs:
-        out_audio, audio_copy = src_audio, True
-    elif channels > 2 and "ac3" in profile.audio_codecs:
-        out_audio, audio_copy = "ac3", False  # preserve 5.1
-    else:
-        out_audio, audio_copy = "aac", False  # universal fallback
+    tracks = tuple(
+        _plan_audio_track(audio_token(codec), channels, profile)
+        for codec, channels in audio_stream_list(probe)
+    )
 
-    if out_audio in _MP4_AUDIO and "mp4" in profile.containers:
+    # mp4 only if every kept track is mp4-safe (FLAC/PCM/etc. force a flexible container).
+    all_mp4_safe = all(track.codec in _MP4_AUDIO for track in tracks)
+    if all_mp4_safe and "mp4" in profile.containers:
         container = "mp4"
     elif "mkv" in profile.containers:
-        container = "mkv"  # FLAC/PCM/etc. need a flexible container
+        container = "mkv"
     else:
         container = "mp4"
-    return VariantTarget(container, out_video, out_audio, video_copy, audio_copy)
+
+    audio_codec = tracks[0].codec if tracks else "aac"
+    return VariantTarget(container, out_video, audio_codec, video_copy, tracks)
+
+
+def _audio_track_args(index: int, track: AudioTrackPlan) -> list[str]:
+    """ffmpeg per-output-stream codec args for one kept audio track."""
+    if track.copy:
+        return [f"-c:a:{index}", "copy"]
+    if track.codec == "ac3":
+        return [f"-c:a:{index}", "ac3", f"-b:a:{index}", "448k"]  # keeps 5.1
+    return [f"-c:a:{index}", "aac", f"-b:a:{index}", "192k", f"-ac:a:{index}", "2"]  # stereo
 
 
 class DeviceVariantPlanner:
@@ -95,7 +119,12 @@ class DeviceVariantPlanner:
         self, probe: dict[str, object], profile: CapabilityProfile
     ) -> tuple[list[str], VariantTarget]:
         target = variant_target(probe, profile)
-        args = ["-map", "0:v:0", "-map", "0:a:0?"]
+        multi = isinstance(probe.get("audio_streams"), list)
+        args = ["-map", "0:v:0"]
+        for i in range(len(target.audio_tracks)):
+            # The legacy single-track view maps optionally so a video-only file doesn't fail;
+            # the multi view maps by index (each is known to exist from the probe).
+            args += ["-map", f"0:a:{i}" if multi else "0:a:0?"]
         if target.video_copy:
             args += ["-c:v", "copy"]
         else:
@@ -103,10 +132,8 @@ class DeviceVariantPlanner:
                 "-c:v", self._video_encoder, *self._video_quality_args(),
                 "-pix_fmt", self._pix_fmt(),
             ]
-        if target.audio_copy:
-            args += ["-c:a", "copy"]
-        else:
-            args += _AUDIO_ENCODE.get(target.audio_codec, _AUDIO_ENCODE["aac"])
+        for i, track in enumerate(target.audio_tracks):
+            args += _audio_track_args(i, track)
         if target.container == "mp4":
             # +faststart moves the moov atom to the front so the player can seek at once.
             args += ["-movflags", "+faststart"]

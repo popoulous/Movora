@@ -27,7 +27,7 @@ def test_hevc_with_dts_51_copies_video_transcodes_audio() -> None:
     args, target = DeviceVariantPlanner("libx264").plan(probe, TV)
     assert target.video_copy is True
     assert target.video_codec == "hevc-10"  # 10-bit HEVC copied bit-for-bit
-    assert target.audio_copy is False
+    assert target.audio_tracks[0].copy is False
     assert target.audio_codec == "ac3"  # DTS 5.1 -> AC-3, channels preserved
     assert target.container == "mp4"
     assert _next(args, "-c:v") == "copy"
@@ -40,11 +40,11 @@ def test_hi10p_with_flac_reencodes_video_copies_audio() -> None:
     args, target = DeviceVariantPlanner("libx264").plan(probe, TV)
     assert target.video_copy is False  # Hi10P -> re-encode to 8-bit
     assert target.video_codec == "h264"
-    assert target.audio_copy is True  # FLAC is supported -> copy
+    assert target.audio_tracks[0].copy is True  # FLAC is supported -> copy
     assert target.audio_codec == "flac"
     assert target.container == "mkv"  # FLAC can't live in mp4
     assert _next(args, "-c:v") == "libx264"
-    assert _next(args, "-c:a") == "copy"
+    assert _next(args, "-c:a:0") == "copy"
 
 
 def test_mpeg_ts_is_a_pure_remux() -> None:
@@ -52,10 +52,10 @@ def test_mpeg_ts_is_a_pure_remux() -> None:
              "audio_channels": 2}
     args, target = DeviceVariantPlanner().plan(probe, TV)
     assert target.video_copy is True and target.video_codec == "h264"
-    assert target.audio_copy is True and target.audio_codec == "aac"
+    assert target.audio_tracks[0].copy is True and target.audio_codec == "aac"
     assert target.container == "mp4"  # remuxed out of MPEG-TS
     assert _next(args, "-c:v") == "copy"
-    assert _next(args, "-c:a") == "copy"
+    assert _next(args, "-c:a:0") == "copy"
     assert "+faststart" in args
 
 
@@ -64,6 +64,31 @@ def test_dts_stereo_downmixes_to_aac() -> None:
              "audio_channels": 2}
     target = variant_target(probe, TV)
     assert target.audio_codec == "aac"  # no 5.1 to preserve -> AAC
+
+
+def test_keeps_every_audio_track_copying_what_the_device_plays() -> None:
+    # Dual-audio anime case: EN 5.1 TrueHD, EN 5.1 DD, JP 2.0 PCM, JP 2.0 AC-3, Hi10P video.
+    probe = {
+        "video_codec": "h264", "video_pix_fmt": "yuv420p10le",
+        "audio_codec": "truehd", "audio_channels": 6,
+        "audio_streams": [
+            {"codec": "truehd", "channels": 6},     # unsupported -> AC-3 (keep 5.1)
+            {"codec": "ac3", "channels": 6},        # supported -> copy
+            {"codec": "pcm_s16le", "channels": 2},  # supported (pcm) -> copy
+            {"codec": "ac3", "channels": 2},        # supported -> copy
+        ],
+    }
+    args, target = DeviceVariantPlanner("libx264").plan(probe, TV)
+    assert [(t.codec, t.copy) for t in target.audio_tracks] == [
+        ("ac3", False), ("ac3", True), ("pcm", True), ("ac3", True),
+    ]
+    assert target.container == "mkv"  # the copied PCM can't live in mp4
+    assert target.audio_codec == "ac3"  # representative = first track's output
+    # One video map + one map per audio track, and the TrueHD track re-encodes to AC-3.
+    assert args.count("-map") == 5
+    assert "0:a:3" in args
+    assert _next(args, "-c:a:0") == "ac3" and _next(args, "-c:a:1") == "copy"
+    assert _next(args, "-c:v") == "libx264"  # Hi10P re-encoded
 
 
 def test_recipe_id_for_encodes_the_output_tuple() -> None:
