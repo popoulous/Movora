@@ -67,6 +67,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        # uvicorn configures its own loggers (propagate=False) on startup — i.e. AFTER this
+        # module imported and set up the file handler — so let its access/error records
+        # (including 500 tracebacks) reach the root handler that writes movora.log.
+        if "pytest" not in sys.modules:
+            for name in ("uvicorn.error", "uvicorn.access"):
+                logging.getLogger(name).propagate = True
         # A crash/reload can leave a task RUNNING with its ffmpeg killed; put those
         # back in the queue and start the worker so it resumes on its own.
         normalized_dir = settings.database_path.parent / "normalized"

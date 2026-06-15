@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
 import shutil
 import subprocess
+import time
 from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import quote
@@ -553,6 +555,7 @@ def episode_playback(
     user: CurrentUserDep,
     device: RequestDeviceDep,
 ) -> PlaybackInfo:
+    started = time.monotonic()
     _require_episode_access(session, user, episode_id)
     media_file = _episode_media_file(session, episode_id)
     episode = media_file.episode
@@ -588,7 +591,7 @@ def episode_playback(
     ):
         # Optimization is off and nothing is building -> not playable here (don't spin).
         status = "unavailable"
-    return PlaybackInfo(
+    result = PlaybackInfo(
         media_file_id=media_file.id,
         stream_url=f"/api/episodes/{episode_id}/stream",
         media_type=source.media_type,
@@ -614,6 +617,14 @@ def episode_playback(
         cover_image_url=series.cover_image_url,
         score=series.score,
     )
+    elapsed = time.monotonic() - started
+    if elapsed > 3.0:
+        # Surfaces the real cause of a slow "press play -> starts" (usually ffprobe on a
+        # large/networked source for subtitle/font/codec discovery), recorded to movora.log.
+        logging.getLogger("movora").warning(
+            "slow /playback %.1fs (episode %s)", elapsed, episode_id
+        )
+    return result
 
 
 @router.patch("/episodes/{episode_id}/watch-state", status_code=204)
