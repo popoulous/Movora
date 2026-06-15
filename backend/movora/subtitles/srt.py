@@ -13,6 +13,7 @@ from movora.subtitles.ass_model import Decision
 from movora.subtitles.clean_ass import DialogueCue, clean_ass_text
 
 _SRT_TIMESTAMP = re.compile(r"(\d\d:\d\d:\d\d),(\d\d\d)")
+_OVERRIDE_BLOCK_RE = re.compile(r"\{[^}]*\}")
 
 
 def _format_timestamp(seconds: float) -> str:
@@ -41,7 +42,13 @@ def ass_to_srt(raw: bytes, overrides: dict[str, Decision] | None = None) -> str:
 def srt_to_vtt(srt_text: str) -> str:
     """Convert SubRip text to WebVTT for a native <video> <track>.
 
-    The only changes needed: VTT requires a header and uses '.' (not ',') in cue
-    timestamps. SubRip cue numbers are valid VTT cue identifiers, so they stay.
+    VTT requires a header and uses '.' (not ',') in cue timestamps. SubRip cue
+    numbers are valid VTT cue identifiers, so they stay.
+
+    We also strip leftover ASS override blocks ({\\an8}, {\\i1}, …). The ASS path
+    drops these in clean_ass, but raw SRT sources (often converted from ASS) carry
+    them, and VTT would render them as literal text. Indices and timestamps never
+    contain braces, so the global strip only touches cue text.
     """
-    return "WEBVTT\n\n" + _SRT_TIMESTAMP.sub(r"\1.\2", srt_text.strip()) + "\n"
+    cleaned = _OVERRIDE_BLOCK_RE.sub("", srt_text.strip())
+    return "WEBVTT\n\n" + _SRT_TIMESTAMP.sub(r"\1.\2", cleaned) + "\n"

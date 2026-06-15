@@ -22,6 +22,15 @@ def test_srt_to_vtt_adds_header_and_dots() -> None:
     assert "," not in vtt.split("\n", 2)[2].splitlines()[0]  # timestamp uses '.'
 
 
+def test_srt_to_vtt_strips_ass_override_blocks() -> None:
+    # SRT sources converted from ASS often carry {\anX} / {\iX} remnants; VTT
+    # would render them literally, so they must be dropped from the cue text.
+    srt = "1\n00:00:01,000 --> 00:00:02,000\n{\\an7}Top-left {\\i1}sign{\\i0}\n"
+    vtt = srt_to_vtt(srt)
+    assert "{" not in vtt and "}" not in vtt
+    assert "Top-left sign" in vtt
+
+
 def test_discover_sidecar_finds_files_and_language(tmp_path: Path) -> None:
     video = tmp_path / "Show - 01.mp4"
     video.write_bytes(b"")
