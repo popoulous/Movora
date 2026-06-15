@@ -40,6 +40,13 @@ const ICONS: Record<string, React.ReactNode> = {
       <path d="M7 14h5M15 14h2M7 10h2M12 10h5" />
     </g>
   ),
+  audio: (
+    <g fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor" stroke="none" />
+      <path d="M16 8.5a4 4 0 0 1 0 7" />
+      <path d="M18.6 6a7 7 0 0 1 0 12" />
+    </g>
+  ),
   settings: (
     <g fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
       <line x1="4" y1="7" x2="20" y2="7" />

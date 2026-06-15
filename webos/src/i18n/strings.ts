@@ -69,6 +69,7 @@ const en = {
   "player.noSubtitles": "No subtitles",
   "player.subtitlesOff": "Subtitles: off",
   "player.subtitles": "Subtitles: {{label}}",
+  "player.audio": "Audio: {{label}}",
   "player.loadError": "Playback error: {{error}}",
   "player.blockedTitle": "This episode can't be played here",
   "player.blockedBody":
@@ -222,6 +223,7 @@ const hu: Record<Key, string> = {
   "player.noSubtitles": "Nincs felirat",
   "player.subtitlesOff": "Felirat: ki",
   "player.subtitles": "Felirat: {{label}}",
+  "player.audio": "Hang: {{label}}",
   "player.loadError": "Lejátszási hiba: {{error}}",
   "player.blockedTitle": "Ez a rész itt nem játszható le",
   "player.blockedBody":
@@ -373,6 +375,7 @@ const de: Record<Key, string> = {
   "player.noSubtitles": "Keine Untertitel",
   "player.subtitlesOff": "Untertitel: aus",
   "player.subtitles": "Untertitel: {{label}}",
+  "player.audio": "Ton: {{label}}",
   "player.loadError": "Wiedergabefehler: {{error}}",
   "player.blockedTitle": "Diese Folge lässt sich hier nicht abspielen",
   "player.blockedBody":
@@ -524,6 +527,7 @@ const fr: Record<Key, string> = {
   "player.noSubtitles": "Aucun sous-titre",
   "player.subtitlesOff": "Sous-titres : désactivés",
   "player.subtitles": "Sous-titres : {{label}}",
+  "player.audio": "Audio : {{label}}",
   "player.loadError": "Erreur de lecture : {{error}}",
   "player.blockedTitle": "Cet épisode ne peut pas être lu ici",
   "player.blockedBody":
@@ -675,6 +679,7 @@ const es: Record<Key, string> = {
   "player.noSubtitles": "Sin subtítulos",
   "player.subtitlesOff": "Subtítulos: desactivados",
   "player.subtitles": "Subtítulos: {{label}}",
+  "player.audio": "Audio: {{label}}",
   "player.loadError": "Error de reproducción: {{error}}",
   "player.blockedTitle": "Este episodio no se puede reproducir aquí",
   "player.blockedBody":
@@ -826,6 +831,7 @@ const it: Record<Key, string> = {
   "player.noSubtitles": "Nessun sottotitolo",
   "player.subtitlesOff": "Sottotitoli: off",
   "player.subtitles": "Sottotitoli: {{label}}",
+  "player.audio": "Audio: {{label}}",
   "player.loadError": "Errore di riproduzione: {{error}}",
   "player.blockedTitle": "Questo episodio non può essere riprodotto qui",
   "player.blockedBody":
@@ -977,6 +983,7 @@ const ja: Record<Key, string> = {
   "player.noSubtitles": "字幕なし",
   "player.subtitlesOff": "字幕：オフ",
   "player.subtitles": "字幕：{{label}}",
+  "player.audio": "音声：{{label}}",
   "player.loadError": "再生エラー：{{error}}",
   "player.blockedTitle": "このエピソードはここで再生できません",
   "player.blockedBody":

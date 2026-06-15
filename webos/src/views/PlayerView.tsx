@@ -21,6 +21,7 @@ const COUNTDOWN_START = 10;
 const PANEL_TIMEOUT = 6000;
 const PREPARE_POLL_MS = 4000; // re-ask while a device variant is being built
 const SUB_PREF_KEY = "movora_sub_pref";
+const AUDIO_PREF_PREFIX = "movora_audio_pref_"; // + seriesId -> remembered audio language
 const EP_W = 200;
 const EP_H = aspectHeight(EP_W, "16/9");
 
@@ -96,6 +97,32 @@ function fmt(sec: number): string {
   return (h > 0 ? `${h}:` : "") + `${mm}:${String(s).padStart(2, "0")}`;
 }
 
+// HTMLMediaElement.audioTracks is non-standard and absent from the TS DOM lib (and from
+// many browsers). We feature-detect it: where the platform exposes it (the webOS TV),
+// the player can switch tracks; elsewhere the audio selector simply doesn't appear.
+interface AudioTrackLike {
+  language: string;
+  label: string;
+  enabled: boolean;
+}
+interface AudioTrackListLike {
+  readonly length: number;
+  [index: number]: AudioTrackLike;
+}
+interface AudioMeta {
+  language: string;
+  label: string;
+}
+
+function videoAudioTracks(v: HTMLVideoElement): AudioTrackListLike | null {
+  const at = (v as unknown as { audioTracks?: AudioTrackListLike }).audioTracks;
+  return at && typeof at.length === "number" ? at : null;
+}
+
+function audioTrackLabel(meta: AudioMeta, index: number): string {
+  return meta.label || meta.language || `#${index + 1}`;
+}
+
 export default function PlayerView({ episodeId, onBack, onNext }: Props): React.JSX.Element {
   const { api, config } = useDevice();
   const { t } = useI18n();
@@ -112,6 +139,8 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
   const [ended, setEnded] = useState(false);
   const [countdown, setCountdown] = useState(COUNTDOWN_START);
   const [subIdx, setSubIdx] = useState(-1);
+  const [audioList, setAudioList] = useState<AudioMeta[]>([]);
+  const [audioIdx, setAudioIdx] = useState(-1);
   const [toast, setToast] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelH, setPanelH] = useState(0);
@@ -224,6 +253,28 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
     }
     for (let i = 0; i < v.textTracks.length; i++) v.textTracks[i].mode = i === chosen ? "showing" : "disabled";
     setSubIdx(chosen);
+
+    // Audio tracks (where the platform exposes them): apply the series' remembered language.
+    const at = videoAudioTracks(v);
+    if (at && at.length > 0) {
+      const list: AudioMeta[] = [];
+      for (let i = 0; i < at.length; i++) list.push({ language: at[i].language || "", label: at[i].label || "" });
+      const pref = localStorage.getItem(AUDIO_PREF_PREFIX + info.series_id);
+      let picked = -1;
+      if (pref) {
+        for (let i = 0; i < at.length; i++) if ((at[i].language || "") === pref) { picked = i; break; }
+      }
+      if (picked === -1) {
+        for (let i = 0; i < at.length; i++) if (at[i].enabled) { picked = i; break; }
+        if (picked === -1) picked = 0;
+      }
+      for (let i = 0; i < at.length; i++) at[i].enabled = i === picked;
+      setAudioList(list);
+      setAudioIdx(picked);
+    } else {
+      setAudioList([]);
+      setAudioIdx(-1);
+    }
   };
 
   const handleTimeUpdate = (): void => {
@@ -309,7 +360,7 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
 
   const openPanel = (): void => {
     setRow("controls");
-    setCol(2);
+    setCol(audioList.length > 1 ? 3 : 2); // focus play/pause (shifts when the audio button shows)
     setEpFocus(curIdx >= 0 ? curIdx : 0);
     setPanelOpen(true);
     armPanelTimer();
@@ -385,6 +436,19 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
     );
   };
 
+  const cycleAudio = (): void => {
+    const v = videoRef.current;
+    if (!v || !info) return;
+    const at = videoAudioTracks(v);
+    if (!at || at.length < 2) return;
+    const next = (audioIdx + 1) % at.length;
+    for (let i = 0; i < at.length; i++) at[i].enabled = i === next;
+    setAudioIdx(next);
+    // Remember the language for this series so the next episode keeps the same track.
+    localStorage.setItem(AUDIO_PREF_PREFIX + info.series_id, at[next].language || "");
+    flashToast(t("player.audio", { label: audioTrackLabel(audioList[next] ?? { language: "", label: "" }, next) }));
+  };
+
   const doSkip = (): void => {
     const v = videoRef.current;
     if (!v || !info) return;
@@ -394,6 +458,7 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
 
   const runControl = (id: string): void => {
     if (id === "sub") cycleSubtitle();
+    else if (id === "audio") cycleAudio();
     else if (id === "prev") {
       if (prevEpisodeId !== null) onNext(prevEpisodeId);
     } else if (id === "rew") seekBy(-10);
@@ -413,6 +478,8 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
   type Ctrl = { id: string; icon: string; big?: boolean; on?: boolean };
   const controls: Ctrl[] = [
     { id: "sub", icon: "subtitles", on: subIdx >= 0 },
+    // Only when the platform exposes more than one selectable audio track.
+    ...(audioList.length > 1 ? [{ id: "audio", icon: "audio" } as Ctrl] : []),
     { id: "prev", icon: "prev" },
     { id: "play", icon: paused ? "play" : "pause", big: true },
     { id: "next", icon: "next" },
