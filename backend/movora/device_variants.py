@@ -34,7 +34,6 @@ from movora.normalize import (
     start_workers,
 )
 from movora.recipes import DEFAULT_RECIPE, recipe_id_for
-from movora.subtitles import warm_embedded_cache
 
 
 def _ordered_episodes(series: Series) -> list[Episode]:
@@ -243,28 +242,3 @@ def prepare_browser_normalize(
                 queued = True
     if queued:
         start_workers(session_factory, output_dir, registry)
-
-
-def warm_episode_subtitles(
-    session_factory: sessionmaker[Session],
-    output_dir: Path,
-    registry: MetadataRegistry,  # unused; kept for the shared _schedule(...) calling convention
-    episode_id: int,
-) -> None:
-    """Background entry point: cache the playing episode's embedded subtitle tracks.
-
-    So the player's subtitle request reads a local file instead of demuxing the
-    (possibly huge, network-hosted) original on every request. Sidecars and files whose
-    original was deleted already have their subtitles on disk, so they're skipped.
-    """
-    with session_factory() as session:
-        media_file = session.scalar(
-            select(MediaFile)
-            .where(MediaFile.episode_id == episode_id)
-            .order_by(MediaFile.id)
-        )
-        if media_file is None or media_file.original_deleted:
-            return
-        source = Path(media_file.path)
-        cache_dir = output_dir.parent / "assets" / str(media_file.id)
-    warm_embedded_cache(source, cache_dir)

@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import json
 import shutil
+import subprocess
 from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import quote
@@ -68,7 +69,6 @@ from movora.device_variants import (
     populate_series_codecs,
     prepare_browser_normalize,
     run_device_prefetch,
-    warm_episode_subtitles,
 )
 from movora.domain import CapabilityProfile
 from movora.filesystem import list_directories
@@ -588,12 +588,6 @@ def episode_playback(
     ):
         # Optimization is off and nothing is building -> not playable here (don't spin).
         status = "unavailable"
-
-    # Warm the embedded-subtitle cache regardless of the optimize setting: extraction from a
-    # large remux on a network share is slow, so we do it once off-request and the player's
-    # subtitle call then reads a local file. Sidecars / preserved assets need no extraction.
-    if not media_file.original_deleted:
-        _schedule(warm_episode_subtitles, episode_id)
     return PlaybackInfo(
         media_file_id=media_file.id,
         stream_url=f"/api/episodes/{episode_id}/stream",
@@ -848,6 +842,9 @@ def episode_subtitle(
         raise HTTPException(status_code=404, detail="subtitle track not found") from exc
     except RuntimeError as exc:  # ffmpeg missing -> embedded tracks unextractable
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except (subprocess.SubprocessError, OSError) as exc:
+        # Demux timed out or failed (e.g. a huge remux on a slow share) -> don't 500.
+        raise HTTPException(status_code=504, detail="subtitle extraction timed out") from exc
     # Clients that render ASS (our JASSUB web player) get the soft ASS untouched.
     # Clients without an ASS renderer (the native webOS <track>) request ?as=vtt:
     # the dialogue is flattened to WebVTT (styling dropped, text + timing kept).

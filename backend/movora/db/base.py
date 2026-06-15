@@ -23,7 +23,16 @@ def create_db_engine(database_path: Path | str = "movora.db", *, echo: bool = Fa
             connect_args={"check_same_thread": False},
         )
     else:
-        engine = create_engine(f"sqlite:///{database_path}", echo=echo)
+        # A streaming request holds its DB connection for the whole response (the session
+        # dependency closes only after the file finishes sending), so a few concurrent
+        # streams + polling can exhaust the default 5+10 pool. SQLite/WAL handles many
+        # cheap connections, so give the pool generous headroom.
+        engine = create_engine(
+            f"sqlite:///{database_path}",
+            echo=echo,
+            pool_size=20,
+            max_overflow=40,
+        )
 
     @event.listens_for(engine, "connect")
     def _set_sqlite_pragmas(dbapi_connection: Any, _record: Any) -> None:

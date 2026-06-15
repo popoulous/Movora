@@ -5,13 +5,7 @@ from fastapi.testclient import TestClient
 
 from movora.api.app import create_app
 from movora.config import Settings
-from movora.subtitles import (
-    SubtitleTrackInfo,
-    discover_tracks,
-    load_subtitle,
-    srt_to_vtt,
-    warm_embedded_cache,
-)
+from movora.subtitles import discover_tracks, load_subtitle, srt_to_vtt
 from movora.subtitles import tracks as tracks_mod
 
 SRT = "1\n00:00:01,000 --> 00:00:02,000\nHello from SRT\n"
@@ -97,30 +91,20 @@ def test_load_subtitle_caches_embedded_on_miss(
     assert calls == [3]
 
 
-def test_warm_embedded_cache_extracts_then_skips(
+def test_cache_write_tolerates_a_concurrent_writer(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    media = tmp_path / "show.mkv"
-    media.write_bytes(b"")
+    # Two requests extracting the same track must not raise (Windows file-lock race).
     cache = tmp_path / "assets" / "1"
-    monkeypatch.setattr(
-        tracks_mod,
-        "discover_embedded",
-        lambda _p: [SubtitleTrackInfo(id="embedded:3:srt", label="EN", language="en", fmt="srt")],
-    )
-    timeouts: list[int] = []
 
     def fake_extract(media_path: object, index: int, fmt: str, *, timeout: int = 0) -> str:
-        timeouts.append(timeout)
         return SRT
 
     monkeypatch.setattr(tracks_mod, "extract_embedded", fake_extract)
-    warm_embedded_cache(media, cache)
+    a = load_subtitle(tmp_path / "x.mkv", "embedded:3:srt", cache_dir=cache)
+    b = load_subtitle(tmp_path / "x.mkv", "embedded:3:srt", cache_dir=cache)
+    assert a == b == (SRT, "srt")
     assert (cache / "embedded.3.srt").read_text(encoding="utf-8") == SRT
-    assert timeouts == [tracks_mod.EMBEDDED_WARM_TIMEOUT]
-    # Idempotent: a second warm skips the already-cached track.
-    warm_embedded_cache(media, cache)
-    assert len(timeouts) == 1
 
 
 def _client_with_sidecars(tmp_path: Path) -> tuple[TestClient, int]:

@@ -18,17 +18,15 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from uuid import uuid4
 
 from movora.subtitles.encoding import normalize_bytes
 
 SUBTITLE_EXTENSIONS = {".ass", ".srt"}
 FONT_EXTENSIONS = {".ttf", ".otf", ".ttc"}
 
-# Serving path: keep the demux short so a subtitle request never hangs the player.
+# Keep the demux short so a subtitle request never hangs the player.
 EMBEDDED_EXTRACT_TIMEOUT = 120
-# Background warming: demuxing subtitles out of a large remux on a network share can
-# take minutes, so the off-request path gets a generous budget.
-EMBEDDED_WARM_TIMEOUT = 600
 
 
 @dataclass(frozen=True)
@@ -234,11 +232,24 @@ def _embedded_cache_path(cache_dir: Path, index_str: str, fmt: str) -> Path:
 
 
 def _cache_write(path: Path, text: str) -> None:
-    """Write atomically so a concurrent reader sees either the old file or the complete new one."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(text, encoding="utf-8")
-    tmp.replace(path)
+    """Best-effort atomic cache write; never raises.
+
+    The content is already in hand — the cache is only an optimization, so a failure must
+    not fail the request. A unique temp name avoids clashes when two requests extract the
+    same track at once (on Windows a second writer can't open the first's temp file, and
+    replace() fails while the target is held), so each writer uses its own temp and the
+    first to finish wins.
+    """
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(f"{path.name}.{uuid4().hex}.tmp")
+        tmp.write_text(text, encoding="utf-8")
+        try:
+            tmp.replace(path)
+        except OSError:
+            tmp.unlink(missing_ok=True)  # another writer won the race; their file stands
+    except OSError:
+        pass
 
 
 def load_subtitle(
@@ -278,27 +289,3 @@ def load_subtitle(
             return content, fmt
         return extract_embedded(media_path, int(index_str), fmt, timeout=timeout), fmt
     raise ValueError(f"unknown subtitle track id: {track_id}")
-
-
-def warm_embedded_cache(
-    media_path: Path, cache_dir: Path, *, timeout: int = EMBEDDED_WARM_TIMEOUT
-) -> None:
-    """Pre-extract a file's embedded subtitle tracks into ``cache_dir`` (idempotent).
-
-    Meant to run off the playback path: pay the slow demux once here instead of on the
-    user's first subtitle request (which keeps a short timeout and would otherwise fail
-    on a large remux). Already-cached tracks are skipped.
-    """
-    if not media_path.is_file():
-        return
-    for track in discover_embedded(media_path):
-        index_str = track.id.partition(":")[2].partition(":")[0]  # "embedded:<index>:<fmt>"
-        cached = _embedded_cache_path(cache_dir, index_str, track.fmt)
-        if cached.is_file() and cached.stat().st_size > 0:
-            continue
-        try:
-            content = extract_embedded(media_path, int(index_str), track.fmt, timeout=timeout)
-        except (OSError, ValueError, subprocess.SubprocessError):
-            continue
-        if content.strip():
-            _cache_write(cached, content)

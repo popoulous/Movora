@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import logging
+import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from logging.handlers import RotatingFileHandler
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -30,8 +32,34 @@ from movora.normalize import (
 )
 
 
+def _setup_file_logging(settings: Settings) -> None:
+    """Mirror the server log (incl. ASGI exception tracebacks) to a rotating file next to
+    the database, so errors survive the terminal. Skipped under pytest; idempotent."""
+    if "pytest" in sys.modules:
+        return
+    root = logging.getLogger()
+    if any(getattr(handler, "name", "") == "movora-file" for handler in root.handlers):
+        return
+    try:
+        handler = RotatingFileHandler(
+            settings.database_path.parent / "movora.log",
+            maxBytes=2_000_000,
+            backupCount=3,
+            encoding="utf-8",
+        )
+    except OSError:
+        return
+    handler.name = "movora-file"
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    root.addHandler(handler)
+    if root.level == logging.NOTSET or root.level > logging.INFO:
+        root.setLevel(logging.INFO)
+    logging.getLogger("uvicorn.error").propagate = True  # carries the 500 tracebacks
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
+    _setup_file_logging(settings)
     if settings.secret_key == INSECURE_SECRET_KEY:
         logging.getLogger("movora").warning(
             "MOVORA_SECRET_KEY is the insecure default — set it before exposing Movora."
