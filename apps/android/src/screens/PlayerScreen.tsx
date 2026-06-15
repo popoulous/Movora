@@ -25,6 +25,10 @@ import {theme} from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Player'>;
 
+// The shape react-native-video's `textTracks` prop expects (its `language` is a strict
+// ISO639_1 union); derived from the component so we needn't import the internal type.
+type RnTextTrack = NonNullable<React.ComponentProps<typeof Video>['textTracks']>[number];
+
 const SAVE_INTERVAL_S = 10;
 const PREPARE_POLL_MS = 4000;
 const AUDIO_PREF_PREFIX = 'movora_audio_pref_'; // + seriesId -> language
@@ -88,11 +92,12 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
   }, [api, episodeId]);
 
   // Backend subtitles are served separately; pass them to the player as external tracks.
-  const textTracks = useMemo(
+  const textTracks = useMemo<RnTextTrack[]>(
     () =>
       (info?.subtitle_tracks ?? []).map(t => ({
         title: t.label,
-        language: t.language ?? undefined,
+        // Backend language codes may be 2/3-letter or null; cast to the lib's strict type.
+        language: (t.language ?? 'und') as RnTextTrack['language'],
         type: TextTrackType.VTT,
         uri: mediaUrl(base, token, t.format === 'ass' ? `${t.url}&as=vtt` : t.url) ?? '',
       })),
