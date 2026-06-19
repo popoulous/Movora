@@ -13,6 +13,7 @@ import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
 import {mediaUrl, type Episode, type SeriesDetail} from '../api/client';
 import {useDevice} from '../context/DeviceContext';
+import {useI18n} from '../i18n';
 import type {RootStackParamList} from '../navigation';
 import {theme} from '../theme';
 
@@ -20,6 +21,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Series'>;
 
 export default function SeriesScreen({navigation, route}: Props): React.JSX.Element {
   const {api, config} = useDevice();
+  const {t} = useI18n();
   const insets = useSafeAreaInsets();
   const {seriesId} = route.params;
   const [series, setSeries] = useState<SeriesDetail | null>(null);
@@ -43,7 +45,7 @@ export default function SeriesScreen({navigation, route}: Props): React.JSX.Elem
   if (error) {
     return (
       <View style={styles.center}>
-        <Text style={styles.error}>Betöltési hiba: {error}</Text>
+        <Text style={styles.error}>{t('common.loadError', {error})}</Text>
       </View>
     );
   }
@@ -80,11 +82,13 @@ export default function SeriesScreen({navigation, route}: Props): React.JSX.Elem
             <Pressable
               style={styles.play}
               onPress={() => navigation.navigate('Player', {episodeId: (continueId ?? firstId)!})}>
-              <Text style={styles.playText}>{continueId ? 'Folytatás' : 'Lejátszás'}</Text>
+              <Text style={styles.playText}>
+                {continueId ? t('series.continue') : t('series.play')}
+              </Text>
             </Pressable>
           )}
         </View>
-        <Text style={styles.epHeader}>Epizódok</Text>
+        <Text style={styles.epHeader}>{t('series.episodes')}</Text>
       </View>
     </View>
   );
@@ -92,7 +96,7 @@ export default function SeriesScreen({navigation, route}: Props): React.JSX.Elem
   return (
     <View style={[styles.root, {paddingTop: insets.top}]}>
       <Pressable onPress={() => navigation.goBack()} hitSlop={12} style={styles.backWrap}>
-        <Text style={styles.back}>‹ Vissza</Text>
+        <Text style={styles.back}>‹ {t('common.back')}</Text>
       </Pressable>
       <FlatList
         data={episodes}
@@ -111,8 +115,8 @@ export default function SeriesScreen({navigation, route}: Props): React.JSX.Elem
             <View style={styles.epText}>
               <Text style={styles.epTitle} numberOfLines={1}>
                 {item.end_number != null
-                  ? `${item.number}–${item.end_number}. rész`
-                  : `${item.number}. rész`}
+                  ? t('series.episodeRange', {from: item.number, to: item.end_number})
+                  : t('series.episode', {number: item.number})}
                 {item.watched ? '  ✓' : ''}
               </Text>
               {item.title ? (

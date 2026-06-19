@@ -11,6 +11,7 @@ import {
 
 import {createPairingClient} from '../api/client';
 import {useDevice} from '../context/DeviceContext';
+import {useI18n} from '../i18n';
 import type {RootStackParamList} from '../navigation';
 import {theme} from '../theme';
 
@@ -20,6 +21,7 @@ type Phase = 'form' | 'pairing';
 
 export default function WelcomeScreen(_props: Props): React.JSX.Element {
   const {save} = useDevice();
+  const {t} = useI18n();
   const [serverUrl, setServerUrl] = useState('http://192.168.1.100:8000');
   const [deviceName, setDeviceName] = useState('Android');
   const [phase, setPhase] = useState<Phase>('form');
@@ -60,7 +62,7 @@ export default function WelcomeScreen(_props: Props): React.JSX.Element {
           return; // navigator swaps to Home once config is set
         }
         if (res.status === 'expired') {
-          setError('A párosítási kód lejárt. Próbáld újra.');
+          setError(t('welcome.expired'));
           setPhase('form');
           return;
         }
@@ -80,7 +82,7 @@ export default function WelcomeScreen(_props: Props): React.JSX.Element {
 
       {phase === 'form' ? (
         <View style={styles.card}>
-          <Text style={styles.label}>Szerver címe</Text>
+          <Text style={styles.label}>{t('welcome.serverUrl')}</Text>
           <TextInput
             style={styles.input}
             value={serverUrl}
@@ -91,7 +93,7 @@ export default function WelcomeScreen(_props: Props): React.JSX.Element {
             placeholder="http://192.168.1.100:8000"
             placeholderTextColor={theme.muted}
           />
-          <Text style={styles.label}>Eszköz neve</Text>
+          <Text style={styles.label}>{t('welcome.deviceName')}</Text>
           <TextInput
             style={styles.input}
             value={deviceName}
@@ -101,16 +103,16 @@ export default function WelcomeScreen(_props: Props): React.JSX.Element {
           />
           {error ? <Text style={styles.error}>{error}</Text> : null}
           <Pressable style={styles.button} onPress={startPairing}>
-            <Text style={styles.buttonText}>Párosítás</Text>
+            <Text style={styles.buttonText}>{t('welcome.pair')}</Text>
           </Pressable>
         </View>
       ) : (
         <View style={styles.card}>
-          <Text style={styles.label}>Írd be ezt a kódot a Movora weben (Beállítások → TV párosítása):</Text>
+          <Text style={styles.label}>{t('welcome.enterCode')}</Text>
           <Text style={styles.code}>{code}</Text>
           <View style={styles.waiting}>
             <ActivityIndicator color={theme.accent} />
-            <Text style={styles.waitingText}>Jóváhagyásra várok…</Text>
+            <Text style={styles.waitingText}>{t('welcome.waiting')}</Text>
           </View>
           {error ? <Text style={styles.error}>{error}</Text> : null}
         </View>

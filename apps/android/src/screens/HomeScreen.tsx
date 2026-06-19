@@ -14,6 +14,7 @@ import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
 import {mediaUrl, type HomeData, type HomeSeries, type Library} from '../api/client';
 import {useDevice} from '../context/DeviceContext';
+import {useI18n} from '../i18n';
 import type {RootStackParamList} from '../navigation';
 import {theme} from '../theme';
 
@@ -21,6 +22,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
 export default function HomeScreen({navigation}: Props): React.JSX.Element {
   const {api, config} = useDevice();
+  const {t} = useI18n();
   const insets = useSafeAreaInsets();
   const [home, setHome] = useState<HomeData | null>(null);
   const [libraries, setLibraries] = useState<Library[]>([]);
@@ -45,7 +47,7 @@ export default function HomeScreen({navigation}: Props): React.JSX.Element {
   if (error) {
     return (
       <View style={styles.center}>
-        <Text style={styles.error}>Betöltési hiba: {error}</Text>
+        <Text style={styles.error}>{t('common.loadError', {error})}</Text>
       </View>
     );
   }
@@ -62,12 +64,12 @@ export default function HomeScreen({navigation}: Props): React.JSX.Element {
       <View style={styles.header}>
         <Text style={styles.brand}>MOVORA</Text>
         <Pressable onPress={() => navigation.navigate('Settings')} hitSlop={12}>
-          <Text style={styles.settings}>Beállítások</Text>
+          <Text style={styles.settings}>{t('home.settings')}</Text>
         </Pressable>
       </View>
 
       {home.continue_watching.length > 0 && (
-        <Section title="Folytatás">
+        <Section title={t('home.continue')}>
           <FlatList
             horizontal
             data={home.continue_watching}
@@ -90,7 +92,7 @@ export default function HomeScreen({navigation}: Props): React.JSX.Element {
       )}
 
       {home.recently_added.length > 0 && (
-        <Section title="Nemrég hozzáadva">
+        <Section title={t('home.recentlyAdded')}>
           <FlatList
             horizontal
             data={home.recently_added}
@@ -108,7 +110,7 @@ export default function HomeScreen({navigation}: Props): React.JSX.Element {
         </Section>
       )}
 
-      <Section title="Könyvtárak">
+      <Section title={t('home.libraries')}>
         <View style={styles.libs}>
           {libraries.map(lib => (
             <Pressable
@@ -116,7 +118,7 @@ export default function HomeScreen({navigation}: Props): React.JSX.Element {
               style={styles.lib}
               onPress={() => navigation.navigate('Library', {libraryId: lib.id, name: lib.name})}>
               <Text style={styles.libName}>{lib.name}</Text>
-              <Text style={styles.libCount}>{lib.series_count} cím</Text>
+              <Text style={styles.libCount}>{t('home.titleCount', {count: lib.series_count})}</Text>
             </Pressable>
           ))}
         </View>

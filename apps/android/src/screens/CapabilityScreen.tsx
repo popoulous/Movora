@@ -6,6 +6,7 @@ import Video, {type OnLoadData} from 'react-native-video';
 
 import {sampleUrl, type CapabilityProbeOutcome, type ServerSample} from '../api/client';
 import {useDevice} from '../context/DeviceContext';
+import {useI18n} from '../i18n';
 import type {RootStackParamList} from '../navigation';
 import {theme} from '../theme';
 
@@ -20,6 +21,7 @@ const PROBE_TIMEOUT_MS = 8000;
 // what this device can Direct Play. Mirrors apps/webos, adapted to react-native-video.
 export default function CapabilityScreen({navigation}: Props): React.JSX.Element {
   const {api, config} = useDevice();
+  const {t} = useI18n();
   const insets = useSafeAreaInsets();
   const [samples, setSamples] = useState<ServerSample[]>([]);
   const [idx, setIdx] = useState(0);
@@ -111,23 +113,20 @@ export default function CapabilityScreen({navigation}: Props): React.JSX.Element
     <View style={[styles.root, {paddingTop: insets.top}]}>
       <View style={styles.header}>
         <Pressable onPress={() => navigation.goBack()} hitSlop={12}>
-          <Text style={styles.back}>‹ Vissza</Text>
+          <Text style={styles.back}>‹ {t('common.back')}</Text>
         </Pressable>
-        <Text style={styles.title}>Képességteszt</Text>
-        <Text style={styles.intro}>
-          A lejátszó kipróbálja a minta-klipeket, és jelenti a szervernek, mit tud
-          natívan lejátszani — ettől függ az eszközre szabott optimalizálás.
-        </Text>
+        <Text style={styles.title}>{t('cap.title')}</Text>
+        <Text style={styles.intro}>{t('cap.intro')}</Text>
       </View>
 
       {phase === 'loading' && <ActivityIndicator color={theme.accent} style={styles.loading} />}
-      {phase === 'error' && <Text style={styles.error}>Hiba a képességteszt során.</Text>}
+      {phase === 'error' && <Text style={styles.error}>{t('cap.error')}</Text>}
       {(phase === 'probing' || phase === 'reporting') && (
         <Text style={styles.progress}>
-          Tesztelés… {Math.min(idx, samples.length)} / {samples.length}
+          {t('cap.progress', {done: Math.min(idx, samples.length), total: samples.length})}
         </Text>
       )}
-      {phase === 'done' && <Text style={styles.doneText}>Kész — a profil elküldve. ✓</Text>}
+      {phase === 'done' && <Text style={styles.doneText}>{t('cap.done')}</Text>}
 
       <FlatList
         data={samples}

@@ -5,6 +5,7 @@ import {ActivityIndicator, StatusBar, StyleSheet, View} from 'react-native';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 
 import {DeviceProvider, useDevice} from './context/DeviceContext';
+import {I18nProvider} from './i18n';
 import type {RootStackParamList} from './navigation';
 import CapabilityScreen from './screens/CapabilityScreen';
 import HomeScreen from './screens/HomeScreen';
@@ -54,12 +55,14 @@ function Root(): React.JSX.Element {
 export default function App(): React.JSX.Element {
   return (
     <SafeAreaProvider>
-      <DeviceProvider>
-        <NavigationContainer theme={navTheme}>
-          <StatusBar barStyle="light-content" backgroundColor={theme.bg} />
-          <Root />
-        </NavigationContainer>
-      </DeviceProvider>
+      <I18nProvider>
+        <DeviceProvider>
+          <NavigationContainer theme={navTheme}>
+            <StatusBar barStyle="light-content" backgroundColor={theme.bg} />
+            <Root />
+          </NavigationContainer>
+        </DeviceProvider>
+      </I18nProvider>
     </SafeAreaProvider>
   );
 }

@@ -5,6 +5,7 @@ import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
 import {mediaUrl, type SeriesSummary} from '../api/client';
 import {useDevice} from '../context/DeviceContext';
+import {useI18n} from '../i18n';
 import type {RootStackParamList} from '../navigation';
 import {theme} from '../theme';
 import {PosterCard} from './HomeScreen';
@@ -15,6 +16,7 @@ const COLS = 3;
 
 export default function LibraryScreen({navigation, route}: Props): React.JSX.Element {
   const {api, config} = useDevice();
+  const {t} = useI18n();
   const insets = useSafeAreaInsets();
   const {libraryId, name} = route.params;
   const [series, setSeries] = useState<SeriesSummary[] | null>(null);
@@ -34,17 +36,17 @@ export default function LibraryScreen({navigation, route}: Props): React.JSX.Ele
     <View style={[styles.root, {paddingTop: insets.top}]}>
       <View style={styles.header}>
         <Pressable onPress={() => navigation.goBack()} hitSlop={12}>
-          <Text style={styles.back}>‹ Vissza</Text>
+          <Text style={styles.back}>‹ {t('common.back')}</Text>
         </Pressable>
-        <Text style={styles.title}>{name ?? 'Könyvtár'}</Text>
+        <Text style={styles.title}>{name ?? t('library.defaultName')}</Text>
       </View>
 
       {error ? (
-        <Text style={styles.error}>Betöltési hiba: {error}</Text>
+        <Text style={styles.error}>{t('common.loadError', {error})}</Text>
       ) : !series ? (
         <ActivityIndicator size="large" color={theme.accent} style={styles.loading} />
       ) : series.length === 0 ? (
-        <Text style={styles.empty}>Ez a könyvtár üres.</Text>
+        <Text style={styles.empty}>{t('library.empty')}</Text>
       ) : (
         <FlatList
           data={series}

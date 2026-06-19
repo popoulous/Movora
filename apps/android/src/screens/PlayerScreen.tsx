@@ -20,6 +20,7 @@ import Video, {
 
 import {mediaUrl, type Episode, type PlaybackInfo, type SeriesDetail} from '../api/client';
 import {useDevice} from '../context/DeviceContext';
+import {useI18n} from '../i18n';
 import type {RootStackParamList} from '../navigation';
 import {theme} from '../theme';
 
@@ -47,6 +48,7 @@ interface TrackOption {
 
 export default function PlayerScreen({navigation, route}: Props): React.JSX.Element {
   const {api, config} = useDevice();
+  const {t} = useI18n();
   const {episodeId} = route.params;
   const videoRef = useRef<VideoRef>(null);
   const lastSaved = useRef(0);
@@ -100,11 +102,7 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
           }
           setPreparing(false);
           setInfo(i);
-          setError(
-            i.variant_status === 'unavailable'
-              ? 'Ez a rész nem játszható le ezen az eszközön.'
-              : null,
-          );
+          setError(i.variant_status === 'unavailable' ? t('player.unavailable') : null);
           api.getSeries(i.series_id).then(setSeries).catch(() => undefined);
         })
         .catch((e: unknown) => !cancelled && setError(String(e)));
@@ -249,7 +247,7 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
       <View style={styles.center}>
         <Text style={styles.error}>{error}</Text>
         <Pressable style={styles.backBtn} onPress={() => navigation.goBack()}>
-          <Text style={styles.backText}>‹ Vissza</Text>
+          <Text style={styles.backText}>‹ {t('common.back')}</Text>
         </Pressable>
       </View>
     );
@@ -258,9 +256,9 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color={theme.accent} />
-        <Text style={styles.prep}>Optimalizálás folyamatban… {info?.prepare_progress ?? 0}%</Text>
+        <Text style={styles.prep}>{t('player.optimizing', {percent: info?.prepare_progress ?? 0})}</Text>
         <Pressable style={styles.backBtn} onPress={() => navigation.goBack()}>
-          <Text style={styles.backText}>‹ Vissza</Text>
+          <Text style={styles.backText}>‹ {t('common.back')}</Text>
         </Pressable>
       </View>
     );
@@ -294,7 +292,7 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
         onLoad={onLoad}
         onProgress={onProgress}
         onEnd={onEnd}
-        onError={() => setError('Lejátszási hiba.')}
+        onError={() => setError(t('player.error'))}
       />
 
       <View style={styles.topBar}>
@@ -304,27 +302,27 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
         <View style={styles.topRight}>
           {prevId != null && (
             <Pressable onPress={() => goTo(prevId)} hitSlop={12}>
-              <Text style={styles.topItem}>⏮ Előző</Text>
+              <Text style={styles.topItem}>⏮ {t('player.prev')}</Text>
             </Pressable>
           )}
           {audioTracks.length > 1 && (
             <Pressable onPress={() => setPicker('audio')} hitSlop={12}>
-              <Text style={styles.topItem}>Hang</Text>
+              <Text style={styles.topItem}>{t('player.audio')}</Text>
             </Pressable>
           )}
           {textTracks.length > 0 && (
             <>
               <Pressable onPress={() => setPicker('text')} hitSlop={12}>
-                <Text style={styles.topItem}>Felirat</Text>
+                <Text style={styles.topItem}>{t('player.subtitles')}</Text>
               </Pressable>
               <Pressable onPress={cycleSize} hitSlop={12}>
-                <Text style={styles.topItem}>Méret: {subSize.toUpperCase()}</Text>
+                <Text style={styles.topItem}>{t('player.size', {size: subSize.toUpperCase()})}</Text>
               </Pressable>
             </>
           )}
           {nextId != null && (
             <Pressable onPress={() => goTo(nextId)} hitSlop={12}>
-              <Text style={styles.topItem}>Következő ⏭</Text>
+              <Text style={styles.topItem}>{t('player.next')} ⏭</Text>
             </Pressable>
           )}
         </View>
@@ -333,28 +331,28 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
       {skip !== null && !ended && (
         <Pressable style={styles.skip} onPress={doSkip}>
           <Text style={styles.skipText}>
-            {skip === 'intro' ? 'Intró átugrása' : 'Következő rész'} ⏭
+            {skip === 'intro' ? t('player.skipIntro') : t('player.nextEpisode')} ⏭
           </Text>
         </Pressable>
       )}
 
       {ended && (
         <View style={styles.endedOverlay}>
-          <Text style={styles.endedTitle}>A rész véget ért</Text>
+          <Text style={styles.endedTitle}>{t('player.ended')}</Text>
           <Text style={styles.endedSub}>
             {nextId != null
-              ? `Következő rész ${countdown} mp múlva…`
-              : `Vissza ${countdown} mp múlva…`}
+              ? t('player.nextIn', {seconds: countdown})
+              : t('player.backIn', {seconds: countdown})}
           </Text>
           <View style={styles.endedRow}>
             <Pressable style={styles.endedBtn} onPress={goNext}>
               <Text style={styles.endedBtnText}>
-                {nextId != null ? 'Lejátszás most' : 'Vissza'}
+                {nextId != null ? t('player.playNow') : t('common.back')}
               </Text>
             </Pressable>
             {nextId != null && (
               <Pressable style={styles.endedCancel} onPress={() => setEnded(false)}>
-                <Text style={styles.backText}>Mégse</Text>
+                <Text style={styles.backText}>{t('player.cancel')}</Text>
               </Pressable>
             )}
           </View>
@@ -363,7 +361,7 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
 
       <TrackPicker
         visible={picker === 'audio'}
-        title="Hangsáv"
+        title={t('player.audioTrack')}
         options={audioTracks}
         selected={audioIndex}
         onPick={chooseAudio}
@@ -371,10 +369,14 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
       />
       <TrackPicker
         visible={picker === 'text'}
-        title="Felirat"
-        options={textTracks.map((t, i) => ({index: i, label: t.title, language: t.language ?? null}))}
+        title={t('player.subtitleTrack')}
+        options={textTracks.map((track, i) => ({
+          index: i,
+          label: track.title,
+          language: track.language ?? null,
+        }))}
         selected={textIndex}
-        offLabel="Kikapcsolva"
+        offLabel={t('player.subtitlesOff')}
         onPick={opt => {
           setTextIndex(opt.index);
           setPicker(null);
