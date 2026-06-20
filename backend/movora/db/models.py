@@ -5,7 +5,7 @@ from __future__ import annotations
 import enum
 from datetime import datetime
 
-from sqlalchemy import Column, ForeignKey, Table, UniqueConstraint, func
+from sqlalchemy import JSON, Column, ForeignKey, Table, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from movora.db.base import Base
@@ -75,6 +75,9 @@ class Series(Base):
     format: Mapped[str | None] = mapped_column(default=None)  # e.g. TV, MOVIE, OVA
     episode_duration: Mapped[int | None] = mapped_column(default=None)  # minutes per episode
     end_year: Mapped[int | None] = mapped_column(default=None)
+    # Per-language title/description/genres for the extra metadata languages (the base/match
+    # language stays in the columns above). Shape: {lang: {"title", "description", "genres"}}.
+    i18n: Mapped[dict[str, dict[str, str | None]] | None] = mapped_column(JSON, default=None)
 
     library: Mapped[Library] = relationship(back_populates="series")
     seasons: Mapped[list[Season]] = relationship(
@@ -142,6 +145,8 @@ class Episode(Base):
     end_number: Mapped[int | None] = mapped_column(default=None)  # multi-ep file: E01-E02 -> 2
     absolute_number: Mapped[int | None] = mapped_column(default=None)
     title: Mapped[str | None] = mapped_column(default=None)
+    # Per-language episode titles for the extra metadata languages; base stays in `title`.
+    title_i18n: Mapped[dict[str, str] | None] = mapped_column(JSON, default=None)
     thumbnail_path: Mapped[str | None] = mapped_column(default=None)  # extracted frame (jpg)
     # Intro/outro skip markers (seconds), detected from chapters or audio fingerprints.
     intro_start: Mapped[float | None] = mapped_column(default=None)

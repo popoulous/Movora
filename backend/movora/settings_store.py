@@ -21,6 +21,14 @@ AUTO_SCAN = "auto_scan"
 # TMDB result/match language (film/series), e.g. "hu-HU" — the UI sets it to your
 # locale, so Hungarian titles match (Troja -> Trója) and metadata comes back localised.
 TMDB_LANGUAGE = "tmdb_language"
+# Extra metadata languages to also fetch at enrich (comma-separated 2-letter codes, e.g.
+# "en,de"). The base/match language stays TMDB_LANGUAGE; these fill Series.i18n so each
+# client can show titles/descriptions in its own UI language. TMDB only (anime is limited).
+METADATA_EXTRA_LANGUAGES = "metadata_extra_languages"
+# The languages the clients ship (web/webOS/Android i18n). The extra-metadata default seeds
+# these so every client gets localized metadata out of the box; the base language is skipped
+# at fetch time. Keep in sync with the apps' LANGS.
+APP_LANGUAGES = ("hu", "en", "de", "fr", "es", "it", "ja")
 # Device-aware optimization (plan §13.2): build per-device variants ahead of playback,
 # and a sliding window of them to keep.
 DEVICE_PREFETCH = "device_prefetch"  # master switch: prepare per-device variants ahead
@@ -37,6 +45,9 @@ _DEFAULTS: dict[str, bool] = {
 }
 _STRING_DEFAULTS: dict[str, str] = {
     TMDB_LANGUAGE: "",  # unset -> the UI defaults it to your locale; the task falls back to en-US
+    # Seed all shipped client languages so metadata is localized out of the box (the base
+    # match language is skipped when fetching).
+    METADATA_EXTRA_LANGUAGES: ",".join(APP_LANGUAGES),
 }
 _INT_DEFAULTS: dict[str, int] = {
     PREPARE_AHEAD_COUNT: 2,

@@ -94,3 +94,15 @@ class SeriesMetadata:
     recommendations: tuple[Recommendation, ...] = ()
     episodes: tuple[EpisodeMetadata, ...] = ()  # per-episode titles (TMDB tv only)
     characters: tuple[CharacterMetadata, ...] = ()
+
+
+@dataclass(frozen=True)
+class SeriesLocalization:
+    """An already-matched series' localized fields in one language (fetched by external id,
+    not re-searched — so every language describes the same title). Used to fill the extra
+    metadata languages alongside the base/match language."""
+
+    title: str | None = None
+    description: str | None = None
+    genres: str | None = None  # comma-joined
+    episodes: tuple[EpisodeMetadata, ...] = ()  # per-episode titles (TMDB tv only)

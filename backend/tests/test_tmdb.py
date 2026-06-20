@@ -1,7 +1,7 @@
 from collections.abc import Callable
 from typing import Any
 
-from movora.domain import ParsedFields, SeriesMetadata
+from movora.domain import ParsedFields, SeriesLocalization, SeriesMetadata
 from movora.metadata.tmdb import TmdbProvider
 
 
@@ -128,6 +128,42 @@ def test_tmdb_tv_fetches_episode_titles_per_season() -> None:
         (1, 1): "Air (1)",
         (1, 2): "Air (2)",
     }
+
+
+def test_tmdb_localize_movie_uses_details_in_language() -> None:
+    # localize fetches the already-matched id (no re-search), so every language describes
+    # the same film — here the Hungarian title/overview/genres for Inception.
+    responses: dict[str, dict[str, Any]] = {
+        "/movie/27205": {
+            "title": "Eredet",
+            "overview": "Egy tolvaj, aki vállalati titkokat lop.",
+            "genres": [{"id": 28, "name": "Akció"}, {"id": 878, "name": "Tudományos-fantasztikus"}],
+        },
+    }
+    provider = TmdbProvider("movie", "KEY", language="hu", transport=_transport(responses))
+    loc = provider.localize("27205")
+
+    assert isinstance(loc, SeriesLocalization)
+    assert loc.title == "Eredet"
+    assert loc.description == "Egy tolvaj, aki vállalati titkokat lop."
+    assert loc.genres == "Akció, Tudományos-fantasztikus"
+    assert loc.episodes == ()
+
+
+def test_tmdb_localize_tv_includes_episode_titles() -> None:
+    responses: dict[str, dict[str, Any]] = {
+        "/tv/5148/season/1": {"episodes": [{"episode_number": 1, "name": "Levegő (1)"}]},
+        "/tv/5148": {"name": "Stargate Universe", "seasons": [{"season_number": 1}]},
+    }
+    provider = TmdbProvider("tv", "KEY", language="hu", transport=_transport(responses))
+    loc = provider.localize("5148")
+
+    assert loc is not None
+    assert {(e.season_number, e.number): e.title for e in loc.episodes} == {(1, 1): "Levegő (1)"}
+
+
+def test_tmdb_localize_returns_none_without_key() -> None:
+    assert TmdbProvider("movie", None, transport=_transport({})).localize("27205") is None
 
 
 def test_tmdb_returns_none_without_key_or_match() -> None:

@@ -15,7 +15,13 @@ from movora.db.models import (
     Season,
     Series,
 )
-from movora.domain import CharacterMetadata, EpisodeMetadata, ParsedFields, SeriesMetadata
+from movora.domain import (
+    CharacterMetadata,
+    EpisodeMetadata,
+    ParsedFields,
+    SeriesLocalization,
+    SeriesMetadata,
+)
 from movora.domain import Recommendation as RecommendationMeta
 from movora.enrich import enrich_library
 from movora.metadata import MetadataRegistry
@@ -160,6 +166,82 @@ def test_enrich_persists_characters() -> None:
         characters = list(session.scalars(select(Character).order_by(Character.rank)))
         assert [(c.name, c.role) for c in characters] == [("Gon", "MAIN"), ("Killua", "SUPPORTING")]
         assert characters[0].image_url == "http://i/g.jpg"
+
+
+class _LocalizingProvider:
+    """Matches in the base language, then localizes the matched id per language."""
+
+    def __init__(self, lang: str = "en") -> None:
+        self._lang = lang
+
+    def with_language(self, language: str) -> "_LocalizingProvider":
+        return _LocalizingProvider(language)
+
+    def fetch(self, parsed: ParsedFields) -> SeriesMetadata | None:
+        if parsed.title and "Troy" in parsed.title:
+            return SeriesMetadata(
+                provider="stub", external_id="652", title="Troy",
+                description="An English description.", genres="Drama",
+            )
+        return None
+
+    def localize(self, external_id: str) -> SeriesLocalization | None:
+        return {
+            "hu": SeriesLocalization(
+                title="Trója", description="Magyar leírás.", genres="Dráma",
+                episodes=(EpisodeMetadata(season_number=1, number=1, title="Első"),),
+            ),
+            "de": SeriesLocalization(title="Troja", description="Deutsche.", genres="Drama"),
+        }.get(self._lang)
+
+
+def test_enrich_stores_extra_language_translations() -> None:
+    engine = create_db_engine(":memory:")
+    init_db(engine)
+    factory = create_session_factory(engine)
+    with factory() as session:
+        library = Library(path="/a", name="A", kind=LibraryKind.MOVIE)
+        session.add(library)
+        session.flush()
+        series = Series(title="Troy", library=library)
+        season = Season(series=series, number=1)
+        ep1 = Episode(season=season, number=1)
+        session.add_all([series, season, ep1])
+        session.commit()
+
+        enrich_library(session, library, _LocalizingProvider(), extra_languages=("hu", "de", "fr"))
+        assert series.i18n is not None
+        assert series.i18n["hu"]["title"] == "Trója"
+        assert series.i18n["hu"]["description"] == "Magyar leírás."
+        assert series.i18n["de"]["title"] == "Troja"
+        assert "fr" not in series.i18n  # provider returned None for French
+        assert ep1.title_i18n == {"hu": "Első"}  # German localization had no episode titles
+        # The base/match-language columns are untouched (English).
+        assert series.display_title == "Troy"
+        assert series.description == "An English description."
+
+
+def test_read_endpoints_localize_with_fallback(tmp_path: Path) -> None:
+    app = create_app(Settings(database_path=tmp_path / "t.db"))
+    client = TestClient(app)
+    with app.state.session_factory() as session:
+        library = Library(path="/a", name="A", kind=LibraryKind.MOVIE)
+        session.add(library)
+        session.flush()
+        session.add(
+            Series(
+                title="Troy", display_title="Troy", description="English.",
+                library=library, external_id="652",
+                i18n={"hu": {"title": "Trója", "description": "Magyar.", "genres": None}},
+            )
+        )
+        session.commit()
+        library_id = library.id
+
+    base = f"/api/libraries/{library_id}/series"
+    assert client.get(f"{base}?lang=hu").json()[0]["display_title"] == "Trója"  # localized
+    assert client.get(f"{base}?lang=de").json()[0]["display_title"] == "Troy"  # no de -> base
+    assert client.get(base).json()[0]["display_title"] == "Troy"  # no lang -> base
 
 
 def test_series_detail_resolves_recommendation_targets(tmp_path: Path) -> None:

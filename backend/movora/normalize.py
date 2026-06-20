@@ -840,10 +840,20 @@ def _run_metadata_task(session: Session, task: Task, registry: MetadataRegistry)
         return
     _start(session, task)
     provider = registry.for_kind(library.kind)  # anime -> AniList, film/series -> TMDB
+    extra_languages: tuple[str, ...] = ()
     if isinstance(provider, TmdbProvider):  # apply the user's metadata language
         language = settings_store.get_str(session, settings_store.TMDB_LANGUAGE) or "en-US"
         provider = provider.with_language(language)
-    updated = enrich_library(session, library, provider, on_progress=_counter(session, task))
+        # Also fetch the extra client languages (excluding the base/match language).
+        base = language.split("-")[0].lower()
+        raw = settings_store.get_str(session, settings_store.METADATA_EXTRA_LANGUAGES)
+        extra_languages = tuple(
+            code for code in (c.strip().lower() for c in raw.split(",")) if code and code != base
+        )
+    updated = enrich_library(
+        session, library, provider,
+        on_progress=_counter(session, task), extra_languages=extra_languages,
+    )
     _finish(session, task, message=f"{updated} updated")
 
 

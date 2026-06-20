@@ -12,7 +12,7 @@ from typing import Any
 
 import httpx
 
-from movora.domain import EpisodeMetadata, ParsedFields, SeriesMetadata
+from movora.domain import EpisodeMetadata, ParsedFields, SeriesLocalization, SeriesMetadata
 
 TMDB_URL = "https://api.themoviedb.org/3"
 IMAGE_URL = "https://image.tmdb.org/t/p"
@@ -67,6 +67,25 @@ class TmdbProvider:
             parsed.title,
             self._episode_duration(details),
             self._episodes(item.get("id"), details),
+        )
+
+    def localize(self, external_id: str) -> SeriesLocalization | None:
+        """Re-fetch the matched title by id in this provider's language (extra languages).
+
+        Uses the id from the base-language match, so every language describes the SAME
+        title (no per-language re-search that could land on a different film)."""
+        if not self._api_key:
+            return None
+        details = self._details(external_id)
+        if not details:
+            return None
+        is_movie = self._media_type == "movie"
+        genres = [g.get("name") for g in details.get("genres") or [] if g.get("name")]
+        return SeriesLocalization(
+            title=details.get("title" if is_movie else "name") or None,
+            description=details.get("overview") or None,
+            genres=", ".join(genres) if genres else None,
+            episodes=self._episodes(external_id, details),
         )
 
     def _details(self, item_id: Any) -> dict[str, Any]:

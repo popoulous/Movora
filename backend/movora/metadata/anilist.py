@@ -16,6 +16,7 @@ from movora.domain import (
     EpisodeMetadata,
     ParsedFields,
     Recommendation,
+    SeriesLocalization,
     SeriesMetadata,
 )
 
@@ -172,6 +173,15 @@ class AniListProvider:
     ) -> None:
         self._transport = transport or _httpx_transport
         self._episodes_transport = episodes_transport or _jikan_episodes_transport
+
+    def with_language(self, language: str) -> AniListProvider:
+        # AniList isn't language-parameterised; the same instance serves every language.
+        return self
+
+    def localize(self, external_id: str) -> SeriesLocalization | None:
+        # AniList only exposes romaji/english/native titles + an English description, not
+        # arbitrary UI languages, so anime keeps its base display/native title.
+        return None
 
     def fetch(self, parsed: ParsedFields) -> SeriesMetadata | None:
         if not parsed.title:

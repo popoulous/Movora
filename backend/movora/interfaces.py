@@ -10,7 +10,13 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from movora.domain import CapabilityProfile, ParsedFields, SeriesMetadata, SubtitleRendering
+from movora.domain import (
+    CapabilityProfile,
+    ParsedFields,
+    SeriesLocalization,
+    SeriesMetadata,
+    SubtitleRendering,
+)
 from movora.subtitles.labels import SubtitleLabelStore
 
 __all__ = [
@@ -37,6 +43,16 @@ class MetadataProvider(Protocol):
     """Parsed fields -> canonical series metadata (title, cover, year)."""
 
     def fetch(self, parsed: ParsedFields) -> SeriesMetadata | None: ...
+
+    def with_language(self, language: str) -> MetadataProvider:
+        """A copy that fetches/localizes in ``language`` (providers that can't vary by
+        language return themselves)."""
+        ...
+
+    def localize(self, external_id: str) -> SeriesLocalization | None:
+        """Re-fetch an already-matched title by id in this provider's language (for the
+        extra metadata languages). None if the provider can't localize (e.g. AniList)."""
+        ...
 
 
 class NormalizationPlanner(Protocol):

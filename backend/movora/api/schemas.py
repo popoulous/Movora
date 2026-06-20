@@ -365,6 +365,7 @@ class SettingsRead(BaseModel):
     auto_detect_intro: bool
     auto_scan: bool
     tmdb_language: str
+    metadata_extra_languages: str  # comma-separated extra languages to also fetch
     # Device-aware optimization (plan §13.2).
     device_prefetch: bool  # build per-device variants ahead of playback
     device_retention: bool  # auto-rotate: delete device variants outside the window
@@ -378,6 +379,7 @@ class SettingsUpdate(BaseModel):
     auto_detect_intro: bool | None = None
     auto_scan: bool | None = None
     tmdb_language: str | None = None
+    metadata_extra_languages: str | None = None
     device_prefetch: bool | None = None
     device_retention: bool | None = None
     prepare_ahead_count: int | None = Field(default=None, ge=0, le=20)

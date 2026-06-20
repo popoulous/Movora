@@ -25,6 +25,7 @@ def enrich_library(
     *,
     force: bool = False,
     on_progress: ProgressFn | None = None,
+    extra_languages: tuple[str, ...] = (),
 ) -> int:
     """Fetch metadata for the library's series. By default only not-yet-enriched ones;
     force=True re-fetches all (e.g. after the metadata schema grows)."""
@@ -84,6 +85,37 @@ def enrich_library(
                     title = titles.get((season.number, episode.number))
                     if title is not None:
                         episode.title = title
+        _localize(session, provider, series, metadata.external_id, extra_languages)
         updated += 1
     session.commit()
     return updated
+
+
+def _localize(
+    session: Session,
+    provider: MetadataProvider,
+    series: Series,
+    external_id: str,
+    languages: tuple[str, ...],
+) -> None:
+    """Fetch the matched title in each extra language (by id, not re-search) and cache the
+    per-language fields on the row. The base/match language stays in the plain columns."""
+    series_i18n: dict[str, dict[str, str | None]] = {}
+    # (season, number) -> {lang: title}
+    episode_i18n: dict[tuple[int, int], dict[str, str]] = {}
+    for lang in languages:
+        localization = provider.with_language(lang).localize(external_id)
+        if localization is None:
+            continue
+        series_i18n[lang] = {
+            "title": localization.title,
+            "description": localization.description,
+            "genres": localization.genres,
+        }
+        for ep in localization.episodes:
+            if ep.title:
+                episode_i18n.setdefault((ep.season_number, ep.number), {})[lang] = ep.title
+    series.i18n = series_i18n or None
+    for season in series.seasons:
+        for episode in season.episodes:
+            episode.title_i18n = episode_i18n.get((season.number, episode.number)) or None

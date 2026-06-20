@@ -236,8 +236,36 @@ def enrich(
     return {"status": "queued"}
 
 
+# --- Per-language metadata helpers --------------------------------------------------
+# Read endpoints take ?lang=<2-letter>; these return the localized title/description/genres
+# (Series.i18n / Episode.title_i18n) for that language, falling back to the base columns
+# (the base/match language) when there's no translation.
+
+
+def _series_loc(series: Series, lang: str | None) -> dict[str, str | None]:
+    return (series.i18n or {}).get(lang, {}) if lang else {}
+
+
+def _loc_title(series: Series, lang: str | None) -> str | None:
+    return _series_loc(series, lang).get("title") or series.display_title
+
+
+def _loc_description(series: Series, lang: str | None) -> str | None:
+    return _series_loc(series, lang).get("description") or series.description
+
+
+def _loc_genres(series: Series, lang: str | None) -> str | None:
+    return _series_loc(series, lang).get("genres") or series.genres
+
+
+def _loc_episode_title(episode: Episode, lang: str | None) -> str | None:
+    return ((episode.title_i18n or {}).get(lang) if lang else None) or episode.title
+
+
 @router.get("/libraries/{library_id}/series", response_model=list[SeriesRead])
-def list_series(library_id: int, session: SessionDep, user: CurrentUserDep) -> list[SeriesRead]:
+def list_series(
+    library_id: int, session: SessionDep, user: CurrentUserDep, lang: str | None = None
+) -> list[SeriesRead]:
     _require_library_access(user, library_id)
     series_list = list(
         session.scalars(
@@ -254,10 +282,12 @@ def list_series(library_id: int, session: SessionDep, user: CurrentUserDep) -> l
         state.episode_id: state
         for state in session.scalars(select(WatchState).where(WatchState.user_id == user.id))
     }
-    return [_series_summary(series, states) for series in series_list]
+    return [_series_summary(series, states, lang) for series in series_list]
 
 
-def _series_summary(series: Series, states: dict[int, WatchState]) -> SeriesRead:
+def _series_summary(
+    series: Series, states: dict[int, WatchState], lang: str | None = None
+) -> SeriesRead:
     ordered = [
         episode
         for season in sorted(series.seasons, key=lambda s: (s.number == 0, s.number))
@@ -290,7 +320,7 @@ def _series_summary(series: Series, states: dict[int, WatchState]) -> SeriesRead
     return SeriesRead(
         id=series.id,
         title=series.title,
-        display_title=series.display_title,
+        display_title=_loc_title(series, lang),
         year=series.year,
         score=series.score,
         cover_image_url=series.cover_image_url,
@@ -318,15 +348,15 @@ def _series_summary(series: Series, states: dict[int, WatchState]) -> SeriesRead
 
 
 @router.get("/home", response_model=HomeData)
-def home(session: SessionDep, user: CurrentUserDep) -> HomeData:
+def home(session: SessionDep, user: CurrentUserDep, lang: str | None = None) -> HomeData:
     overview = home_overview(session, user)
     return HomeData(
-        hero=_home_series(overview.hero) if overview.hero else None,
-        continue_watching=[_home_series(o) for o in overview.continue_watching],
-        recently_added=[_home_series(o) for o in overview.recently_added],
-        recently_finished=[_home_series(o) for o in overview.recently_finished],
+        hero=_home_series(overview.hero, lang) if overview.hero else None,
+        continue_watching=[_home_series(o, lang) for o in overview.continue_watching],
+        recently_added=[_home_series(o, lang) for o in overview.recently_added],
+        recently_finished=[_home_series(o, lang) for o in overview.recently_finished],
         recommendation=(
-            _home_series(overview.recommendation) if overview.recommendation else None
+            _home_series(overview.recommendation, lang) if overview.recommendation else None
         ),
         collections=[
             CollectionRead(genre=genre, count=count) for genre, count in overview.collections
@@ -340,17 +370,17 @@ def home(session: SessionDep, user: CurrentUserDep) -> HomeData:
     )
 
 
-def _home_series(overview: SeriesOverview) -> HomeSeries:
+def _home_series(overview: SeriesOverview, lang: str | None = None) -> HomeSeries:
     series = overview.series
     return HomeSeries(
         id=series.id,
         title=series.title,
-        display_title=series.display_title,
+        display_title=_loc_title(series, lang),
         year=series.year,
         score=series.score,
         cover_image_url=series.cover_image_url,
         banner_image_url=series.banner_image_url,
-        genres=series.genres,
+        genres=_loc_genres(series, lang),
         episode_count=overview.episode_count,
         watch_status=overview.watch_status,
         watch_percent=overview.watch_percent,
@@ -369,7 +399,9 @@ def _home_series(overview: SeriesOverview) -> HomeSeries:
 
 
 @router.get("/search", response_model=list[SearchResult])
-def search(q: str, session: SessionDep, user: CurrentUserDep) -> list[SearchResult]:
+def search(
+    q: str, session: SessionDep, user: CurrentUserDep, lang: str | None = None
+) -> list[SearchResult]:
     """Find series in the user's libraries by any of their titles (romaji/display/native)."""
     query = q.strip()
     if len(query) < 2:
@@ -393,7 +425,7 @@ def search(q: str, session: SessionDep, user: CurrentUserDep) -> list[SearchResu
         SearchResult(
             id=series.id,
             title=series.title,
-            display_title=series.display_title,
+            display_title=_loc_title(series, lang),
             year=series.year,
             cover_image_url=series.cover_image_url,
             library_id=series.library_id,
@@ -411,6 +443,7 @@ def series_detail(
     background: BackgroundTasks,
     user: CurrentUserDep,
     device: RequestDeviceDep,
+    lang: str | None = None,
 ) -> SeriesDetail:
     series = session.scalar(
         select(Series)
@@ -432,11 +465,11 @@ def series_detail(
         background.add_task(
             populate_series_codecs, request.app.state.session_factory, series_id
         )
-    return _series_detail(session, series, user, device)
+    return _series_detail(session, series, user, device, lang)
 
 
 def _series_detail(
-    session: Session, series: Series, user: User, device: Device | None
+    session: Session, series: Series, user: User, device: Device | None, lang: str | None = None
 ) -> SeriesDetail:
     profile = _device_profile(device)
     episode_ids = [episode.id for season in series.seasons for episode in season.episodes]
@@ -481,7 +514,7 @@ def _series_detail(
                     id=episode.id,
                     number=episode.number,
                     end_number=episode.end_number,
-                    title=episode.title,
+                    title=_loc_episode_title(episode, lang),
                     watched=episode.id in watched,
                     normalized=normalized_by_ep[episode.id],
                     normalizing=normalizing_by_ep[episode.id],
@@ -500,7 +533,7 @@ def _series_detail(
     return SeriesDetail(
         id=series.id,
         title=series.title,
-        display_title=series.display_title,
+        display_title=_loc_title(series, lang),
         native_title=series.native_title,
         year=series.year,
         end_year=series.end_year,
@@ -509,8 +542,8 @@ def _series_detail(
         score=series.score,
         cover_image_url=series.cover_image_url,
         banner_image_url=series.banner_image_url,
-        description=series.description,
-        genres=series.genres,
+        description=_loc_description(series, lang),
+        genres=_loc_genres(series, lang),
         seasons=seasons,
         recommendations=_recommendations(session, series),
         characters=[CharacterRead.model_validate(character) for character in series.characters],
@@ -554,6 +587,7 @@ def episode_playback(
     background: BackgroundTasks,
     user: CurrentUserDep,
     device: RequestDeviceDep,
+    lang: str | None = None,
 ) -> PlaybackInfo:
     started = time.monotonic()
     _require_episode_access(session, user, episode_id)
@@ -608,11 +642,11 @@ def episode_playback(
         outro_start=episode.outro_start,
         outro_end=episode.outro_end,
         series_id=series.id,
-        series_title=series.display_title or series.title,
+        series_title=_loc_title(series, lang) or series.title,
         season_number=season.number,
         episode_number=episode.number,
         episode_end_number=episode.end_number,
-        episode_title=episode.title,
+        episode_title=_loc_episode_title(episode, lang),
         banner_image_url=series.banner_image_url,
         cover_image_url=series.cover_image_url,
         score=series.score,
@@ -1069,6 +1103,10 @@ def update_settings(
         settings_store.set_bool(session, settings_store.AUTO_SCAN, payload.auto_scan)
     if payload.tmdb_language is not None:
         settings_store.set_str(session, settings_store.TMDB_LANGUAGE, payload.tmdb_language)
+    if payload.metadata_extra_languages is not None:
+        settings_store.set_str(
+            session, settings_store.METADATA_EXTRA_LANGUAGES, payload.metadata_extra_languages
+        )
     if payload.device_prefetch is not None:
         settings_store.set_bool(session, settings_store.DEVICE_PREFETCH, payload.device_prefetch)
     if payload.device_retention is not None:
@@ -1091,6 +1129,9 @@ def _read_settings(session: Session) -> SettingsRead:
         auto_detect_intro=settings_store.get_bool(session, settings_store.AUTO_DETECT_INTRO),
         auto_scan=settings_store.get_bool(session, settings_store.AUTO_SCAN),
         tmdb_language=settings_store.get_str(session, settings_store.TMDB_LANGUAGE),
+        metadata_extra_languages=settings_store.get_str(
+            session, settings_store.METADATA_EXTRA_LANGUAGES
+        ),
         device_prefetch=settings_store.get_bool(session, settings_store.DEVICE_PREFETCH),
         device_retention=settings_store.get_bool(session, settings_store.DEVICE_RETENTION),
         prepare_ahead_count=settings_store.get_int(session, settings_store.PREPARE_AHEAD_COUNT),
