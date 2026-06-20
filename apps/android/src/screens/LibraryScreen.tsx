@@ -1,6 +1,14 @@
 import type {NativeStackScreenProps} from '@react-navigation/native-stack';
 import React, {useEffect, useMemo, useState} from 'react';
-import {ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View} from 'react-native';
+import {
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
@@ -27,9 +35,15 @@ export default function LibraryScreen({navigation, route}: Props): React.JSX.Ele
   const {t} = useI18n();
   const insets = useSafeAreaInsets();
   const {libraryId, name} = route.params;
+  const {width: winW} = useWindowDimensions();
   const [series, setSeries] = useState<SeriesSummary[] | null>(null);
   const [filter, setFilter] = useState<Filter>('all');
   const [error, setError] = useState<string | null>(null);
+
+  // Responsive grid: fit COLS columns into the screen (was a fixed 130px → overflowed).
+  const GRID_PAD = 16;
+  const GAP = 12;
+  const cardW = Math.floor((winW - GRID_PAD * 2 - GAP * (COLS - 1)) / COLS);
 
   const base = config?.serverUrl ?? '';
   const token = config?.deviceToken ?? null;
@@ -87,6 +101,7 @@ export default function LibraryScreen({navigation, route}: Props): React.JSX.Ele
               uri={mediaUrl(base, token, item.cover_image_url)}
               progress={item.watch_percent}
               normalized={item.normalized}
+              width={cardW}
               onPress={() => navigation.navigate('Series', {seriesId: item.id})}
             />
           )}

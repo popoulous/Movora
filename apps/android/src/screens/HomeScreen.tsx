@@ -183,20 +183,22 @@ export function PosterCard({
   onPress,
   progress,
   normalized,
+  width = POSTER_W,
 }: {
   title: string;
   uri: string | undefined;
   onPress: () => void;
   progress?: number;
   normalized?: boolean;
+  width?: number;
 }): React.JSX.Element {
   return (
-    <Pressable style={styles.card} onPress={onPress}>
+    <Pressable style={{width}} onPress={onPress}>
       <View>
         {uri ? (
-          <Image source={{uri}} style={styles.poster} />
+          <Image source={{uri}} style={[styles.poster, {width, height: width * 1.5}]} />
         ) : (
-          <View style={[styles.poster, styles.posterEmpty]} />
+          <View style={[styles.poster, styles.posterEmpty, {width, height: width * 1.5}]} />
         )}
         {normalized ? (
           <View style={styles.badge}>
@@ -243,7 +245,6 @@ const styles = StyleSheet.create({
   sectionTitle: {color: theme.text, fontSize: 18, fontWeight: '700', paddingHorizontal: 20, marginBottom: 10},
   row: {paddingHorizontal: 20, gap: 12},
 
-  card: {width: POSTER_W, marginRight: 12},
   poster: {width: POSTER_W, height: POSTER_W * 1.5, borderRadius: theme.radius, backgroundColor: theme.surface},
   posterEmpty: {borderWidth: 1, borderColor: theme.border},
   badge: {position: 'absolute', top: 6, right: 6, width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(5,6,11,0.7)', alignItems: 'center', justifyContent: 'center'},
