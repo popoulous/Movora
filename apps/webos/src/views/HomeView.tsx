@@ -229,18 +229,23 @@ export default function HomeView({ onSeries, onPlay, onLibrary, onSettings }: Pr
                       width: 220,
                       flexShrink: 0,
                       marginRight: "0.9rem",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.9rem",
                       background: focused ? "rgba(122,77,255,0.16)" : theme.surface,
                       border: `3px solid ${focused ? theme.accent : "transparent"}`,
                       borderRadius: theme.radius,
-                      padding: "1.3rem 1.1rem",
+                      padding: "1.1rem",
                       boxShadow: focused ? "0 0 18px rgba(122,77,255,0.6)" : "none",
                     }}
                   >
-                    <div style={{ color: theme.accent2, marginBottom: 8 }}>
-                      <Icon name={lib.kind} size={28} />
+                    <div style={{ color: theme.accent2, flexShrink: 0, display: "flex" }}>
+                      <Icon name={lib.kind} size={30} />
                     </div>
-                    <div style={{ fontSize: "1.05rem", fontWeight: 700, color: "#fff" }}>{lib.name}</div>
-                    <div style={{ fontSize: "0.78rem", color: theme.muted, marginTop: 4 }}>{t("home.titleCount", { count: lib.series_count })}</div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: "1.05rem", fontWeight: 700, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lib.name}</div>
+                      <div style={{ fontSize: "0.78rem", color: theme.muted, marginTop: 4 }}>{t("home.titleCount", { count: lib.series_count })}</div>
+                    </div>
                   </div>
                 );
               })}
