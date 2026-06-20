@@ -4,6 +4,7 @@ import { useDevice } from "../context/DeviceContext";
 import { useI18n, type Key } from "../i18n";
 import { useTvInput } from "../hooks";
 import { TopNav, type NavTab } from "../components/TopNav";
+import { Loader } from "../components/Loader";
 import { theme } from "../theme";
 
 interface Props {
@@ -177,8 +178,8 @@ export default function LibraryView({
       {/* Poster grid (full width) */}
       <div style={{ flex: 1, overflowY: "auto", padding: "0.6rem 2.5rem 3.5rem", minHeight: 0 }}>
         {loading && !error && (
-          <div style={{ minHeight: "55vh", display: "flex", alignItems: "center", justifyContent: "center", color: theme.muted }}>
-            {t("common.loading")}
+          <div style={{ minHeight: "55vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Loader />
           </div>
         )}
         {error && <p style={{ color: "#f87171" }}>{t("common.loadError", { error })}</p>}

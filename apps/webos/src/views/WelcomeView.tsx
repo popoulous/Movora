@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Panel } from "@enact/sandstone/Panels";
 import InputBase from "@enact/sandstone/Input";
-import Spinner from "@enact/sandstone/Spinner";
 import SpottableBase from "@enact/spotlight/Spottable";
 
 // Enact Input's actual onChange passes {value}, not a DOM event — override the type.
@@ -21,6 +20,7 @@ const Focusable = SpottableBase("div") as unknown as React.ComponentType<{
   children?: React.ReactNode;
 }>;
 import logo from "../assets/movora_logo.png";
+import { Loader } from "../components/Loader";
 import { createApiClient, type PairStart } from "../api/client";
 import { useDevice } from "../context/DeviceContext";
 import { useI18n } from "../i18n";
@@ -238,12 +238,13 @@ export default function WelcomeView({ onDone }: Props): React.JSX.Element {
   if (step === "discover" && scanning) {
     return (
       <Shell title={t("welcome.searching")}>
-        <Spinner component="div" />
-        <p style={{ marginTop: "1.4rem", color: theme.muted }}>
-          {scanIp !== null
-            ? t("welcome.tvAddress", { ip: scanIp, percent: scanPct })
-            : t("welcome.determiningAddress")}
-        </p>
+        <Loader
+          label={
+            scanIp !== null
+              ? t("welcome.tvAddress", { ip: scanIp, percent: scanPct })
+              : t("welcome.determiningAddress")
+          }
+        />
       </Shell>
     );
   }
@@ -315,8 +316,7 @@ export default function WelcomeView({ onDone }: Props): React.JSX.Element {
         >
           {pairInfo.code}
         </div>
-        <Spinner component="div" />
-        <p style={{ marginTop: "1.4rem", color: theme.muted }}>{t("welcome.waitingApproval")}</p>
+        <Loader label={t("welcome.waitingApproval")} />
       </Shell>
     );
   }

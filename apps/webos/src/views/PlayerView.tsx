@@ -6,6 +6,7 @@ import { theme } from "../theme";
 import { aspectHeight } from "../util";
 import { Icon } from "../components/Icon";
 import { BackButton } from "../components/BackButton";
+import { Loader } from "../components/Loader";
 
 interface Props {
   episodeId: number;
@@ -668,7 +669,9 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
     <div ref={rootRef} style={rootStyle}>
       <style>{cueCss}</style>
       {!info && !preparing && !blocked && (
-        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: theme.muted }}>{t("common.loading")}</div>
+        <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <Loader />
+        </div>
       )}
 
       {blocked && (

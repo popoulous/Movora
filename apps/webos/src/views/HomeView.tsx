@@ -4,6 +4,7 @@ import { useDevice } from "../context/DeviceContext";
 import { useI18n } from "../i18n";
 import { scrollIntoFocus, useTvInput } from "../hooks";
 import { TopNav, type NavTab } from "../components/TopNav";
+import { Loader } from "../components/Loader";
 import { theme } from "../theme";
 import { aspectHeight } from "../util";
 
@@ -161,8 +162,8 @@ export default function HomeView({ onSeries, onPlay, onLibrary, onSettings }: Pr
 
       <div style={{ padding: "0.5rem 2.5rem" }}>
         {!data && !error && (
-          <div style={{ minHeight: "70vh", display: "flex", alignItems: "center", justifyContent: "center", color: theme.muted }}>
-            {t("common.loading")}
+          <div style={{ minHeight: "70vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Loader />
           </div>
         )}
         {error && <p style={{ color: "#f87171" }}>{t("common.loadError", { error })}</p>}

@@ -4,6 +4,7 @@ import { useDevice } from "../context/DeviceContext";
 import { useI18n, type Key, type TFunc } from "../i18n";
 import { theme } from "../theme";
 import { Icon } from "../components/Icon";
+import { Loader } from "../components/Loader";
 import {
   fetchSamples,
   probePlayback,
@@ -307,7 +308,11 @@ export default function CapabilityView({ onBack }: Props): React.JSX.Element {
       </p>
 
       {!base && <p style={{ color: "#fbbf24", fontSize: "0.9rem" }}>{t("cap.noServer")}</p>}
-      {base && samples.length === 0 && <p style={{ color: theme.muted, fontSize: "0.9rem" }}>{t("cap.loadingSamples")}</p>}
+      {base && samples.length === 0 && (
+        <div style={{ padding: "1.5rem 0" }}>
+          <Loader size={56} label={t("cap.loadingSamples")} />
+        </div>
+      )}
 
       {base && probing && samples.length > 0 && (
         <div
