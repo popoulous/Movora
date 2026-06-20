@@ -10,12 +10,12 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import Video, {
   SelectedTrackType,
-  TextTrackType,
   type OnLoadData,
   type OnProgressData,
   type VideoRef,
@@ -30,10 +30,6 @@ import {theme} from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Player'>;
 
-// The shape react-native-video's `textTracks` prop expects (its `language` is a strict
-// ISO639_1 union); derived from the component so we needn't import the internal type.
-type RnTextTrack = NonNullable<React.ComponentProps<typeof Video>['textTracks']>[number];
-
 const SAVE_INTERVAL_S = 10;
 const PREPARE_POLL_MS = 4000;
 const COUNTDOWN_START = 10;
@@ -43,15 +39,18 @@ const SUB_PREF_KEY = 'movora_sub_pref'; // remembered subtitle language ('off' t
 const SUB_STYLE_KEY = 'movora_sub_style';
 
 type SubSize = 's' | 'm' | 'l' | 'xl' | 'xxl' | 'xxxl';
+type SubBg = 'none' | 'box' | 'solid';
 type SubPos = 'low' | 'mid' | 'high';
 interface SubStyle {
   size: SubSize;
+  bg: SubBg;
   pos: SubPos;
 }
 const SIZES: SubSize[] = ['s', 'm', 'l', 'xl', 'xxl', 'xxxl'];
+const BGS: SubBg[] = ['none', 'box', 'solid'];
 const POSS: SubPos[] = ['low', 'mid', 'high'];
 const SIZE_PX: Record<SubSize, number> = {s: 14, m: 18, l: 24, xl: 31, xxl: 40, xxxl: 50};
-const POS_PAD: Record<SubPos, number> = {low: 18, mid: 120, high: 250};
+const BG_COLOR: Record<SubBg, string> = {none: 'transparent', box: 'rgba(0,0,0,0.6)', solid: '#000'};
 const SIZE_KEY: Record<SubSize, Key> = {
   s: 'player.size_s',
   m: 'player.size_m',
@@ -60,16 +59,30 @@ const SIZE_KEY: Record<SubSize, Key> = {
   xxl: 'player.size_xxl',
   xxxl: 'player.size_xxxl',
 };
+const BG_KEY: Record<SubBg, Key> = {
+  none: 'player.bg_none',
+  box: 'player.bg_box',
+  solid: 'player.bg_solid',
+};
 const POS_KEY: Record<SubPos, Key> = {
   low: 'player.pos_low',
   mid: 'player.pos_mid',
   high: 'player.pos_high',
 };
+const DEFAULT_SUB_STYLE: SubStyle = {size: 'm', bg: 'none', pos: 'low'};
 
 interface TrackOption {
   index: number;
   label: string;
   language: string | null;
+}
+interface SubOption extends TrackOption {
+  url: string;
+}
+interface Cue {
+  start: number;
+  end: number;
+  text: string;
 }
 
 function fmt(sec: number): string {
@@ -83,10 +96,53 @@ function fmt(sec: number): string {
   return (h > 0 ? `${h}:` : '') + `${mm}:${String(s).padStart(2, '0')}`;
 }
 
+// WebVTT time -> seconds. Accepts HH:MM:SS.mmm or MM:SS.mmm (',' decimal tolerated).
+function parseVttTime(s: string): number {
+  const m = s.trim().match(/(?:(\d+):)?(\d{1,2}):(\d{2})[.,](\d{1,3})/);
+  if (!m) {
+    return NaN;
+  }
+  const h = m[1] ? parseInt(m[1], 10) : 0;
+  return h * 3600 + parseInt(m[2], 10) * 60 + parseInt(m[3], 10) + parseInt(m[4].padEnd(3, '0'), 10) / 1000;
+}
+
+// Minimal WebVTT parser — the backend always serves VTT (SRT converted, ASS via &as=vtt).
+// We render subtitles ourselves so the style (size / background / position) is fully under
+// our control; react-native-video's native renderer only exposes fontSize + padding.
+function parseVtt(data: string): Cue[] {
+  const cues: Cue[] = [];
+  const lines = data.replace(/\r/g, '').split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const arrow = lines[i].indexOf('-->');
+    if (arrow === -1) {
+      continue;
+    }
+    const start = parseVttTime(lines[i].slice(0, arrow));
+    const end = parseVttTime(lines[i].slice(arrow + 3).trim().split(/\s+/)[0]);
+    i++;
+    const body: string[] = [];
+    for (; i < lines.length && lines[i].trim() !== ''; i++) {
+      body.push(lines[i]);
+    }
+    if (!isNaN(start) && !isNaN(end)) {
+      const text = body
+        .join('\n')
+        .replace(/<[^>]+>/g, '')
+        .replace(/\{[^}]*\}/g, '')
+        .trim();
+      if (text) {
+        cues.push({start, end, text});
+      }
+    }
+  }
+  return cues;
+}
+
 export default function PlayerScreen({navigation, route}: Props): React.JSX.Element {
   const {api, config} = useDevice();
   const {t} = useI18n();
   const {episodeId} = route.params;
+  const {height: winH} = useWindowDimensions();
   const videoRef = useRef<VideoRef>(null);
   const lastSaved = useRef(0);
   const cdTimer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -102,9 +158,11 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
   const [audioTracks, setAudioTracks] = useState<TrackOption[]>([]);
   const [audioIndex, setAudioIndex] = useState<number>(-1);
   const [textIndex, setTextIndex] = useState<number>(-1); // -1 = off
+  const [cues, setCues] = useState<Cue[]>([]);
+  const [cueText, setCueText] = useState('');
   const [picker, setPicker] = useState<'audio' | 'text' | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [subStyle, setSubStyle] = useState<SubStyle>({size: 'm', pos: 'low'});
+  const [subStyle, setSubStyle] = useState<SubStyle>(DEFAULT_SUB_STYLE);
   const [skip, setSkip] = useState<'intro' | 'outro' | null>(null);
   const [ended, setEnded] = useState(false);
   const [countdown, setCountdown] = useState(COUNTDOWN_START);
@@ -165,10 +223,11 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
         return;
       }
       try {
-        const parsed = JSON.parse(v) as Partial<SubStyle>;
+        const p = JSON.parse(v) as Partial<SubStyle>;
         setSubStyle(s => ({
-          size: parsed.size && SIZES.includes(parsed.size) ? parsed.size : s.size,
-          pos: parsed.pos && POSS.includes(parsed.pos) ? parsed.pos : s.pos,
+          size: p.size && SIZES.includes(p.size) ? p.size : s.size,
+          bg: p.bg && BGS.includes(p.bg) ? p.bg : s.bg,
+          pos: p.pos && POSS.includes(p.pos) ? p.pos : s.pos,
         }));
       } catch {
         /* ignore */
@@ -225,6 +284,17 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api, episodeId]);
 
+  const subOptions = useMemo<SubOption[]>(
+    () =>
+      (info?.subtitle_tracks ?? []).map((tr, i) => ({
+        index: i,
+        label: tr.label,
+        language: tr.language,
+        url: mediaUrl(base, token, tr.format === 'ass' ? `${tr.url}&as=vtt` : tr.url) ?? '',
+      })),
+    [info, base, token],
+  );
+
   // Apply the remembered subtitle language whenever a new episode loads.
   useEffect(() => {
     if (!info) {
@@ -236,10 +306,27 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
         setTextIndex(-1);
         return;
       }
-      const idx = tracks.findIndex(tr => (tr.language ?? '') === pref || tr.label === pref);
-      setTextIndex(idx);
+      setTextIndex(tracks.findIndex(tr => (tr.language ?? '') === pref || tr.label === pref));
     });
   }, [info]);
+
+  // Fetch + parse the chosen subtitle so we can render it ourselves.
+  useEffect(() => {
+    const opt = textIndex >= 0 ? subOptions[textIndex] : undefined;
+    if (!opt || !opt.url) {
+      setCues([]);
+      setCueText('');
+      return undefined;
+    }
+    let cancelled = false;
+    fetch(opt.url)
+      .then(r => r.text())
+      .then(txt => !cancelled && setCues(parseVtt(txt)))
+      .catch(() => !cancelled && setCues([]));
+    return () => {
+      cancelled = true;
+    };
+  }, [textIndex, subOptions]);
 
   // Neighbouring episodes for prev/next + auto-advance.
   const flat: Episode[] = useMemo(
@@ -249,17 +336,6 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
   const curIdx = flat.findIndex(e => e.id === episodeId);
   const prevId = curIdx > 0 ? flat[curIdx - 1].id : null;
   const nextId = curIdx >= 0 && curIdx + 1 < flat.length ? flat[curIdx + 1].id : null;
-
-  const textTracks = useMemo<RnTextTrack[]>(
-    () =>
-      (info?.subtitle_tracks ?? []).map(tr => ({
-        title: tr.label,
-        language: (tr.language ?? 'und') as RnTextTrack['language'],
-        type: TextTrackType.VTT,
-        uri: mediaUrl(base, token, tr.format === 'ass' ? `${tr.url}&as=vtt` : tr.url) ?? '',
-      })),
-    [info, base, token],
-  );
 
   // Countdown to auto-advance once the episode ends.
   useEffect(() => {
@@ -315,8 +391,7 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
   const chooseText = (opt: TrackOption): void => {
     setTextIndex(opt.index);
     setPicker(null);
-    const lang = textTracks[opt.index]?.language as string | undefined;
-    void AsyncStorage.setItem(SUB_PREF_KEY, lang && lang !== 'und' ? lang : opt.label);
+    void AsyncStorage.setItem(SUB_PREF_KEY, opt.language ?? opt.label);
   };
 
   const turnOffText = (): void => {
@@ -325,26 +400,27 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
     void AsyncStorage.setItem(SUB_PREF_KEY, 'off');
   };
 
-  const setSize = (size: SubSize): void => {
-    setSubStyle(s => {
-      const next = {...s, size};
-      void AsyncStorage.setItem(SUB_STYLE_KEY, JSON.stringify(next));
-      return next;
-    });
+  const persistStyle = (next: SubStyle): SubStyle => {
+    void AsyncStorage.setItem(SUB_STYLE_KEY, JSON.stringify(next));
+    return next;
   };
-  const setPos = (pos: SubPos): void => {
-    setSubStyle(s => {
-      const next = {...s, pos};
-      void AsyncStorage.setItem(SUB_STYLE_KEY, JSON.stringify(next));
-      return next;
-    });
-  };
+  const setSize = (size: SubSize): void => setSubStyle(s => persistStyle({...s, size}));
+  const setBg = (bg: SubBg): void => setSubStyle(s => persistStyle({...s, bg}));
+  const setPos = (pos: SubPos): void => setSubStyle(s => persistStyle({...s, pos}));
 
   const onProgress = (data: OnProgressData): void => {
     const pos = data.currentTime;
     if (!scrubbing) {
       setCurrent(pos);
     }
+    let active = '';
+    for (let k = 0; k < cues.length; k++) {
+      if (pos >= cues[k].start && pos <= cues[k].end) {
+        active = cues[k].text;
+        break;
+      }
+    }
+    setCueText(prev => (prev === active ? prev : active));
     if (info) {
       if (info.intro_start != null && info.intro_end != null && pos >= info.intro_start && pos < info.intro_end) {
         setSkip('intro');
@@ -462,6 +538,7 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
 
   const displayPos = scrubbing ? scrubValue : current;
   const pct = duration > 0 ? (displayPos / duration) * 100 : 0;
+  const subBottom = subStyle.pos === 'high' ? winH * 0.6 : subStyle.pos === 'mid' ? winH * 0.34 : 40;
 
   return (
     <View style={styles.root}>
@@ -471,21 +548,25 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
         style={styles.video}
         paused={paused}
         resizeMode="contain"
+        progressUpdateInterval={250}
         selectedAudioTrack={
           audioIndex >= 0 ? {type: SelectedTrackType.INDEX, value: audioIndex} : undefined
         }
-        selectedTextTrack={
-          textIndex >= 0
-            ? {type: SelectedTrackType.INDEX, value: textIndex}
-            : {type: SelectedTrackType.DISABLED}
-        }
-        textTracks={textTracks}
-        subtitleStyle={{fontSize: SIZE_PX[subStyle.size], paddingBottom: POS_PAD[subStyle.pos]}}
         onLoad={onLoad}
         onProgress={onProgress}
         onEnd={onEnd}
         onError={() => setError(t('player.error'))}
       />
+
+      {/* Custom subtitle overlay (rendered by us for full style control). */}
+      {textIndex >= 0 && cueText !== '' && !ended && (
+        <View pointerEvents="none" style={[styles.subWrap, {bottom: subBottom}]}>
+          <Text
+            style={[styles.subText, {fontSize: SIZE_PX[subStyle.size], backgroundColor: BG_COLOR[subStyle.bg]}]}>
+            {cueText}
+          </Text>
+        </View>
+      )}
 
       {/* Tap layer: toggles the controls overlay. */}
       <Pressable style={StyleSheet.absoluteFill} onPress={toggleControls} />
@@ -546,7 +627,7 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
 
             {/* Transport */}
             <View style={styles.transport}>
-              {textTracks.length > 0 && (
+              {subOptions.length > 0 && (
                 <CtrlButton icon="subtitles" on={textIndex >= 0} onPress={act(() => setPicker('text'))} />
               )}
               {audioTracks.length > 1 && (
@@ -625,11 +706,7 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
       <TrackPicker
         visible={picker === 'text'}
         title={t('player.subtitleTrack')}
-        options={textTracks.map((track, i) => ({
-          index: i,
-          label: track.title,
-          language: track.language ?? null,
-        }))}
+        options={subOptions}
         selected={textIndex}
         offLabel={t('player.subtitlesOff')}
         onPick={chooseText}
@@ -641,6 +718,7 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
         visible={settingsOpen}
         style={subStyle}
         onSize={setSize}
+        onBg={setBg}
         onPos={setPos}
         onClose={() => {
           setSettingsOpen(false);
@@ -709,11 +787,7 @@ function EpisodeCard({
       onPress={onPress}
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
-      style={[
-        styles.epCard,
-        current && styles.epCardCurrent,
-        focused && styles.epCardFocused,
-      ]}>
+      style={[styles.epCard, current && styles.epCardCurrent, focused && styles.epCardFocused]}>
       {thumb ? (
         <Image source={{uri: thumb}} style={styles.epThumb} />
       ) : (
@@ -785,6 +859,7 @@ function SubtitleSettings({
   visible,
   style,
   onSize,
+  onBg,
   onPos,
   onClose,
   t,
@@ -792,6 +867,7 @@ function SubtitleSettings({
   visible: boolean;
   style: SubStyle;
   onSize: (s: SubSize) => void;
+  onBg: (b: SubBg) => void;
   onPos: (p: SubPos) => void;
   onClose: () => void;
   t: (key: Key, vars?: Record<string, string | number>) => string;
@@ -811,6 +887,20 @@ function SubtitleSettings({
                 style={[styles.choice, style.size === s && styles.choiceActive]}>
                 <Text style={[styles.choiceText, style.size === s && styles.choiceTextActive]}>
                   {t(SIZE_KEY[s])}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+
+          <Text style={styles.settingLabel}>{t('player.background')}</Text>
+          <View style={styles.pillRow}>
+            {BGS.map(b => (
+              <Pressable
+                key={b}
+                onPress={() => onBg(b)}
+                style={[styles.choice, style.bg === b && styles.choiceActive]}>
+                <Text style={[styles.choiceText, style.bg === b && styles.choiceTextActive]}>
+                  {t(BG_KEY[b])}
                 </Text>
               </Pressable>
             ))}
@@ -843,6 +933,9 @@ const styles = StyleSheet.create({
   prep: {color: theme.text, fontSize: 16},
   pill: {paddingVertical: 10, paddingHorizontal: 20, backgroundColor: theme.surfaceStrong, borderRadius: 999},
   pillText: {color: theme.text, fontSize: 15},
+
+  subWrap: {position: 'absolute', left: 0, right: 0, alignItems: 'center', paddingHorizontal: 24},
+  subText: {color: '#fff', fontWeight: '600', textAlign: 'center', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4, overflow: 'hidden', textShadowColor: '#000', textShadowOffset: {width: 0, height: 1}, textShadowRadius: 5},
 
   overlay: {...StyleSheet.absoluteFillObject, justifyContent: 'space-between'},
   topBar: {flexDirection: 'row', padding: 14},
