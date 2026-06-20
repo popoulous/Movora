@@ -1,11 +1,9 @@
 import React from 'react';
-import {Image, StyleSheet, View, type StyleProp, type ViewStyle} from 'react-native';
-
-import {GradientText} from './GradientText';
+import {Image, StyleSheet, Text, View, type StyleProp, type ViewStyle} from 'react-native';
 
 const LOGO = require('../assets/movora_logo.png');
 
-// The Movora brand lockup: the "M" mark + the gradient wordmark. `wordmark={false}`
+// The Movora brand lockup: the "M" mark + the white wordmark. `wordmark={false}`
 // shows just the mark.
 export function Brand({
   size = 30,
@@ -19,14 +17,12 @@ export function Brand({
   return (
     <View style={[styles.row, style]}>
       <Image source={LOGO} style={{width: size, height: size}} resizeMode="contain" />
-      {wordmark && (
-        <GradientText style={[styles.word, {fontSize: size * 0.72}]}>MOVORA</GradientText>
-      )}
+      {wordmark && <Text style={[styles.word, {fontSize: size * 0.72}]}>MOVORA</Text>}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   row: {flexDirection: 'row', alignItems: 'center', gap: 10},
-  word: {fontWeight: '800', letterSpacing: 3},
+  word: {fontWeight: '800', letterSpacing: 3, color: '#fff'},
 });

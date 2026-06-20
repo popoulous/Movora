@@ -8,6 +8,7 @@ import {
   Modal,
   PanResponder,
   Pressable,
+  StatusBar,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -169,6 +170,7 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
   const [controlsVisible, setControlsVisible] = useState(true);
   const [scrubbing, setScrubbing] = useState(false);
   const [scrubValue, setScrubValue] = useState(0);
+  const [panelH, setPanelH] = useState(0);
 
   const base = config?.serverUrl ?? '';
   const token = config?.deviceToken ?? null;
@@ -543,10 +545,13 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
 
   const displayPos = scrubbing ? scrubValue : current;
   const pct = duration > 0 ? (displayPos / duration) * 100 : 0;
-  const subBottom = subStyle.pos === 'high' ? winH * 0.6 : subStyle.pos === 'mid' ? winH * 0.34 : 40;
+  const baseBottom = subStyle.pos === 'high' ? winH * 0.6 : subStyle.pos === 'mid' ? winH * 0.34 : 40;
+  // Lift subtitles above the controls panel while it's open (measured height).
+  const subBottom = controlsVisible && panelH > 0 ? panelH + 16 : baseBottom;
 
   return (
     <View style={styles.root}>
+      <StatusBar hidden />
       <Video
         ref={videoRef}
         source={{uri: streamUrl}}
@@ -606,6 +611,7 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
           <LinearGradient
             colors={['transparent', 'rgba(5,6,11,0.55)', 'rgba(5,6,11,0.97)']}
             style={styles.panel}
+            onLayout={e => setPanelH(e.nativeEvent.layout.height)}
             pointerEvents="box-none">
             <Text style={styles.title} numberOfLines={1}>
               {info.series_title}

@@ -15,6 +15,7 @@ import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
 import {mediaUrl, type HomeData, type HomeSeries, type Library} from '../api/client';
 import {Brand} from '../components/Brand';
+import {Icon} from '../components/Icon';
 import {GradientButton} from '../components/GradientButton';
 import {useDevice} from '../context/DeviceContext';
 import {useI18n} from '../i18n';
@@ -156,6 +157,7 @@ export default function HomeScreen({navigation}: Props): React.JSX.Element {
                 end={{x: 1, y: 1}}
                 style={styles.libBorder}>
                 <View style={styles.lib}>
+                  <Icon name={lib.kind} size={26} color={theme.accent2} />
                   <Text style={styles.libName}>{lib.name}</Text>
                   <Text style={styles.libCount}>{t('home.titleCount', {count: lib.series_count})}</Text>
                 </View>
@@ -255,7 +257,7 @@ const styles = StyleSheet.create({
 
   libs: {flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 20, gap: 12},
   libBorder: {borderRadius: theme.radius, padding: 1.5},
-  lib: {backgroundColor: '#0C0E19', borderRadius: theme.radius - 1, paddingVertical: 16, paddingHorizontal: 18, minWidth: 150},
+  lib: {backgroundColor: '#0C0E19', borderRadius: theme.radius - 1, paddingVertical: 16, paddingHorizontal: 18, minWidth: 150, gap: 6},
   libName: {color: theme.text, fontSize: 16, fontWeight: '600'},
   libCount: {color: theme.muted, fontSize: 13, marginTop: 4},
 });

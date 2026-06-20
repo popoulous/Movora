@@ -12,7 +12,7 @@ import {
 import LinearGradient from 'react-native-linear-gradient';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
-import {mediaUrl, type Episode, type SeriesDetail} from '../api/client';
+import {mediaUrl, type SeriesDetail} from '../api/client';
 import {GradientButton} from '../components/GradientButton';
 import {PosterCard} from './HomeScreen';
 import {useDevice} from '../context/DeviceContext';
@@ -40,8 +40,14 @@ export default function SeriesScreen({navigation, route}: Props): React.JSX.Elem
     api.getSeries(seriesId).then(setSeries).catch((e: unknown) => setError(String(e)));
   }, [api, seriesId]);
 
-  const episodes = useMemo<Episode[]>(
-    () => (series ? series.seasons.flatMap(s => s.episodes) : []),
+  const [seasonIdx, setSeasonIdx] = useState(0);
+  const seasons = useMemo(
+    () =>
+      series
+        ? [...series.seasons]
+            .sort((a, b) => a.number - b.number)
+            .map(s => ({...s, episodes: [...s.episodes].sort((a, b) => a.number - b.number)}))
+        : [],
     [series],
   );
 
@@ -61,8 +67,9 @@ export default function SeriesScreen({navigation, route}: Props): React.JSX.Elem
   }
 
   const continueId = series.watch?.continue_episode_id ?? null;
-  const firstId = episodes[0]?.id ?? null;
+  const firstId = seasons[0]?.episodes[0]?.id ?? null;
   const playId = continueId ?? firstId;
+  const shownEpisodes = seasons[Math.min(seasonIdx, seasons.length - 1)]?.episodes ?? [];
   const genres = (series.genres ?? '').split(',').map(g => g.trim()).filter(Boolean).slice(0, 5);
   const metaBits = [series.year ? String(series.year) : null, series.format].filter(Boolean) as string[];
 
@@ -88,7 +95,7 @@ export default function SeriesScreen({navigation, route}: Props): React.JSX.Elem
 
       <View style={styles.meta}>
         <View style={styles.metaRow}>
-          {series.score != null && <Text style={styles.score}>★ {series.score.toFixed(1)}</Text>}
+          {series.score != null && <Text style={styles.score}>★ {(series.score / 10).toFixed(1)}</Text>}
           {metaBits.length > 0 && <Text style={styles.sub}>{metaBits.join(' · ')}</Text>}
         </View>
 
@@ -125,6 +132,21 @@ export default function SeriesScreen({navigation, route}: Props): React.JSX.Elem
         )}
 
         <Text style={styles.epHeader}>{t('series.episodes')}</Text>
+
+        {seasons.length > 1 && (
+          <View style={styles.seasonRow}>
+            {seasons.map((s, i) => (
+              <Pressable
+                key={s.id}
+                onPress={() => setSeasonIdx(i)}
+                style={[styles.seasonPill, i === seasonIdx && styles.seasonPillActive]}>
+                <Text style={[styles.seasonText, i === seasonIdx && styles.seasonTextActive]}>
+                  {s.number === 0 ? t('series.specials') : `S${s.number}`}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
       </View>
     </View>
   );
@@ -159,7 +181,7 @@ export default function SeriesScreen({navigation, route}: Props): React.JSX.Elem
         <Text style={styles.back}>‹ {t('common.back')}</Text>
       </Pressable>
       <FlatList
-        data={episodes}
+        data={shownEpisodes}
         keyExtractor={e => String(e.id)}
         ListHeaderComponent={header}
         ListFooterComponent={footer}
@@ -218,6 +240,11 @@ const styles = StyleSheet.create({
   desc: {color: theme.text, fontSize: 14, marginTop: 12, lineHeight: 20},
   actions: {flexDirection: 'row', gap: 12, marginTop: 16},
   epHeader: {color: theme.text, fontSize: 18, fontWeight: '700', marginTop: 22, marginBottom: 6},
+  seasonRow: {flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8},
+  seasonPill: {paddingVertical: 6, paddingHorizontal: 14, borderRadius: 999, backgroundColor: theme.surfaceStrong, borderWidth: 1, borderColor: theme.border},
+  seasonPillActive: {backgroundColor: theme.accent, borderColor: theme.accent},
+  seasonText: {color: theme.muted, fontSize: 13, fontWeight: '700'},
+  seasonTextActive: {color: '#fff'},
 
   episode: {flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 8, gap: 12},
   thumb: {width: 120, height: 68, borderRadius: 8, backgroundColor: theme.surface},
