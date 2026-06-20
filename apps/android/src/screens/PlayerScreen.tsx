@@ -15,6 +15,7 @@ import {
   View,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
+import SystemNavigationBar from 'react-native-system-navigation-bar';
 import Video, {
   SelectedTrackType,
   type OnLoadData,
@@ -243,6 +244,15 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
       if (hideTimer.current) {
         clearTimeout(hideTimer.current);
       }
+    };
+  }, []);
+
+  // Immersive fullscreen: hide the status + 3-button navigation bars while playing
+  // (sticky — a swipe reveals them briefly), and restore them on leaving the player.
+  useEffect(() => {
+    void SystemNavigationBar.stickyImmersive(true);
+    return () => {
+      void SystemNavigationBar.stickyImmersive(false);
     };
   }, []);
 
