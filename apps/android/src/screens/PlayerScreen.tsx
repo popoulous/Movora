@@ -522,6 +522,11 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
       <View style={styles.center}>
         <ActivityIndicator size="large" color={theme.accent} />
         <Text style={styles.prep}>{t('player.optimizing', {percent: info?.prepare_progress ?? 0})}</Text>
+        {info?.prepare_eta_seconds != null && (
+          <Text style={styles.prepEta}>
+            {t('player.etaApprox', {minutes: Math.max(1, Math.round(info.prepare_eta_seconds / 60))})}
+          </Text>
+        )}
         <Pressable style={styles.pill} onPress={() => navigation.goBack()}>
           <Text style={styles.pillText}>‹ {t('common.back')}</Text>
         </Pressable>
@@ -931,6 +936,7 @@ const styles = StyleSheet.create({
   center: {flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24},
   error: {color: '#f87171', fontSize: 16, textAlign: 'center'},
   prep: {color: theme.text, fontSize: 16},
+  prepEta: {color: theme.muted, fontSize: 14},
   pill: {paddingVertical: 10, paddingHorizontal: 20, backgroundColor: theme.surfaceStrong, borderRadius: 999},
   pillText: {color: theme.text, fontSize: 15},
 
