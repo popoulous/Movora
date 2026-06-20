@@ -1,5 +1,5 @@
 import type {NativeStackScreenProps} from '@react-navigation/native-stack';
-import React, {useEffect, useRef, useState} from 'react';
+import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View} from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import Video, {type OnLoadData} from 'react-native-video';
@@ -31,6 +31,11 @@ export default function CapabilityScreen({navigation}: Props): React.JSX.Element
 
   const base = config?.serverUrl ?? '';
 
+  // Subtitle samples are plain .vtt/.srt/.ass files — they can't be "played" by the video
+  // element, and the backend derives subtitle support from the explicit supports_* flags
+  // below (not the probe), so we only video-probe the video/container/audio samples.
+  const probeable = useMemo(() => samples.filter(s => s.category !== 'subtitle'), [samples]);
+
   useEffect(() => {
     if (!api) {
       return;
@@ -51,11 +56,11 @@ export default function CapabilityScreen({navigation}: Props): React.JSX.Element
 
   // Per-sample timeout: a clip that never loads or errors counts as not played.
   useEffect(() => {
-    if (phase !== 'probing' || idx >= samples.length) {
+    if (phase !== 'probing' || idx >= probeable.length) {
       return undefined;
     }
     settled.current = false;
-    const sample = samples[idx];
+    const sample = probeable[idx];
     const timer = setTimeout(() => {
       if (!settled.current) {
         settled.current = true;
@@ -63,11 +68,11 @@ export default function CapabilityScreen({navigation}: Props): React.JSX.Element
       }
     }, PROBE_TIMEOUT_MS);
     return () => clearTimeout(timer);
-  }, [phase, idx, samples]);
+  }, [phase, idx, probeable]);
 
   // All samples probed -> report to the backend.
   useEffect(() => {
-    if (phase !== 'probing' || samples.length === 0 || idx < samples.length) {
+    if (phase !== 'probing' || idx < probeable.length) {
       return;
     }
     setPhase('reporting');
@@ -82,14 +87,14 @@ export default function CapabilityScreen({navigation}: Props): React.JSX.Element
       .then(() => setPhase('done'))
       .catch(() => setPhase('error'));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, idx, samples]);
+  }, [phase, idx, probeable]);
 
   const onLoad = (data: OnLoadData): void => {
-    if (settled.current || idx >= samples.length) {
+    if (settled.current || idx >= probeable.length) {
       return;
     }
     settled.current = true;
-    record(samples[idx], {
+    record(probeable[idx], {
       played: true,
       video_bytes: 0,
       audio_bytes: 0,
@@ -100,14 +105,14 @@ export default function CapabilityScreen({navigation}: Props): React.JSX.Element
   };
 
   const onError = (): void => {
-    if (settled.current || idx >= samples.length) {
+    if (settled.current || idx >= probeable.length) {
       return;
     }
     settled.current = true;
-    record(samples[idx], emptyOutcome(false));
+    record(probeable[idx], emptyOutcome(false));
   };
 
-  const current = phase === 'probing' && idx < samples.length ? samples[idx] : null;
+  const current = phase === 'probing' && idx < probeable.length ? probeable[idx] : null;
 
   return (
     <View style={[styles.root, {paddingTop: insets.top}]}>
@@ -123,7 +128,7 @@ export default function CapabilityScreen({navigation}: Props): React.JSX.Element
       {phase === 'error' && <Text style={styles.error}>{t('cap.error')}</Text>}
       {(phase === 'probing' || phase === 'reporting') && (
         <Text style={styles.progress}>
-          {t('cap.progress', {done: Math.min(idx, samples.length), total: samples.length})}
+          {t('cap.progress', {done: Math.min(idx, probeable.length), total: probeable.length})}
         </Text>
       )}
       {phase === 'done' && <Text style={styles.doneText}>{t('cap.done')}</Text>}
@@ -134,14 +139,24 @@ export default function CapabilityScreen({navigation}: Props): React.JSX.Element
         contentContainerStyle={styles.list}
         renderItem={({item}) => {
           const r = results[item.id];
+          // Subtitles aren't video-probed: ExoPlayer renders VTT/SRT natively, and we
+          // serve ASS converted to VTT — so all three are effectively supported.
+          const mark =
+            item.category === 'subtitle'
+              ? item.id.startsWith('ass')
+                ? '→VTT'
+                : '✓'
+              : r === undefined
+                ? '·'
+                : r.played
+                  ? '✓'
+                  : '✗';
           return (
             <View style={styles.row}>
               <Text style={styles.rowLabel} numberOfLines={1}>
                 {item.label}
               </Text>
-              <Text style={styles.rowMark}>
-                {r === undefined ? '·' : r.played ? '✓' : '✗'}
-              </Text>
+              <Text style={styles.rowMark}>{mark}</Text>
             </View>
           );
         }}
