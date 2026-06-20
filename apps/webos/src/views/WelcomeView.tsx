@@ -114,7 +114,7 @@ function Shell({
         <div
           style={{
             width: "100%",
-            maxWidth: 560,
+            maxWidth: 720,
             background: theme.surfaceStrong,
             border: `1px solid ${theme.border}`,
             borderRadius: 20,
@@ -301,12 +301,15 @@ export default function WelcomeView({ onDone }: Props): React.JSX.Element {
         <div
           style={{
             display: "inline-block",
-            fontSize: "4rem",
-            letterSpacing: "0.3em",
+            maxWidth: "100%",
+            fontSize: "3.4rem",
+            letterSpacing: "0.18em",
             fontWeight: 800,
             lineHeight: 1.4,
-            padding: "0.15em 0.1em 0.15em 0.3em", // room so background-clip text isn't cropped
-            margin: "1.4rem 0 1.8rem",
+            // left+right padding balance the trailing letter-spacing so it stays inside the card
+            padding: "0.12em 0.25em",
+            margin: "1.3rem 0 1.7rem",
+            whiteSpace: "nowrap",
             ...gradientText,
           }}
         >
