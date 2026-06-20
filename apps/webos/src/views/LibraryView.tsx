@@ -22,7 +22,7 @@ const FILTER_KEY: Record<(typeof FILTERS)[number], Key> = {
   watching: "library.watching",
   done: "library.completed",
 };
-const COLS = 6;
+const COLS = 7; // a touch smaller than before; the grid stays responsive (1fr columns)
 
 export default function LibraryView({
   libraryId,

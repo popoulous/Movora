@@ -3,6 +3,22 @@ import React from "react";
 // Inline SVG icons — webOS Chrome 87 doesn't render emoji / many unicode glyphs,
 // so the transport buttons use these instead of text symbols.
 const ICONS: Record<string, React.ReactNode> = {
+  // Library kind markers (match the web's lucide Sparkles / Film / Tv).
+  anime: (
+    <path d="M12 3 L13.8 9.5 L20.5 12 L13.8 14.5 L12 21 L10.2 14.5 L3.5 12 L10.2 9.5 Z" fill="currentColor" />
+  ),
+  movie: (
+    <g fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M3 9h18M3 15h18M8 4v16M16 4v16" />
+    </g>
+  ),
+  series: (
+    <g fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="6" width="18" height="12" rx="2" />
+      <path d="M8 21h8M12 18v3" />
+    </g>
+  ),
   play: <polygon points="6 4 20 12 6 20 6 4" fill="currentColor" />,
   pause: (
     <>

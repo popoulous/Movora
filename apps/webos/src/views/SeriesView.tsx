@@ -20,7 +20,7 @@ interface Props {
 }
 
 const EP_W = 210;
-const REC_W = 140;
+const REC_W = 200; // match the Home poster rows / library card proportions
 
 export default function SeriesView({
   seriesId,

@@ -5,6 +5,7 @@ import { useI18n } from "../i18n";
 import { scrollIntoFocus, useTvInput } from "../hooks";
 import { TopNav, type NavTab } from "../components/TopNav";
 import { Loader } from "../components/Loader";
+import { Icon } from "../components/Icon";
 import { theme } from "../theme";
 import { aspectHeight } from "../util";
 
@@ -15,8 +16,8 @@ interface Props {
   onSettings: () => void;
 }
 
-const POSTER_W = 185;
-const CONT_W = 280;
+const POSTER_W = 200; // 2:3 poster rows, consistent with the library grid + recommendations
+const CONT_W = 300;
 
 export default function HomeView({ onSeries, onPlay, onLibrary, onSettings }: Props): React.JSX.Element {
   const { api, config } = useDevice();
@@ -231,6 +232,9 @@ export default function HomeView({ onSeries, onPlay, onLibrary, onSettings }: Pr
                       boxShadow: focused ? "0 0 18px rgba(122,77,255,0.6)" : "none",
                     }}
                   >
+                    <div style={{ color: theme.accent2, marginBottom: 8 }}>
+                      <Icon name={lib.kind} size={28} />
+                    </div>
                     <div style={{ fontSize: "1.05rem", fontWeight: 700, color: "#fff" }}>{lib.name}</div>
                     <div style={{ fontSize: "0.78rem", color: theme.muted, marginTop: 4 }}>{t("home.titleCount", { count: lib.series_count })}</div>
                   </div>
