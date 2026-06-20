@@ -1,6 +1,6 @@
 import fontExtUrl from "@fontsource/noto-sans/files/noto-sans-latin-ext-400-normal.woff2?url";
 import fontUrl from "@fontsource/noto-sans/files/noto-sans-latin-400-normal.woff2?url";
-import { Check, ChevronLeft, Pause, Play, SkipForward } from "lucide-react";
+import { Check, ChevronLeft, Loader2, Pause, Play, SkipForward } from "lucide-react";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
@@ -182,6 +182,8 @@ export function TvPlayerPage(): JSX.Element {
     skip,
     nearEnd,
     afterOutro,
+    normalizing,
+    prepareProgress,
     trackId,
     setTrackId,
     artwork,
@@ -553,36 +555,51 @@ export function TvPlayerPage(): JSX.Element {
         />
       )}
 
-      {/* Video */}
-      <video
-        key={String(playback.direct_play)}
-        ref={videoRef}
-        src={playback.stream_url}
-        autoPlay
-        onPlay={() => setPlaying(true)}
-        onPause={() => setPlaying(false)}
-        onLoadedMetadata={() => {
-          resume();
-          setDuration(videoRef.current?.duration ?? 0);
-        }}
-        onDurationChange={() => setDuration(videoRef.current?.duration ?? 0)}
-        onTimeUpdate={() => {
-          handleTimeUpdate();
-          setCurrentTime(videoRef.current?.currentTime ?? 0);
-        }}
-        onEnded={markWatched}
-        className="absolute inset-0 h-full w-full object-contain"
-      >
-        {vttTracks.map((track) => (
-          <track
-            key={track.id}
-            kind="subtitles"
-            src={track.url}
-            srcLang={track.language ?? undefined}
-            default={track.id === trackId}
-          />
-        ))}
-      </video>
+      {/* Video — only once a playable source exists; never play the un-optimized original. */}
+      {playback.direct_play ? (
+        <video
+          key={String(playback.direct_play)}
+          ref={videoRef}
+          src={playback.stream_url}
+          autoPlay
+          onPlay={() => setPlaying(true)}
+          onPause={() => setPlaying(false)}
+          onLoadedMetadata={() => {
+            resume();
+            setDuration(videoRef.current?.duration ?? 0);
+          }}
+          onDurationChange={() => setDuration(videoRef.current?.duration ?? 0)}
+          onTimeUpdate={() => {
+            handleTimeUpdate();
+            setCurrentTime(videoRef.current?.currentTime ?? 0);
+          }}
+          onEnded={markWatched}
+          className="absolute inset-0 h-full w-full object-contain"
+        >
+          {vttTracks.map((track) => (
+            <track
+              key={track.id}
+              kind="subtitles"
+              src={track.url}
+              srcLang={track.language ?? undefined}
+              default={track.id === trackId}
+            />
+          ))}
+        </video>
+      ) : (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 text-center">
+          {normalizing ? (
+            <>
+              <Loader2 className="h-10 w-10 animate-spin text-violet-300" />
+              <span className="text-lg text-neutral-200">
+                {t("player.optimizing")} · {prepareProgress}%
+              </span>
+            </>
+          ) : (
+            <span className="text-lg text-neutral-400">{t("player.notPlayable")}</span>
+          )}
+        </div>
+      )}
 
       {/* Click-to-play/pause — sits behind all other interactive layers */}
       <div className="absolute inset-0 cursor-pointer" onClick={togglePlay} />

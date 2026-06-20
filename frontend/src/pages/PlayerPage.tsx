@@ -4,7 +4,7 @@ import fallbackFontUrl from "@fontsource/noto-sans/files/noto-sans-latin-400-nor
 import fallbackFontExtUrl from "@fontsource/noto-sans/files/noto-sans-latin-ext-400-normal.woff2?url";
 import { type TFunction } from "i18next";
 import JASSUB from "jassub";
-import { Check, ChevronLeft, Play, SkipForward, Type } from "lucide-react";
+import { Check, ChevronLeft, Loader2, Play, SkipForward, Type } from "lucide-react";
 import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
@@ -361,20 +361,36 @@ export function PlayerPage(): JSX.Element {
           )}
 
           <div className="tv-player relative overflow-hidden rounded-2xl bg-black shadow-[0_0_70px_rgba(122,77,255,0.12)] ring-1 ring-white/10">
-            <video
-              key={String(playback.direct_play)}
-              ref={videoRef}
-              src={playback.stream_url}
-              controls
-              autoPlay
-              onLoadedMetadata={() => {
-                resume();
-                detectAudio();
-              }}
-              onTimeUpdate={handleTimeUpdate}
-              onEnded={markWatched}
-              className="aspect-video w-full"
-            />
+            {!playback.direct_play ? (
+              // Don't play the un-optimized original — wait for the variant to be ready.
+              <div className="flex aspect-video w-full flex-col items-center justify-center gap-3 px-6 text-center">
+                {normalizing ? (
+                  <>
+                    <Loader2 className="h-8 w-8 animate-spin text-violet-300" />
+                    <span className="text-sm text-neutral-300">
+                      {t("player.optimizing")} · {prepareProgress}%
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-sm text-neutral-400">{t("player.notPlayable")}</span>
+                )}
+              </div>
+            ) : (
+              <video
+                key={String(playback.direct_play)}
+                ref={videoRef}
+                src={playback.stream_url}
+                controls
+                autoPlay
+                onLoadedMetadata={() => {
+                  resume();
+                  detectAudio();
+                }}
+                onTimeUpdate={handleTimeUpdate}
+                onEnded={markWatched}
+                className="aspect-video w-full"
+              />
+            )}
 
             {skip !== null && !ended && (
               <button
