@@ -160,7 +160,11 @@ export default function HomeView({ onSeries, onPlay, onLibrary, onSettings }: Pr
       <TopNav tabs={navTabs} activeId="home" focusIdx={navFocus} onActivate={openTab} zoneIndex={0} />
 
       <div style={{ padding: "0.5rem 2.5rem" }}>
-        {!data && !error && <p style={{ color: theme.muted }}>{t("common.loading")}</p>}
+        {!data && !error && (
+          <div style={{ minHeight: "70vh", display: "flex", alignItems: "center", justifyContent: "center", color: theme.muted }}>
+            {t("common.loading")}
+          </div>
+        )}
         {error && <p style={{ color: "#f87171" }}>{t("common.loadError", { error })}</p>}
 
         {/* Continue watching — a row of resumable cards. */}

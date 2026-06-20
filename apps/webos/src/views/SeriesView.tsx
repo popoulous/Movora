@@ -245,7 +245,7 @@ export default function SeriesView({
           <div style={{ marginBottom: "0.7rem" }}>
             <BackButton onClick={onBack} />
           </div>
-          <h1 style={{ fontSize: "2.4rem", fontWeight: 800, margin: "0 0 0.5rem", color: "#fff" }}>{title}</h1>
+          <h1 style={{ fontSize: "2.4rem", fontWeight: 800, margin: "0 0 0.5rem", color: "#fff", overflowWrap: "break-word" }}>{title}</h1>
 
           {metaParts.length > 0 && (
             <div
@@ -288,7 +288,7 @@ export default function SeriesView({
           )}
 
           {actions.length > 0 && (
-            <div style={{ display: "flex", alignItems: "center", marginBottom: "1.1rem" }}>
+            <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", marginBottom: "1.1rem" }}>
               {actions.map((a, i) => {
                 const focused = zone.id === "actions" && focus.i === i;
                 return (
@@ -299,7 +299,9 @@ export default function SeriesView({
                     style={{
                       display: "inline-flex",
                       alignItems: "center",
+                      flexShrink: 0,
                       marginRight: "0.8rem",
+                      marginBottom: "0.5rem",
                       padding: "0.6rem 1.3rem",
                       borderRadius: 999,
                       cursor: "pointer",
@@ -311,7 +313,7 @@ export default function SeriesView({
                     }}
                   >
                     <Icon name="play" size={18} />
-                    <span style={{ marginLeft: "0.5rem" }}>
+                    <span style={{ marginLeft: "0.5rem", whiteSpace: "nowrap" }}>
                       {a.label}
                       {a.sub ? ` · ${a.sub}` : ""}
                     </span>

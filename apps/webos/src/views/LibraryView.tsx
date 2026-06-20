@@ -176,7 +176,11 @@ export default function LibraryView({
 
       {/* Poster grid (full width) */}
       <div style={{ flex: 1, overflowY: "auto", padding: "0.6rem 2.5rem 3.5rem", minHeight: 0 }}>
-        {loading && !error && <p style={{ color: theme.muted }}>{t("common.loading")}</p>}
+        {loading && !error && (
+          <div style={{ minHeight: "55vh", display: "flex", alignItems: "center", justifyContent: "center", color: theme.muted }}>
+            {t("common.loading")}
+          </div>
+        )}
         {error && <p style={{ color: "#f87171" }}>{t("common.loadError", { error })}</p>}
         {!loading && !error && series.length === 0 && (
           <div style={{ padding: "3rem 0", textAlign: "center", color: theme.muted }}>
@@ -201,6 +205,7 @@ export default function LibraryView({
                   onSeries(s.id);
                 }}
                 style={{
+                  minWidth: 0, // let the 1fr column shrink so the nowrap title can ellipsize
                   background: theme.surface,
                   border: `3px solid ${focused ? theme.accent : "transparent"}`,
                   borderRadius: theme.radius,
