@@ -1,5 +1,5 @@
 import type {NativeStackScreenProps} from '@react-navigation/native-stack';
-import React, {useEffect, useRef, useState} from 'react';
+import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -11,20 +11,24 @@ import {
 
 import {createPairingClient} from '../api/client';
 import {useDevice} from '../context/DeviceContext';
+import {discoverServer} from '../discovery';
 import {useI18n} from '../i18n';
 import type {RootStackParamList} from '../navigation';
 import {theme} from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Welcome'>;
 
-type Phase = 'form' | 'pairing';
+type Phase = 'discovering' | 'form' | 'pairing';
 
 export default function WelcomeScreen(_props: Props): React.JSX.Element {
   const {save} = useDevice();
   const {t} = useI18n();
   const [serverUrl, setServerUrl] = useState('http://192.168.1.100:8000');
   const [deviceName, setDeviceName] = useState('Android');
-  const [phase, setPhase] = useState<Phase>('form');
+  const [phase, setPhase] = useState<Phase>('discovering');
+  const [scan, setScan] = useState({checked: 0, total: 254});
+  const [foundUrl, setFoundUrl] = useState<string | null>(null);
+  const [searched, setSearched] = useState(false);
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -37,6 +41,32 @@ export default function WelcomeScreen(_props: Props): React.JSX.Element {
     },
     [],
   );
+
+  // Sweep the LAN for a Movora /health marker; prefill the URL if found.
+  const runDiscovery = useCallback(() => {
+    setPhase('discovering');
+    setError(null);
+    setScan({checked: 0, total: 254});
+    discoverServer(p => setScan(p))
+      .then(res => {
+        setSearched(true);
+        if (res.serverUrl) {
+          setServerUrl(res.serverUrl);
+          setFoundUrl(res.serverUrl);
+        } else {
+          setFoundUrl(null);
+        }
+        setPhase('form');
+      })
+      .catch(() => {
+        setSearched(true);
+        setPhase('form');
+      });
+  }, []);
+
+  useEffect(() => {
+    runDiscovery();
+  }, [runDiscovery]);
 
   const startPairing = async (): Promise<void> => {
     setError(null);
@@ -80,8 +110,28 @@ export default function WelcomeScreen(_props: Props): React.JSX.Element {
     <View style={styles.root}>
       <Text style={styles.logo}>MOVORA</Text>
 
-      {phase === 'form' ? (
+      {phase === 'discovering' && (
         <View style={styles.card}>
+          <View style={styles.waiting}>
+            <ActivityIndicator color={theme.accent} />
+            <Text style={styles.waitingText}>{t('welcome.searching')}</Text>
+          </View>
+          <Text style={styles.scan}>
+            {scan.checked} / {scan.total}
+          </Text>
+          <Pressable onPress={() => setPhase('form')}>
+            <Text style={styles.linkText}>{t('welcome.serverUrl')} →</Text>
+          </Pressable>
+        </View>
+      )}
+
+      {phase === 'form' && (
+        <View style={styles.card}>
+          {foundUrl ? (
+            <Text style={styles.found}>{t('welcome.found', {url: foundUrl})}</Text>
+          ) : searched ? (
+            <Text style={styles.notFound}>{t('welcome.notFound')}</Text>
+          ) : null}
           <Text style={styles.label}>{t('welcome.serverUrl')}</Text>
           <TextInput
             style={styles.input}
@@ -105,8 +155,13 @@ export default function WelcomeScreen(_props: Props): React.JSX.Element {
           <Pressable style={styles.button} onPress={startPairing}>
             <Text style={styles.buttonText}>{t('welcome.pair')}</Text>
           </Pressable>
+          <Pressable onPress={runDiscovery} style={styles.searchAgain}>
+            <Text style={styles.linkText}>{t('welcome.searchAgain')}</Text>
+          </Pressable>
         </View>
-      ) : (
+      )}
+
+      {phase === 'pairing' && (
         <View style={styles.card}>
           <Text style={styles.label}>{t('welcome.enterCode')}</Text>
           <Text style={styles.code}>{code}</Text>
@@ -132,5 +187,10 @@ const styles = StyleSheet.create({
   code: {fontSize: 44, fontWeight: '800', letterSpacing: 10, color: '#fff', textAlign: 'center', marginVertical: 18},
   waiting: {flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10},
   waitingText: {color: theme.muted, fontSize: 15},
+  scan: {color: theme.muted, fontSize: 13, textAlign: 'center', marginTop: 12, fontVariant: ['tabular-nums']},
+  found: {color: '#34d399', fontSize: 14, marginBottom: 6},
+  notFound: {color: theme.muted, fontSize: 14, marginBottom: 6},
   error: {color: '#f87171', marginTop: 12, fontSize: 14},
+  linkText: {color: theme.accent, fontSize: 14, textAlign: 'center', marginTop: 16},
+  searchAgain: {marginTop: 4},
 });
