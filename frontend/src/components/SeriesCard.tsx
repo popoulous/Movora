@@ -18,6 +18,7 @@ export interface CardSeries {
   cover_image_url: string | null;
   episode_count: number;
   watch_percent: number;
+  watch_status?: "not_started" | "watching" | "completed";
   normalized?: boolean;
 }
 
@@ -27,6 +28,18 @@ function OptimizedBadge({ title }: { title: string }): JSX.Element {
     <span
       title={title}
       className="absolute bottom-1.5 right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 shadow ring-2 ring-black/25"
+    >
+      <Check className="h-3 w-3 text-white" strokeWidth={3} />
+    </span>
+  );
+}
+
+// A gradient check badge marking a fully-watched series.
+function WatchedBadge({ title }: { title: string }): JSX.Element {
+  return (
+    <span
+      title={title}
+      className="absolute top-1.5 left-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-r from-[#7A4DFF] to-[#EC4899] shadow ring-2 ring-black/25"
     >
       <Check className="h-3 w-3 text-white" strokeWidth={3} />
     </span>
@@ -105,6 +118,7 @@ export function SeriesCard({
         </div>
         {series.watch_percent > 0 && <ProgressBar percent={series.watch_percent} />}
         {series.normalized === true && <OptimizedBadge title={t("series.optimized")} />}
+        {series.watch_status === "completed" && <WatchedBadge title={t("series.watched")} />}
       </div>
       <div className="mt-2 truncate text-sm font-medium">{cardTitle(series)}</div>
       {series.year !== null && <div className="text-xs text-neutral-500">{series.year}</div>}
@@ -196,6 +210,7 @@ export function SeriesRow({
         <Poster series={series} />
         {series.watch_percent > 0 && <ProgressBar percent={series.watch_percent} />}
         {series.normalized === true && <OptimizedBadge title={t("series.optimized")} />}
+        {series.watch_status === "completed" && <WatchedBadge title={t("series.watched")} />}
       </div>
       <div className="min-w-0 flex-1">
         <div className="truncate font-medium text-neutral-100">{cardTitle(series)}</div>

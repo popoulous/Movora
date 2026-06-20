@@ -101,6 +101,7 @@ export default function LibraryScreen({navigation, route}: Props): React.JSX.Ele
               uri={mediaUrl(base, token, item.cover_image_url)}
               progress={item.watch_percent}
               normalized={item.normalized}
+              completed={item.watch_status === 'completed'}
               width={cardW}
               onPress={() => navigation.navigate('Series', {seriesId: item.id})}
             />

@@ -119,6 +119,7 @@ export default function HomeView({ onSeries, onPlay, onLibrary, onSettings }: Pr
     aspect: "2/3" | "16/9",
     w: number,
     pct?: number,
+    completed = false,
   ): React.JSX.Element => {
     const focused = focus.z === z && focus.i === i;
     const h = aspectHeight(w, aspect);
@@ -139,6 +140,9 @@ export default function HomeView({ onSeries, onPlay, onLibrary, onSettings }: Pr
       >
         <div style={{ position: "relative", width: "100%", height: h, background: "#11131f" }}>
           {src && <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />}
+          {completed && (
+            <span style={{ position: "absolute", top: 8, left: 8, background: theme.gradient, color: "#fff", borderRadius: 999, fontSize: "0.72rem", fontWeight: 800, padding: "2px 8px" }}>✓</span>
+          )}
           {pct != null && pct > 0 && (
             <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 4, background: "rgba(0,0,0,0.5)" }}>
               <div style={{ width: `${pct}%`, height: "100%", background: theme.gradient }} />
@@ -204,7 +208,7 @@ export default function HomeView({ onSeries, onPlay, onLibrary, onSettings }: Pr
             <h2 style={{ fontSize: "1.05rem", fontWeight: 700, margin: "0 0 0.8rem", color: theme.text }}>{t("home.recentlyAdded")}</h2>
             <div className="mv-row" style={{ display: "flex", overflowX: "auto", padding: "0.4rem 0" }}>
               {recent.map((s, i) =>
-                posterCard(recentZ, i, label(s), s.cover_image_url, s.year ? String(s.year) : undefined, "2/3", POSTER_W),
+                posterCard(recentZ, i, label(s), s.cover_image_url, s.year ? String(s.year) : undefined, "2/3", POSTER_W, undefined, s.watch_status === "completed"),
               )}
             </div>
           </section>

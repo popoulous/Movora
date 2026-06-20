@@ -351,6 +351,7 @@ export default function SeriesView({
               {seasons.map((sn, i) => {
                 const sel = i === selectedSeason;
                 const focused = zone.id === "seasons" && focus.i === i;
+                const seasonDone = sn.episodes.length > 0 && sn.episodes.every((e) => e.watched);
                 return (
                   <span
                     key={sn.id}
@@ -373,6 +374,7 @@ export default function SeriesView({
                     }}
                   >
                     {t("ep.seasonNumber", { number: sn.number })}
+                    {seasonDone ? " ✓" : ""}
                   </span>
                 );
               })}

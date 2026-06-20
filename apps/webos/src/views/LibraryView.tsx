@@ -225,6 +225,14 @@ export default function LibraryView({
                       style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", objectFit: "cover", display: "block" }}
                     />
                   )}
+                  {s.watch_status === "completed" && (
+                    <span style={{ position: "absolute", top: 8, left: 8, background: theme.gradient, color: "#fff", borderRadius: 999, fontSize: "0.72rem", fontWeight: 800, padding: "2px 8px" }}>✓</span>
+                  )}
+                  {s.watch_percent > 0 && s.watch_status !== "completed" && (
+                    <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 4, background: "rgba(0,0,0,0.5)" }}>
+                      <div style={{ width: `${s.watch_percent}%`, height: "100%", background: theme.gradient }} />
+                    </div>
+                  )}
                 </div>
                 <div style={{ padding: "0.4rem 0.5rem" }}>
                   <div

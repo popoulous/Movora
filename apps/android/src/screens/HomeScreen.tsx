@@ -119,6 +119,7 @@ export default function HomeScreen({navigation}: Props): React.JSX.Element {
                 title={item.display_title ?? item.title}
                 uri={poster(item)}
                 progress={item.continue_percent}
+                completed={item.watch_status === 'completed'}
                 onPress={() => openSeries(item)}
               />
             )}
@@ -138,6 +139,7 @@ export default function HomeScreen({navigation}: Props): React.JSX.Element {
               <PosterCard
                 title={item.display_title ?? item.title}
                 uri={poster(item)}
+                completed={item.watch_status === 'completed'}
                 onPress={() => navigation.navigate('Series', {seriesId: item.id})}
               />
             )}
@@ -185,6 +187,7 @@ export function PosterCard({
   onPress,
   progress,
   normalized,
+  completed,
   width = POSTER_W,
 }: {
   title: string;
@@ -192,6 +195,7 @@ export function PosterCard({
   onPress: () => void;
   progress?: number;
   normalized?: boolean;
+  completed?: boolean;
   width?: number;
 }): React.JSX.Element {
   return (
@@ -202,6 +206,11 @@ export function PosterCard({
         ) : (
           <View style={[styles.poster, styles.posterEmpty, {width, height: width * 1.5}]} />
         )}
+        {completed ? (
+          <View style={styles.watchedBadge}>
+            <Text style={styles.watchedText}>✓</Text>
+          </View>
+        ) : null}
         {normalized ? (
           <View style={styles.badge}>
             <Text style={styles.badgeText}>✓</Text>
@@ -251,6 +260,8 @@ const styles = StyleSheet.create({
   posterEmpty: {borderWidth: 1, borderColor: theme.border},
   badge: {position: 'absolute', top: 6, right: 6, width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(5,6,11,0.7)', alignItems: 'center', justifyContent: 'center'},
   badgeText: {color: '#34d399', fontSize: 13, fontWeight: '800'},
+  watchedBadge: {position: 'absolute', top: 6, left: 6, width: 22, height: 22, borderRadius: 11, backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center'},
+  watchedText: {color: '#fff', fontSize: 13, fontWeight: '800'},
   progressTrack: {position: 'absolute', left: 6, right: 6, bottom: 6, height: 4, borderRadius: 999, backgroundColor: 'rgba(0,0,0,0.5)', overflow: 'hidden'},
   progressFill: {height: '100%', borderRadius: 999},
   cardTitle: {color: theme.text, fontSize: 13, marginTop: 6},

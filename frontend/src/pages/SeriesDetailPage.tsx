@@ -437,22 +437,29 @@ function EpisodesSection({
     <div className="flex flex-col gap-4 sm:flex-row">
       {seasons.length > 1 && (
         <div className="flex shrink-0 gap-2 sm:w-48 sm:flex-col">
-          {seasons.map((season) => (
-            <button
-              key={season.id}
-              onClick={() => setSeasonId(season.id)}
-              className={`rounded-2xl px-4 py-3 text-left text-sm font-medium transition ${
-                season.id === active?.id
-                  ? "bg-gradient-to-br from-violet-500/20 to-fuchsia-500/10 text-white ring-1 ring-violet-400/35"
-                  : "text-neutral-400 ring-1 ring-transparent hover:bg-white/[0.03] hover:text-neutral-200"
-              }`}
-            >
-              {seasonLabel(season.number, t)}
-              <div className="text-xs font-normal text-neutral-500">
-                {t("series.episodes", { count: season.episodes.length })}
-              </div>
-            </button>
-          ))}
+          {seasons.map((season) => {
+            const seasonDone =
+              season.episodes.length > 0 && season.episodes.every((episode) => episode.watched);
+            return (
+              <button
+                key={season.id}
+                onClick={() => setSeasonId(season.id)}
+                className={`rounded-2xl px-4 py-3 text-left text-sm font-medium transition ${
+                  season.id === active?.id
+                    ? "bg-gradient-to-br from-violet-500/20 to-fuchsia-500/10 text-white ring-1 ring-violet-400/35"
+                    : "text-neutral-400 ring-1 ring-transparent hover:bg-white/[0.03] hover:text-neutral-200"
+                }`}
+              >
+                <span className="flex items-center gap-1.5">
+                  {seasonLabel(season.number, t)}
+                  {seasonDone && <Check className="h-3.5 w-3.5 text-violet-300" strokeWidth={3} />}
+                </span>
+                <div className="text-xs font-normal text-neutral-500">
+                  {t("series.episodes", { count: season.episodes.length })}
+                </div>
+              </button>
+            );
+          })}
         </div>
       )}
 

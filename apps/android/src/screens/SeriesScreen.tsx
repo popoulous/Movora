@@ -135,16 +135,20 @@ export default function SeriesScreen({navigation, route}: Props): React.JSX.Elem
 
         {seasons.length > 1 && (
           <View style={styles.seasonRow}>
-            {seasons.map((s, i) => (
-              <Pressable
-                key={s.id}
-                onPress={() => setSeasonIdx(i)}
-                style={[styles.seasonPill, i === seasonIdx && styles.seasonPillActive]}>
-                <Text style={[styles.seasonText, i === seasonIdx && styles.seasonTextActive]}>
-                  {s.number === 0 ? t('series.specials') : `S${s.number}`}
-                </Text>
-              </Pressable>
-            ))}
+            {seasons.map((s, i) => {
+              const seasonDone = s.episodes.length > 0 && s.episodes.every(e => e.watched);
+              return (
+                <Pressable
+                  key={s.id}
+                  onPress={() => setSeasonIdx(i)}
+                  style={[styles.seasonPill, i === seasonIdx && styles.seasonPillActive]}>
+                  <Text style={[styles.seasonText, i === seasonIdx && styles.seasonTextActive]}>
+                    {s.number === 0 ? t('series.specials') : `S${s.number}`}
+                    {seasonDone ? ' ✓' : ''}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
         )}
       </View>
