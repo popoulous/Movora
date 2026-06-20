@@ -92,6 +92,9 @@ const en = {
   'cap.error': 'The capability test failed.',
   'cap.progress': 'Testing… {{done}} / {{total}}',
   'cap.done': 'Done — profile sent. ✓',
+  'cap.audioListen': 'Do you hear sound?',
+  'cap.yes': 'Yes',
+  'cap.no': 'No',
 } as const;
 
 export type Key = keyof typeof en;
@@ -173,6 +176,9 @@ const hu: Record<Key, string> = {
   'cap.error': 'Hiba a képességteszt során.',
   'cap.progress': 'Tesztelés… {{done}} / {{total}}',
   'cap.done': 'Kész — a profil elküldve. ✓',
+  'cap.audioListen': 'Hallod a hangot?',
+  'cap.yes': 'Igen',
+  'cap.no': 'Nem',
 };
 
 const de: Record<Key, string> = {
@@ -252,6 +258,9 @@ const de: Record<Key, string> = {
   'cap.error': 'Der Fähigkeitstest ist fehlgeschlagen.',
   'cap.progress': 'Test… {{done}} / {{total}}',
   'cap.done': 'Fertig — Profil gesendet. ✓',
+  'cap.audioListen': 'Hörst du Ton?',
+  'cap.yes': 'Ja',
+  'cap.no': 'Nein',
 };
 
 const fr: Record<Key, string> = {
@@ -331,6 +340,9 @@ const fr: Record<Key, string> = {
   'cap.error': 'Le test de compatibilité a échoué.',
   'cap.progress': 'Test… {{done}} / {{total}}',
   'cap.done': 'Terminé — profil envoyé. ✓',
+  'cap.audioListen': 'Entends-tu le son ?',
+  'cap.yes': 'Oui',
+  'cap.no': 'Non',
 };
 
 const es: Record<Key, string> = {
@@ -410,6 +422,9 @@ const es: Record<Key, string> = {
   'cap.error': 'La prueba de capacidad falló.',
   'cap.progress': 'Probando… {{done}} / {{total}}',
   'cap.done': 'Listo — perfil enviado. ✓',
+  'cap.audioListen': '¿Oyes el sonido?',
+  'cap.yes': 'Sí',
+  'cap.no': 'No',
 };
 
 const it: Record<Key, string> = {
@@ -489,6 +504,9 @@ const it: Record<Key, string> = {
   'cap.error': 'Il test delle capacità è fallito.',
   'cap.progress': 'Test… {{done}} / {{total}}',
   'cap.done': 'Fatto — profilo inviato. ✓',
+  'cap.audioListen': 'Senti l’audio?',
+  'cap.yes': 'Sì',
+  'cap.no': 'No',
 };
 
 const ja: Record<Key, string> = {
@@ -568,6 +586,9 @@ const ja: Record<Key, string> = {
   'cap.error': '能力テストに失敗しました。',
   'cap.progress': 'テスト中… {{done}} / {{total}}',
   'cap.done': '完了 — プロファイルを送信しました。✓',
+  'cap.audioListen': '音は聞こえますか？',
+  'cap.yes': 'はい',
+  'cap.no': 'いいえ',
 };
 
 export const STRINGS: Record<Lang, Record<Key, string>> = {en, hu, de, fr, es, it, ja};

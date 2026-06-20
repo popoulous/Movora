@@ -12,29 +12,33 @@ import {theme} from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Capability'>;
 
-type Phase = 'loading' | 'probing' | 'reporting' | 'done' | 'error';
+type Phase = 'loading' | 'probing' | 'audio' | 'reporting' | 'done' | 'error';
 
 const PROBE_TIMEOUT_MS = 8000;
 
-// Real playback probe: play each sample clip and record whether it decodes (and whether
-// audio is present), then report the profile so the backend's CompatibilitySelector knows
-// what this device can Direct Play. Mirrors apps/webos, adapted to react-native-video.
+// Real playback probe. Video/container samples auto-probe (does the clip decode?). Audio
+// codecs can't be measured on Android (a track may be listed yet play silent, e.g. DTS),
+// so — like apps/webos — the user confirms each audio clip by ear. Subtitles aren't probed
+// (the backend reads the explicit supports_* flags). Mirrors apps/webos.
 export default function CapabilityScreen({navigation}: Props): React.JSX.Element {
   const {api, config} = useDevice();
   const {t} = useI18n();
   const insets = useSafeAreaInsets();
   const [samples, setSamples] = useState<ServerSample[]>([]);
   const [idx, setIdx] = useState(0);
+  const [audioIdx, setAudioIdx] = useState(0);
   const [results, setResults] = useState<Record<string, CapabilityProbeOutcome>>({});
   const [phase, setPhase] = useState<Phase>('loading');
   const settled = useRef(false);
 
   const base = config?.serverUrl ?? '';
 
-  // Subtitle samples are plain .vtt/.srt/.ass files — they can't be "played" by the video
-  // element, and the backend derives subtitle support from the explicit supports_* flags
-  // below (not the probe), so we only video-probe the video/container/audio samples.
-  const probeable = useMemo(() => samples.filter(s => s.category !== 'subtitle'), [samples]);
+  // Auto-probed (video/container) vs ear-tested (audio); subtitles are display-only.
+  const probeable = useMemo(
+    () => samples.filter(s => s.category === 'video' || s.category === 'container'),
+    [samples],
+  );
+  const audioSamples = useMemo(() => samples.filter(s => s.category === 'audio'), [samples]);
 
   useEffect(() => {
     if (!api) {
@@ -51,10 +55,9 @@ export default function CapabilityScreen({navigation}: Props): React.JSX.Element
 
   const record = (sample: ServerSample, outcome: CapabilityProbeOutcome): void => {
     setResults(r => ({...r, [sample.id]: outcome}));
-    setIdx(i => i + 1);
   };
 
-  // Per-sample timeout: a clip that never loads or errors counts as not played.
+  // --- Auto-probe (video/container) ---------------------------------------
   useEffect(() => {
     if (phase !== 'probing' || idx >= probeable.length) {
       return undefined;
@@ -65,28 +68,10 @@ export default function CapabilityScreen({navigation}: Props): React.JSX.Element
       if (!settled.current) {
         settled.current = true;
         record(sample, emptyOutcome(false));
+        setIdx(i => i + 1);
       }
     }, PROBE_TIMEOUT_MS);
     return () => clearTimeout(timer);
-  }, [phase, idx, probeable]);
-
-  // All samples probed -> report to the backend.
-  useEffect(() => {
-    if (phase !== 'probing' || idx < probeable.length) {
-      return;
-    }
-    setPhase('reporting');
-    api
-      ?.reportCapabilities({
-        probe: results,
-        supports_ass: false, // ExoPlayer can't render ASS; we serve VTT instead
-        supports_srt: true,
-        supports_vtt: true,
-        user_agent: 'Movora Android',
-      })
-      .then(() => setPhase('done'))
-      .catch(() => setPhase('error'));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, idx, probeable]);
 
   const onLoad = (data: OnLoadData): void => {
@@ -102,6 +87,7 @@ export default function CapabilityScreen({navigation}: Props): React.JSX.Element
       audio_rms: null,
       cues: null,
     });
+    setIdx(i => i + 1);
   };
 
   const onError = (): void => {
@@ -110,9 +96,51 @@ export default function CapabilityScreen({navigation}: Props): React.JSX.Element
     }
     settled.current = true;
     record(probeable[idx], emptyOutcome(false));
+    setIdx(i => i + 1);
   };
 
-  const current = phase === 'probing' && idx < probeable.length ? probeable[idx] : null;
+  // Auto-probe done -> ear-test the audio clips (or report if there are none).
+  useEffect(() => {
+    if (phase === 'probing' && idx >= probeable.length) {
+      setPhase(audioSamples.length > 0 ? 'audio' : 'reporting');
+    }
+  }, [phase, idx, probeable.length, audioSamples.length]);
+
+  // --- Manual audio listen test -------------------------------------------
+  const answerAudio = (heard: boolean): void => {
+    const sample = audioSamples[audioIdx];
+    if (sample) {
+      record(sample, {played: true, video_bytes: 0, audio_bytes: 0, has_audio: heard, audio_rms: null, cues: null});
+    }
+    setAudioIdx(i => i + 1);
+  };
+
+  useEffect(() => {
+    if (phase === 'audio' && audioIdx >= audioSamples.length) {
+      setPhase('reporting');
+    }
+  }, [phase, audioIdx, audioSamples.length]);
+
+  // --- Report to the backend ----------------------------------------------
+  useEffect(() => {
+    if (phase !== 'reporting') {
+      return;
+    }
+    api
+      ?.reportCapabilities({
+        probe: results,
+        supports_ass: false, // ExoPlayer can't render ASS; we serve VTT instead
+        supports_srt: true,
+        supports_vtt: true,
+        user_agent: 'Movora Android',
+      })
+      .then(() => setPhase('done'))
+      .catch(() => setPhase('error'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
+
+  const probeClip = phase === 'probing' && idx < probeable.length ? probeable[idx] : null;
+  const audioClip = phase === 'audio' && audioIdx < audioSamples.length ? audioSamples[audioIdx] : null;
 
   return (
     <View style={[styles.root, {paddingTop: insets.top}]}>
@@ -133,24 +161,47 @@ export default function CapabilityScreen({navigation}: Props): React.JSX.Element
       )}
       {phase === 'done' && <Text style={styles.doneText}>{t('cap.done')}</Text>}
 
+      {/* Manual audio listen prompt */}
+      {audioClip && (
+        <View style={styles.audioPanel}>
+          <Text style={styles.audioCount}>
+            {audioIdx + 1} / {audioSamples.length}
+          </Text>
+          <Text style={styles.audioLabel}>{audioClip.label}</Text>
+          <Text style={styles.audioPrompt}>{t('cap.audioListen')}</Text>
+          <View style={styles.audioBtns}>
+            <Pressable style={[styles.audioBtn, styles.audioYes]} onPress={() => answerAudio(true)}>
+              <Text style={styles.audioBtnText}>{t('cap.yes')}</Text>
+            </Pressable>
+            <Pressable style={[styles.audioBtn, styles.audioNo]} onPress={() => answerAudio(false)}>
+              <Text style={styles.audioBtnText}>{t('cap.no')}</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
+
       <FlatList
         data={samples}
         keyExtractor={s => s.id}
         contentContainerStyle={styles.list}
         renderItem={({item}) => {
           const r = results[item.id];
-          // Subtitles aren't video-probed: ExoPlayer renders VTT/SRT natively, and we
-          // serve ASS converted to VTT — so all three are effectively supported.
           const mark =
             item.category === 'subtitle'
               ? item.id.startsWith('ass')
                 ? '→VTT'
                 : '✓'
-              : r === undefined
-                ? '·'
-                : r.played
-                  ? '✓'
-                  : '✗';
+              : item.category === 'audio'
+                ? r === undefined
+                  ? '·'
+                  : r.has_audio
+                    ? '✓'
+                    : '✗'
+                : r === undefined
+                  ? '·'
+                  : r.played
+                    ? '✓'
+                    : '✗';
           return (
             <View style={styles.row}>
               <Text style={styles.rowLabel} numberOfLines={1}>
@@ -162,16 +213,25 @@ export default function CapabilityScreen({navigation}: Props): React.JSX.Element
         }}
       />
 
-      {/* Off-screen prober: one clip at a time. */}
-      {current && (
+      {/* Off-screen prober: video/container muted (auto), audio unmuted (listen test). */}
+      {probeClip && (
         <Video
-          key={current.id}
-          source={{uri: sampleUrl(base, current.id)}}
+          key={probeClip.id}
+          source={{uri: sampleUrl(base, probeClip.id)}}
           style={styles.probe}
           muted
           paused={false}
           onLoad={onLoad}
           onError={onError}
+        />
+      )}
+      {audioClip && (
+        <Video
+          key={audioClip.id}
+          source={{uri: sampleUrl(base, audioClip.id)}}
+          style={styles.probe}
+          paused={false}
+          onError={() => answerAudio(false)}
         />
       )}
     </View>
@@ -192,6 +252,15 @@ const styles = StyleSheet.create({
   error: {color: '#f87171', fontSize: 15, marginTop: 12},
   progress: {color: theme.text, fontSize: 16, fontWeight: '600', marginBottom: 8},
   doneText: {color: '#34d399', fontSize: 16, fontWeight: '700', marginBottom: 8},
+  audioPanel: {backgroundColor: theme.surfaceStrong, borderRadius: theme.radius, borderWidth: 1, borderColor: theme.border, padding: 18, marginBottom: 14, alignItems: 'center'},
+  audioCount: {color: theme.muted, fontSize: 13, fontVariant: ['tabular-nums']},
+  audioLabel: {color: '#fff', fontSize: 18, fontWeight: '700', marginTop: 4, textAlign: 'center'},
+  audioPrompt: {color: theme.muted, fontSize: 15, marginTop: 6, marginBottom: 14},
+  audioBtns: {flexDirection: 'row', gap: 12},
+  audioBtn: {paddingVertical: 12, paddingHorizontal: 36, borderRadius: 999},
+  audioYes: {backgroundColor: theme.accent},
+  audioNo: {backgroundColor: 'rgba(255,255,255,0.1)', borderWidth: 1, borderColor: theme.border},
+  audioBtnText: {color: '#fff', fontWeight: '700', fontSize: 16},
   list: {paddingBottom: 24},
   row: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: theme.border},
   rowLabel: {color: theme.text, fontSize: 14, flexShrink: 1, marginRight: 12},
