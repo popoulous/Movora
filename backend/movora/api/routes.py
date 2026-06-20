@@ -21,6 +21,7 @@ from movora import settings_store
 from movora.access import accessible_library_ids, can_access_library
 from movora.api.deps import AdminDep, CurrentUserDep, RequestDeviceDep, SessionDep
 from movora.api.schemas import (
+    AudioTrackRead,
     CharacterRead,
     CollectionRead,
     EpisodeRead,
@@ -47,6 +48,7 @@ from movora.api.schemas import (
     WatchStateUpdate,
 )
 from movora.artifacts import assets_dir, media_file_artifact_paths, unlink_paths
+from movora.audio import audio_tracks, select_audio_file
 from movora.compat import (
     PlaybackSource,
     episode_device_ready,
@@ -624,6 +626,21 @@ def episode_playback(
     ):
         # Optimization is off and nothing is building -> not playable here (don't spin).
         status = "unavailable"
+    # Selectable audio tracks (only when the file is playable here and has more than one),
+    # so the web player can offer a server-side track switch via /stream?audio=N.
+    audio_meta = (
+        audio_tracks(source.path)
+        if status in ("direct", "ready") and source.path.is_file()
+        else []
+    )
+    audio_reads = (
+        [
+            AudioTrackRead(index=t.index, language=t.language, title=t.title, channels=t.channels)
+            for t in audio_meta
+        ]
+        if len(audio_meta) > 1
+        else []
+    )
     result = PlaybackInfo(
         media_file_id=media_file.id,
         stream_url=f"/api/episodes/{episode_id}/stream",
@@ -634,6 +651,7 @@ def episode_playback(
         prepare_eta_seconds=prepare_eta,
         # Subtitles/fonts come from the original, or the preserved assets if it was deleted.
         subtitle_tracks=_subtitle_tracks(episode_id, _subtitle_base(media_file, request)),
+        audio_tracks=audio_reads,
         fonts=_font_urls(episode_id, media_file, request),
         resume_position=resume_position(session, user, episode_id),
         intro_start=episode.intro_start,
@@ -678,13 +696,24 @@ def update_watch_state(
 
 @router.get("/episodes/{episode_id}/stream")
 def stream_episode(
-    episode_id: int, session: SessionDep, user: CurrentUserDep, device: RequestDeviceDep
+    episode_id: int,
+    session: SessionDep,
+    request: Request,
+    user: CurrentUserDep,
+    device: RequestDeviceDep,
+    audio: int | None = None,
 ) -> FileResponse:
     _require_episode_access(session, user, episode_id)
     media_file = _episode_media_file(session, episode_id)
     source = _playback_source(session, media_file, device)
     if not source.path.is_file():
         raise HTTPException(status_code=404, detail="media file is missing on disk")
+    # ?audio=N (N>0): serve a single-audio remux — the browser can't switch tracks itself.
+    if audio is not None and audio > 0:
+        cache = request.app.state.settings.database_path.parent / "audio"
+        remuxed = select_audio_file(source.path, audio, cache, media_file.id)
+        if remuxed is not None:
+            return FileResponse(remuxed, media_type="video/mp4")
     # FileResponse honours the Range header (HTTP 206) so the player can seek.
     return FileResponse(source.path, media_type=source.media_type)
 

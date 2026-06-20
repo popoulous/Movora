@@ -29,26 +29,9 @@ const SIZE_SCALE: Record<SubSize, number> = { s: 0.8, m: 1, l: 1.3 };
 
 const AUDIO_PREF_PREFIX = "movora_audio_pref_"; // + seriesId -> remembered audio language
 
-// HTMLMediaElement.audioTracks is non-standard and absent from the TS DOM lib (and from
-// Chromium). We feature-detect it: where a browser exposes it the selector works; elsewhere
-// it simply doesn't appear.
-interface AudioTrackLike {
-  language: string;
-  label: string;
-  enabled: boolean;
-}
-interface AudioTrackListLike {
-  readonly length: number;
-  [index: number]: AudioTrackLike;
-}
-interface AudioMeta {
-  language: string;
-  label: string;
-}
-function videoAudioTracks(video: HTMLVideoElement): AudioTrackListLike | null {
-  const at = (video as unknown as { audioTracks?: AudioTrackListLike }).audioTracks;
-  return at !== undefined && typeof at.length === "number" ? at : null;
-}
+// Desktop browsers don't expose HTMLMediaElement.audioTracks to scripts, so audio switching
+// is server-side: the player reloads /stream?audio=N and the backend serves a single-audio
+// remux. The track list comes from PlaybackInfo.audio_tracks.
 
 function loadSubStyle(): SubStyle {
   try {
@@ -206,58 +189,33 @@ export function PlayerPage(): JSX.Element {
     localStorage.setItem("subtitleStyle", JSON.stringify(next));
   };
 
-  const [audioTracks, setAudioTracks] = useState<AudioMeta[]>([]);
-  const [audioId, setAudioId] = useState(-1);
+  const audioTracks = playback?.audio_tracks ?? [];
+  const [audioIndex, setAudioIndex] = useState(0);
+  const resumeAt = useRef<number | null>(null); // keep the position across an audio reload
 
-  // Read the audio tracks (where the browser exposes them) and apply the series'
-  // remembered language. Runs on loadedmetadata, alongside resume().
-  const detectAudio = (): void => {
-    const video = videoRef.current;
-    if (video === null || playback === null) return;
-    const at = videoAudioTracks(video);
-    if (at === null || at.length === 0) {
-      setAudioTracks([]);
-      setAudioId(-1);
+  // Apply the series' remembered audio language when an episode loads.
+  useEffect(() => {
+    if (playback === null || playback.audio_tracks.length <= 1) {
+      setAudioIndex(0);
       return;
     }
-    const list: AudioMeta[] = [];
-    for (let i = 0; i < at.length; i += 1) {
-      list.push({ language: at[i].language || "", label: at[i].label || "" });
-    }
     const pref = localStorage.getItem(AUDIO_PREF_PREFIX + playback.series_id);
-    let picked = -1;
-    if (pref !== null) {
-      for (let i = 0; i < at.length; i += 1) {
-        if ((at[i].language || "") === pref) {
-          picked = i;
-          break;
-        }
-      }
-    }
-    if (picked === -1) {
-      for (let i = 0; i < at.length; i += 1) {
-        if (at[i].enabled) {
-          picked = i;
-          break;
-        }
-      }
-      if (picked === -1) picked = 0;
-    }
-    for (let i = 0; i < at.length; i += 1) at[i].enabled = i === picked;
-    setAudioTracks(list);
-    setAudioId(picked);
-  };
+    const match =
+      pref !== null ? playback.audio_tracks.find((track) => (track.language ?? "") === pref) : undefined;
+    setAudioIndex(match?.index ?? 0);
+  }, [playback?.media_file_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectAudio = (index: number): void => {
-    const video = videoRef.current;
-    if (video === null || playback === null) return;
-    const at = videoAudioTracks(video);
-    if (at === null || index >= at.length) return;
-    for (let i = 0; i < at.length; i += 1) at[i].enabled = i === index;
-    setAudioId(index);
+    if (playback === null) return;
+    if (videoRef.current !== null) resumeAt.current = videoRef.current.currentTime;
+    setAudioIndex(index);
     // Remember the language for this series so the next episode keeps the same track.
-    localStorage.setItem(AUDIO_PREF_PREFIX + playback.series_id, at[index].language || "");
+    const track = playback.audio_tracks.find((a) => a.index === index);
+    localStorage.setItem(AUDIO_PREF_PREFIX + playback.series_id, track?.language ?? "");
   };
+
+  const audioLabel = (track: { index: number; language: string | null; title: string | null }): string =>
+    track.title ?? track.language ?? `#${track.index + 1}`;
 
   // Every subtitle (ASS and SRT/VTT alike) is rendered by JASSUB as a canvas overlay; the
   // instance is recreated on track change and destroyed on cleanup.
@@ -377,14 +335,19 @@ export function PlayerPage(): JSX.Element {
               </div>
             ) : (
               <video
-                key={String(playback.direct_play)}
+                key={`${playback.direct_play}-${audioIndex}`}
                 ref={videoRef}
-                src={playback.stream_url}
+                src={audioIndex > 0 ? `${playback.stream_url}?audio=${audioIndex}` : playback.stream_url}
                 controls
                 autoPlay
                 onLoadedMetadata={() => {
-                  resume();
-                  detectAudio();
+                  // Keep the position when reloading for an audio switch; else resume saved.
+                  if (resumeAt.current !== null) {
+                    if (videoRef.current !== null) videoRef.current.currentTime = resumeAt.current;
+                    resumeAt.current = null;
+                  } else {
+                    resume();
+                  }
                 }}
                 onTimeUpdate={handleTimeUpdate}
                 onEnded={markWatched}
@@ -463,13 +426,13 @@ export function PlayerPage(): JSX.Element {
             {audioTracks.length > 1 && (
               <>
                 <span className="text-sm text-neutral-400">{t("player.audio")}:</span>
-                {audioTracks.map((track, i) => (
+                {audioTracks.map((track) => (
                   <button
-                    key={`${track.language}-${i}`}
-                    onClick={() => selectAudio(i)}
-                    className={chipClass(audioId === i)}
+                    key={track.index}
+                    onClick={() => selectAudio(track.index)}
+                    className={chipClass(audioIndex === track.index)}
                   >
-                    {track.label || track.language || `#${i + 1}`}
+                    {audioLabel(track)}
                   </button>
                 ))}
               </>

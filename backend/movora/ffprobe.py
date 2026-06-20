@@ -76,8 +76,14 @@ def probe_media(path: Path) -> dict[str, object] | None:
             info["video_codec"] = stream.get("codec_name")
             info["video_pix_fmt"] = stream.get("pix_fmt")
         elif kind == "audio":
+            tags = stream.get("tags") or {}
             audio_streams.append(
-                {"codec": stream.get("codec_name"), "channels": stream.get("channels")}
+                {
+                    "codec": stream.get("codec_name"),
+                    "channels": stream.get("channels"),
+                    "language": tags.get("language"),  # ISO 639-2, e.g. "eng"/"jpn"
+                    "title": tags.get("title"),  # e.g. "Commentary"
+                }
             )
             if info["audio_codec"] is None:
                 info["audio_codec"] = stream.get("codec_name")

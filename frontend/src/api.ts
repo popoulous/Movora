@@ -147,6 +147,13 @@ export interface SubtitleTrack {
   url: string;
 }
 
+export interface AudioTrack {
+  index: number;
+  language: string | null;
+  title: string | null;
+  channels: number | null;
+}
+
 export interface PlaybackInfo {
   media_file_id: number;
   stream_url: string;
@@ -156,6 +163,7 @@ export interface PlaybackInfo {
   prepare_progress: number;
   prepare_eta_seconds: number | null;
   subtitle_tracks: SubtitleTrack[];
+  audio_tracks: AudioTrack[];
   fonts: string[];
   resume_position: number;
   intro_start: number | null;

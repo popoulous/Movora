@@ -329,6 +329,13 @@ class SubtitleTrackRead(BaseModel):
     url: str
 
 
+class AudioTrackRead(BaseModel):
+    index: int  # 0-based audio-stream index (the N in /stream?audio=N and ffmpeg -map 0:a:N)
+    language: str | None = None
+    title: str | None = None
+    channels: int | None = None
+
+
 class PlaybackInfo(BaseModel):
     media_file_id: int
     stream_url: str
@@ -340,6 +347,7 @@ class PlaybackInfo(BaseModel):
     prepare_progress: int = 0  # 0-100, the on-demand optimize task's progress
     prepare_eta_seconds: int | None = None  # ETA of that task, when running
     subtitle_tracks: list[SubtitleTrackRead] = []
+    audio_tracks: list[AudioTrackRead] = []  # selectable audio tracks (server-side ?audio=N)
     fonts: list[str] = []  # URLs of embedded fonts for JASSUB
     resume_position: float = 0.0  # saved playback position to seek back to (seconds)
     # Intro/outro skip windows (seconds), when detected — drive the "Skip" buttons.
