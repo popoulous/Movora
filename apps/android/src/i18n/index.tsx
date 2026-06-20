@@ -50,8 +50,19 @@ const I18nContext = createContext<I18nValue>({
   t: key => key,
 });
 
+// The active UI language, mirrored to a module-level value so the (non-React) API client
+// can append ?lang= to read requests for localized metadata.
+let activeLang: Lang = 'en';
+export function getActiveLang(): Lang {
+  return activeLang;
+}
+
 export function I18nProvider({children}: {children: React.ReactNode}): React.JSX.Element {
   const [lang, setLangState] = useState<Lang>(deviceLang);
+
+  useEffect(() => {
+    activeLang = lang; // keep the API client's ?lang= in sync
+  }, [lang]);
 
   useEffect(() => {
     AsyncStorage.getItem(STORAGE_KEY)
