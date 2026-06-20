@@ -1,5 +1,10 @@
 // Types shared with the web frontend (keep in sync with frontend/src/api.ts).
 
+import { detectLang } from "../i18n";
+
+// The UI language, appended to read requests so the server localizes metadata.
+const langParam = (): string => `?lang=${detectLang()}`;
+
 export type LibraryKind = "anime" | "movie" | "series";
 export type WatchStatus = "not_started" | "watching" | "completed";
 export type TaskStatus = "pending" | "running" | "done" | "failed";
@@ -204,23 +209,25 @@ export function createApiClient(baseUrl: string, token: string | null) {
 
   return {
     getHome: () =>
-      fetch(`${base}/api/home`, { headers: authHeaders() }).then(asJson<HomeData>),
+      fetch(`${base}/api/home${langParam()}`, { headers: authHeaders() }).then(asJson<HomeData>),
 
     getLibraries: () =>
       fetch(`${base}/api/libraries`, { headers: authHeaders() }).then(asJson<Library[]>),
 
     listSeries: (libraryId: number) =>
-      fetch(`${base}/api/libraries/${libraryId}/series`, { headers: authHeaders() }).then(
-        asJson<SeriesSummary[]>,
-      ),
+      fetch(`${base}/api/libraries/${libraryId}/series${langParam()}`, {
+        headers: authHeaders(),
+      }).then(asJson<SeriesSummary[]>),
 
     getSeries: (id: number) =>
-      fetch(`${base}/api/series/${id}`, { headers: authHeaders() }).then(asJson<SeriesDetail>),
+      fetch(`${base}/api/series/${id}${langParam()}`, { headers: authHeaders() }).then(
+        asJson<SeriesDetail>,
+      ),
 
     getPlayback: (episodeId: number) =>
-      fetch(`${base}/api/episodes/${episodeId}/playback`, { headers: authHeaders() }).then(
-        asJson<PlaybackInfo>,
-      ),
+      fetch(`${base}/api/episodes/${episodeId}/playback${langParam()}`, {
+        headers: authHeaders(),
+      }).then(asJson<PlaybackInfo>),
 
     recordWatch: (episodeId: number, body: { position_seconds?: number; watched?: boolean }) =>
       fetch(`${base}/api/episodes/${episodeId}/watch-state`, {
