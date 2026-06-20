@@ -3,6 +3,7 @@ import React from 'react';
 import {Pressable, StyleSheet, Text, View} from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
+import {Brand} from '../components/Brand';
 import {useDevice} from '../context/DeviceContext';
 import {LANG_NAMES, LANGS, useI18n} from '../i18n';
 import type {RootStackParamList} from '../navigation';
@@ -17,6 +18,7 @@ export default function SettingsScreen({navigation}: Props): React.JSX.Element {
 
   return (
     <View style={[styles.root, {paddingTop: insets.top}]}>
+      <Brand size={24} style={styles.brand} />
       <View style={styles.header}>
         <Pressable onPress={() => navigation.goBack()} hitSlop={12}>
           <Text style={styles.back}>‹ {t('common.back')}</Text>
@@ -71,6 +73,7 @@ function Row({label, value}: {label: string; value: string}): React.JSX.Element 
 
 const styles = StyleSheet.create({
   root: {flex: 1, backgroundColor: theme.bg, padding: 20},
+  brand: {marginBottom: 16},
   header: {marginBottom: 20},
   back: {color: theme.muted, fontSize: 15, marginBottom: 6},
   title: {color: '#fff', fontSize: 26, fontWeight: '800'},

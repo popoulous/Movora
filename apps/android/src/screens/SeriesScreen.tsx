@@ -9,9 +9,12 @@ import {
   Text,
   View,
 } from 'react-native';
+import LinearGradient from 'react-native-linear-gradient';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
 import {mediaUrl, type Episode, type SeriesDetail} from '../api/client';
+import {GradientButton} from '../components/GradientButton';
+import {PosterCard} from './HomeScreen';
 import {useDevice} from '../context/DeviceContext';
 import {useI18n} from '../i18n';
 import type {RootStackParamList} from '../navigation';
@@ -59,39 +62,96 @@ export default function SeriesScreen({navigation, route}: Props): React.JSX.Elem
 
   const continueId = series.watch?.continue_episode_id ?? null;
   const firstId = episodes[0]?.id ?? null;
+  const playId = continueId ?? firstId;
+  const genres = (series.genres ?? '').split(',').map(g => g.trim()).filter(Boolean).slice(0, 5);
+  const metaBits = [series.year ? String(series.year) : null, series.format].filter(Boolean) as string[];
 
   const header = (
     <View>
-      {mediaUrl(base, token, series.banner_image_url) ? (
-        <Image source={{uri: mediaUrl(base, token, series.banner_image_url)}} style={styles.banner} />
-      ) : (
-        <View style={[styles.banner, styles.bannerEmpty]} />
-      )}
-      <View style={styles.meta}>
-        <Text style={styles.title}>{series.display_title ?? series.title}</Text>
-        <Text style={styles.sub}>
-          {[series.year, series.genres].filter(Boolean).join(' · ')}
+      <View style={styles.heroWrap}>
+        {mediaUrl(base, token, series.banner_image_url ?? series.cover_image_url) ? (
+          <Image
+            source={{uri: mediaUrl(base, token, series.banner_image_url ?? series.cover_image_url)}}
+            style={styles.banner}
+          />
+        ) : (
+          <View style={[styles.banner, styles.bannerEmpty]} />
+        )}
+        <LinearGradient
+          colors={['transparent', 'rgba(5,6,11,0.6)', theme.bg]}
+          style={styles.bannerScrim}
+        />
+        <Text style={styles.title} numberOfLines={2}>
+          {series.display_title ?? series.title}
         </Text>
+      </View>
+
+      <View style={styles.meta}>
+        <View style={styles.metaRow}>
+          {series.score != null && <Text style={styles.score}>★ {series.score.toFixed(1)}</Text>}
+          {metaBits.length > 0 && <Text style={styles.sub}>{metaBits.join(' · ')}</Text>}
+        </View>
+
+        {genres.length > 0 && (
+          <View style={styles.genres}>
+            {genres.map(g => (
+              <LinearGradient
+                key={g}
+                colors={theme.gradient}
+                start={{x: 0, y: 0}}
+                end={{x: 1, y: 1}}
+                style={styles.genreBorder}>
+                <View style={styles.genre}>
+                  <Text style={styles.genreText}>{g}</Text>
+                </View>
+              </LinearGradient>
+            ))}
+          </View>
+        )}
+
         {series.description ? (
           <Text style={styles.desc} numberOfLines={4}>
             {series.description}
           </Text>
         ) : null}
-        <View style={styles.actions}>
-          {(continueId ?? firstId) != null && (
-            <Pressable
-              style={styles.play}
-              onPress={() => navigation.navigate('Player', {episodeId: (continueId ?? firstId)!})}>
-              <Text style={styles.playText}>
-                {continueId ? t('series.continue') : t('series.play')}
-              </Text>
-            </Pressable>
-          )}
-        </View>
+
+        {playId != null && (
+          <View style={styles.actions}>
+            <GradientButton
+              label={continueId ? t('series.continue') : t('series.play')}
+              onPress={() => navigation.navigate('Player', {episodeId: playId})}
+            />
+          </View>
+        )}
+
         <Text style={styles.epHeader}>{t('series.episodes')}</Text>
       </View>
     </View>
   );
+
+  const footer =
+    series.recommendations.length > 0 ? (
+      <View style={styles.recs}>
+        <Text style={styles.epHeader}>{t('series.recommendations')}</Text>
+        <FlatList
+          horizontal
+          data={series.recommendations}
+          keyExtractor={(r, i) => `${r.target_series_id ?? 'x'}-${i}`}
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.recRow}
+          renderItem={({item}) => (
+            <PosterCard
+              title={item.title}
+              uri={mediaUrl(base, token, item.cover_image_url)}
+              onPress={() =>
+                item.target_series_id != null &&
+                navigation.push('Series', {seriesId: item.target_series_id})
+              }
+            />
+          )}
+        />
+      </View>
+    ) : null;
 
   return (
     <View style={[styles.root, {paddingTop: insets.top}]}>
@@ -102,6 +162,7 @@ export default function SeriesScreen({navigation, route}: Props): React.JSX.Elem
         data={episodes}
         keyExtractor={e => String(e.id)}
         ListHeaderComponent={header}
+        ListFooterComponent={footer}
         contentContainerStyle={styles.listContent}
         renderItem={({item}) => (
           <Pressable
@@ -137,22 +198,34 @@ const styles = StyleSheet.create({
   listContent: {paddingBottom: 40},
   center: {flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center'},
   error: {color: '#f87171', padding: 24},
-  backWrap: {paddingHorizontal: 20, paddingVertical: 8},
-  back: {color: theme.muted, fontSize: 15},
-  banner: {width: '100%', height: 200, backgroundColor: theme.surface},
+  backWrap: {paddingHorizontal: 20, paddingVertical: 8, zIndex: 2},
+  back: {color: '#fff', fontSize: 15},
+
+  heroWrap: {height: 230, justifyContent: 'flex-end'},
+  banner: {...StyleSheet.absoluteFillObject, width: '100%', height: '100%', backgroundColor: theme.surface},
   bannerEmpty: {borderBottomWidth: 1, borderColor: theme.border},
-  meta: {paddingHorizontal: 20, marginTop: 12},
-  title: {color: '#fff', fontSize: 26, fontWeight: '800'},
-  sub: {color: theme.muted, fontSize: 14, marginTop: 4},
+  bannerScrim: {...StyleSheet.absoluteFillObject},
+  title: {color: '#fff', fontSize: 26, fontWeight: '800', paddingHorizontal: 20, paddingBottom: 6},
+
+  meta: {paddingHorizontal: 20, marginTop: 8},
+  metaRow: {flexDirection: 'row', alignItems: 'center', gap: 12},
+  score: {color: '#fbbf24', fontSize: 15, fontWeight: '700'},
+  sub: {color: theme.muted, fontSize: 14},
+  genres: {flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12},
+  genreBorder: {borderRadius: 999, padding: 1.2},
+  genre: {backgroundColor: '#0C0E19', borderRadius: 999, paddingVertical: 5, paddingHorizontal: 12},
+  genreText: {color: theme.text, fontSize: 12, fontWeight: '600'},
   desc: {color: theme.text, fontSize: 14, marginTop: 12, lineHeight: 20},
   actions: {flexDirection: 'row', gap: 12, marginTop: 16},
-  play: {backgroundColor: theme.accent, borderRadius: 999, paddingVertical: 12, paddingHorizontal: 28},
-  playText: {color: '#fff', fontWeight: '700', fontSize: 16},
   epHeader: {color: theme.text, fontSize: 18, fontWeight: '700', marginTop: 22, marginBottom: 6},
+
   episode: {flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 8, gap: 12},
   thumb: {width: 120, height: 68, borderRadius: 8, backgroundColor: theme.surface},
   thumbEmpty: {borderWidth: 1, borderColor: theme.border},
   epText: {flex: 1},
   epTitle: {color: theme.text, fontSize: 15, fontWeight: '600'},
   epSub: {color: theme.muted, fontSize: 13, marginTop: 2},
+
+  recs: {marginTop: 8},
+  recRow: {paddingHorizontal: 20, gap: 12},
 });

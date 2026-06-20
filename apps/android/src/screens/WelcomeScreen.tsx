@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 
 import {createPairingClient} from '../api/client';
+import {Brand} from '../components/Brand';
 import {useDevice} from '../context/DeviceContext';
 import {discoverServer} from '../discovery';
 import {useI18n} from '../i18n';
@@ -108,7 +109,7 @@ export default function WelcomeScreen(_props: Props): React.JSX.Element {
 
   return (
     <View style={styles.root}>
-      <Text style={styles.logo}>MOVORA</Text>
+      <Brand size={44} style={styles.brand} />
 
       {phase === 'discovering' && (
         <View style={styles.card}>
@@ -178,7 +179,7 @@ export default function WelcomeScreen(_props: Props): React.JSX.Element {
 
 const styles = StyleSheet.create({
   root: {flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center', padding: 24},
-  logo: {fontSize: 34, fontWeight: '800', letterSpacing: 6, color: '#fff', marginBottom: 28},
+  brand: {marginBottom: 28},
   card: {width: '100%', maxWidth: 480, backgroundColor: theme.surface, borderRadius: theme.radius, padding: 20, borderWidth: 1, borderColor: theme.border},
   label: {color: theme.muted, fontSize: 14, marginBottom: 6, marginTop: 10},
   input: {backgroundColor: 'rgba(255,255,255,0.06)', color: theme.text, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16},
