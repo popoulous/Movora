@@ -60,7 +60,7 @@ export default function HomeScreen({navigation}: Props): React.JSX.Element {
   }
 
   return (
-    <ScrollView style={styles.root} contentContainerStyle={{paddingTop: insets.top + 12, paddingBottom: 40}}>
+    <ScrollView style={styles.root} contentContainerStyle={[styles.scrollContent, {paddingTop: insets.top + 12}]}>
       <View style={styles.header}>
         <Text style={styles.brand}>MOVORA</Text>
         <Pressable onPress={() => navigation.navigate('Settings')} hitSlop={12}>
@@ -163,6 +163,7 @@ const POSTER_W = 130;
 
 const styles = StyleSheet.create({
   root: {flex: 1, backgroundColor: theme.bg},
+  scrollContent: {paddingBottom: 40},
   center: {flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center'},
   error: {color: '#f87171', padding: 24},
   header: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, marginBottom: 8},

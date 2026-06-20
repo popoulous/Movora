@@ -102,7 +102,7 @@ export default function SeriesScreen({navigation, route}: Props): React.JSX.Elem
         data={episodes}
         keyExtractor={e => String(e.id)}
         ListHeaderComponent={header}
-        contentContainerStyle={{paddingBottom: 40}}
+        contentContainerStyle={styles.listContent}
         renderItem={({item}) => (
           <Pressable
             style={styles.episode}
@@ -134,6 +134,7 @@ export default function SeriesScreen({navigation, route}: Props): React.JSX.Elem
 
 const styles = StyleSheet.create({
   root: {flex: 1, backgroundColor: theme.bg},
+  listContent: {paddingBottom: 40},
   center: {flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center'},
   error: {color: '#f87171', padding: 24},
   backWrap: {paddingHorizontal: 20, paddingVertical: 8},

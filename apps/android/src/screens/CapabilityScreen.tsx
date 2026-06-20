@@ -56,13 +56,13 @@ export default function CapabilityScreen({navigation}: Props): React.JSX.Element
     }
     settled.current = false;
     const sample = samples[idx];
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       if (!settled.current) {
         settled.current = true;
         record(sample, emptyOutcome(false));
       }
     }, PROBE_TIMEOUT_MS);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, [phase, idx, samples]);
 
   // All samples probed -> report to the backend.
