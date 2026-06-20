@@ -13,6 +13,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from movora.artifacts import remove_media_file_artifacts
 from movora.db.models import (
     Episode,
     Library,
@@ -44,6 +45,7 @@ def scan_library(
     library: Library,
     title_prober: TitleProber | None = None,
     on_progress: ProgressFn | None = None,
+    data_dir: Path | None = None,
 ) -> list[int]:
     """Index new media files under the library. Returns the ids of the files added.
 
@@ -96,17 +98,19 @@ def scan_library(
         session.add(media_file)
         new_files.append(media_file)
     session.flush()
-    _prune_missing(session, library.id, root, {str(path) for path in candidates})
+    _prune_missing(session, library.id, root, {str(path) for path in candidates}, data_dir)
     _prune_empty(session, library.id)
     session.commit()
     return [media_file.id for media_file in new_files]
 
 
 def _prune_missing(
-    session: Session, library_id: int, root: Path, on_disk: set[str]
+    session: Session, library_id: int, root: Path, on_disk: set[str], data_dir: Path | None
 ) -> None:
     """Drop media files that have vanished from disk (deleted/renamed) so stale entries
-    don't linger, then ``_prune_empty`` clears the emptied episodes/seasons/series.
+    don't linger, then ``_prune_empty`` clears the emptied episodes/seasons/series. The
+    file's generated artifacts (normalized mp4, device variants, thumbnail, preserved
+    assets) are deleted too so nothing is left behind as garbage.
 
     Safety: if the library root is unreachable or no media was found at all, the drive is
     almost certainly just offline (e.g. an unplugged external/network disk) rather than
@@ -122,6 +126,8 @@ def _prune_missing(
         .where(Series.library_id == library_id)
     ):
         if media_file.path not in on_disk and not Path(media_file.path).is_file():
+            if data_dir is not None:
+                remove_media_file_artifacts(media_file, data_dir)
             session.delete(media_file)
     session.flush()
 

@@ -640,7 +640,7 @@ def _process_task(
             elif task.type == TaskType.PREPARE_VARIANT:
                 _run_prepare_variant_task(session, task, output_dir)
             elif task.type == TaskType.SCAN:
-                _run_scan_task(session, task)
+                _run_scan_task(session, task, output_dir)
             elif task.type == TaskType.METADATA:
                 _run_metadata_task(session, task, registry)
             elif task.type == TaskType.THUMBNAIL:
@@ -816,13 +816,16 @@ def _delete_original(session: Session, media_file: MediaFile, assets_dir: Path) 
         session.rollback()
 
 
-def _run_scan_task(session: Session, task: Task) -> None:
+def _run_scan_task(session: Session, task: Task, output_dir: Path) -> None:
     library = task.library
     if library is None:
         _finish(session, task, message="library gone")
         return
     _start(session, task)
-    new_ids = scan_library(session, library, on_progress=_counter(session, task))
+    # output_dir is .../normalized; its parent is the data dir holding variants/assets/thumbs.
+    new_ids = scan_library(
+        session, library, on_progress=_counter(session, task), data_dir=output_dir.parent
+    )
     # Chain: refresh metadata, extract missing thumbnails, normalize new files (if auto-on).
     enqueue_metadata(session, library.id)
     enqueue_thumbnail(session, library.id)

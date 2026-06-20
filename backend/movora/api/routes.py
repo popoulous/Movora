@@ -46,6 +46,7 @@ from movora.api.schemas import (
     TaskRead,
     WatchStateUpdate,
 )
+from movora.artifacts import assets_dir, media_file_artifact_paths, unlink_paths
 from movora.compat import (
     PlaybackSource,
     episode_device_ready,
@@ -176,22 +177,20 @@ def delete_library(
         )
     )
     media_file_ids = {media_file.id for media_file in media_files}
+    data_dir = _normalized_dir(request).parent
+    # Gather every generated path (incl. device variants) while the rows are still attached.
+    artifacts: list[Path] = []
+    asset_dirs: list[Path] = []
+    for media_file in media_files:
+        artifacts.extend(media_file_artifact_paths(media_file, data_dir))
+        asset_dirs.append(assets_dir(media_file.id, data_dir))
     pids = transcode_pids(session, media_file_ids)  # read pids before deleting the tasks
     session.delete(library)  # cascade-delete rows FIRST so the worker won't retry
     session.commit()
-    cancel_transcodes(media_file_ids, pids)  # then kill the ffmpeg(s)
-    for media_file in media_files:
-        _remove_generated(media_file, request)
-
-
-def _remove_generated(media_file: MediaFile, request: Request) -> None:
-    normalized_dir = _normalized_dir(request)
-    _unlink_quiet(normalized_dir / f"{media_file.id}.mp4")
-    _unlink_quiet(normalized_dir / f"{media_file.id}.part.mp4")
-    _unlink_quiet(_thumbnails_dir(request) / f"{media_file.id}.jpg")
-    assets = _assets_dir(request, media_file.id)
-    if assets.is_dir():
-        shutil.rmtree(assets, ignore_errors=True)
+    cancel_transcodes(media_file_ids, pids)  # then kill the ffmpeg(s) so the files unlock
+    unlink_paths(artifacts)
+    for directory in asset_dirs:
+        shutil.rmtree(directory, ignore_errors=True)
 
 
 def _unlink_quiet(path: Path) -> None:
@@ -787,10 +786,6 @@ def _run_worker(request: Request, background: BackgroundTasks) -> None:
 
 def _normalized_dir(request: Request) -> Path:
     return Path(request.app.state.settings.database_path.parent) / "normalized"
-
-
-def _thumbnails_dir(request: Request) -> Path:
-    return Path(request.app.state.settings.database_path.parent) / "thumbnails"
 
 
 def _device_profile(device: Device | None) -> CapabilityProfile | None:

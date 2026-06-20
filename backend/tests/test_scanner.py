@@ -3,9 +3,70 @@ from pathlib import Path
 from sqlalchemy import select
 
 from movora.db.base import create_db_engine, create_session_factory, init_db
-from movora.db.models import Episode, Library, LibraryKind, MediaFile, Season, Series, WatchState
+from movora.db.models import (
+    Episode,
+    Library,
+    LibraryKind,
+    MediaFile,
+    MediaVariant,
+    Season,
+    Series,
+    VariantStatus,
+    WatchState,
+)
 from movora.scanner import scan_library
 from movora.watch import current_user, record_watch
+
+
+def test_rescan_removes_generated_artifacts(tmp_path: Path) -> None:
+    """A pruned media file takes its generated files with it (no leftover garbage)."""
+    root = tmp_path / "lib"
+    root.mkdir()
+    keep = root / "Show - 01.mkv"
+    gone = root / "Show - 02.mkv"
+    keep.write_bytes(b"")
+    gone.write_bytes(b"")
+    data_dir = tmp_path / "data"
+
+    engine = create_db_engine(":memory:")
+    init_db(engine)
+    factory = create_session_factory(engine)
+    with factory() as session:
+        library = Library(path=str(root), name="A", kind=LibraryKind.SERIES)
+        session.add(library)
+        session.commit()
+        ids = scan_library(session, library, title_prober=lambda _p: None, data_dir=data_dir)
+        assert len(ids) == 2
+        target = session.scalar(select(MediaFile).where(MediaFile.path == str(gone)))
+        assert target is not None
+
+        # Lay down its generated artifacts and point the DB at them.
+        norm = data_dir / "normalized" / f"{target.id}.mp4"
+        var = data_dir / "variants" / f"{target.id}-mp4-h264-aac.mp4"
+        thumb = data_dir / "thumbnails" / f"{target.id}.jpg"
+        adir = data_dir / "assets" / str(target.id)
+        for path in (norm, var, thumb):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"x")
+        adir.mkdir(parents=True, exist_ok=True)
+        (adir / "sub.vtt").write_bytes(b"x")
+        target.normalized_path = str(norm)
+        target.episode.thumbnail_path = str(thumb)
+        session.add(
+            MediaVariant(
+                media_file_id=target.id, recipe_id="mp4-h264-aac@1", path=str(var),
+                status=VariantStatus.READY, quality_score=80,
+            )
+        )
+        session.commit()
+
+        gone.unlink()  # the source disappears; one file remains so prune isn't blocked
+        scan_library(session, library, title_prober=lambda _p: None, data_dir=data_dir)
+
+        assert session.scalar(select(MediaFile).where(MediaFile.path == str(gone))) is None
+        assert not norm.exists() and not var.exists() and not thumb.exists()
+        assert not adir.exists()
+        assert session.scalar(select(MediaFile).where(MediaFile.path == str(keep))) is not None
 
 
 def _library_with_files(tmp_path: Path) -> Path:
