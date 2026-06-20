@@ -107,9 +107,9 @@ function Shell({
           overflowY: "auto",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "0.8rem", marginBottom: "2.2rem" }}>
-          <img src={logo} alt="" style={{ width: 56, height: 56 }} />
-          <span style={{ fontSize: "2.4rem", fontWeight: 800, letterSpacing: "0.12em", ...gradientText }}>MOVORA</span>
+        <div style={{ display: "flex", alignItems: "center", gap: "1.1rem", marginBottom: "2.2rem", padding: "0.4rem 0.2rem" }}>
+          <img src={logo} alt="" style={{ width: 56, height: 56, marginRight: "0.2rem" }} />
+          <span style={{ fontSize: "2.2rem", fontWeight: 800, letterSpacing: "0.14em", color: "#fff", lineHeight: 1.25 }}>MOVORA</span>
         </div>
         <div
           style={{
@@ -298,7 +298,18 @@ export default function WelcomeView({ onDone }: Props): React.JSX.Element {
   if (step === "pairing" && pairInfo) {
     return (
       <Shell title={t("welcome.pairingTitle")} subtitle={t("welcome.pairingSubtitle")}>
-        <div style={{ fontSize: "4.2rem", letterSpacing: "0.35em", fontWeight: 800, margin: "1.6rem 0 2rem", ...gradientText }}>
+        <div
+          style={{
+            display: "inline-block",
+            fontSize: "4rem",
+            letterSpacing: "0.3em",
+            fontWeight: 800,
+            lineHeight: 1.4,
+            padding: "0.15em 0.1em 0.15em 0.3em", // room so background-clip text isn't cropped
+            margin: "1.4rem 0 1.8rem",
+            ...gradientText,
+          }}
+        >
           {pairInfo.code}
         </div>
         <Spinner component="div" />
