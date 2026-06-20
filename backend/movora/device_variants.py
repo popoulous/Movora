@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import threading
 from pathlib import Path
 
 from sqlalchemy import select
@@ -34,6 +35,13 @@ from movora.normalize import (
     start_workers,
 )
 from movora.recipes import DEFAULT_RECIPE, recipe_id_for
+
+# episode_playback schedules these two entry points as a BackgroundTask on every poll.
+# Without a lock, concurrent polls each run the "is a task already active?" check in their
+# own session before the others commit, so duplicate NORMALIZE/PREPARE_VARIANT tasks slip
+# through (e.g. 3 tasks for one prefetch target). Serializing the decide-enqueue-commit
+# section makes each scheduler see the previous one's committed tasks, so the dedup holds.
+_ENQUEUE_LOCK = threading.Lock()
 
 
 def _ordered_episodes(series: Series) -> list[Episode]:
@@ -145,7 +153,7 @@ def run_device_prefetch(
     """Background entry point: build the current episode's variant on demand + prefetch the
     next few, then rotate (if enabled). Gated by the optimize-on-play setting."""
     queued = False
-    with session_factory() as session:
+    with _ENQUEUE_LOCK, session_factory() as session:
         if not settings_store.get_bool(session, settings_store.DEVICE_PREFETCH):
             return  # optimization on playback is off
         device = session.get(Device, device_id)
@@ -221,7 +229,7 @@ def prepare_browser_normalize(
     the current episode at top priority (you're waiting), the look-ahead as prefetch.
     """
     queued = False
-    with session_factory() as session:
+    with _ENQUEUE_LOCK, session_factory() as session:
         episode = session.get(Episode, episode_id)
         if episode is None:
             return

@@ -33,6 +33,14 @@ TV = CapabilityProfile(
 # A Hi10P source the TV can't Direct Play -> always needs a variant.
 HI10P = {"video_codec": "h264", "video_pix_fmt": "yuv420p10le", "audio_codec": "aac",
          "audio_channels": 2}
+# Hi10P video (neither profile plays 10-bit -> both transcode) + AC-3 5.1 audio, so the
+# audio branch diverges by profile: one copies AC-3, the other falls back to stereo AAC.
+HI10P_AC3 = {"video_codec": "h264", "video_pix_fmt": "yuv420p10le", "audio_codec": "ac3",
+             "audio_channels": 6}
+PROFILE_AC3 = CapabilityProfile(video_codecs=("h264",), audio_codecs=("aac", "ac3"),
+                                containers=("mp4", "mkv"))
+PROFILE_AAC = CapabilityProfile(video_codecs=("h264",), audio_codecs=("aac",),
+                                containers=("mp4", "mkv"))
 
 
 def _factory() -> object:
@@ -76,6 +84,32 @@ def test_ensure_queues_current_and_ahead(tmp_path: Path, monkeypatch: pytest.Mon
         assert all(task.recipe_id == "mp4-h264-aac@1" for task in tasks)
         # Idempotent: a second sweep with the same in-flight tasks queues nothing new.
         assert ensure_device_variants(session, TV, device.id, eps[0], ahead=2) is False
+
+
+def test_distinct_profiles_get_separate_variants(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two devices needing different formats for the same file get separate variants
+    (keyed by recipe) — one device's variant never overwrites the other's. Two devices
+    needing the same format share one variant (deduped)."""
+    monkeypatch.setattr("movora.device_variants.probe_media", lambda _p: dict(HI10P_AC3))
+    with _factory()() as session:  # type: ignore[operator]
+        device_a, _series, eps = _build(session, tmp_path, 1)
+        device_b = Device(user=device_a.user, name="Phone", token_hash="t2")
+        session.add(device_b)
+        session.commit()
+        ep = eps[0]
+        # AC-3-capable device copies AC-3; AAC-only device transcodes to stereo AAC.
+        assert ensure_device_variants(session, PROFILE_AC3, device_a.id, ep, ahead=0) is True
+        assert ensure_device_variants(session, PROFILE_AAC, device_b.id, ep, ahead=0) is True
+        tasks = list(
+            session.scalars(select(Task).where(Task.type == TaskType.PREPARE_VARIANT))
+        )
+        assert len(tasks) == 2  # one per format
+        assert len({task.recipe_id for task in tasks}) == 2  # distinct recipes, no overwrite
+        # Re-running the same profile shares the in-flight variant — nothing new queued.
+        assert ensure_device_variants(session, PROFILE_AC3, device_a.id, ep, ahead=0) is False
+        assert len(list(session.scalars(select(Task.id)))) == 2
 
 
 def test_retention_keeps_window_and_web_variant(tmp_path: Path) -> None:
