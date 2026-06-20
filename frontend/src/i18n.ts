@@ -75,6 +75,9 @@ const en = {
     metadataLanguage: "Metadata language",
     metadataLanguageDesc:
       "Language for film/series titles and descriptions (TMDB). Helps match localised titles.",
+    metadataExtraLanguages: "Also fetch these languages",
+    metadataExtraLanguagesDesc:
+      "Extra languages to download metadata in, so each app shows titles in its own language. The base language above is used for matching.",
     playbackTitle: "Playback optimization",
     autoNormalize: "Auto-optimize new media on scan",
     autoNormalizeDesc:
@@ -368,6 +371,9 @@ const hu: typeof en = {
     metadataLanguage: "Metaadat nyelve",
     metadataLanguageDesc:
       "A film/sorozat címek és leírások nyelve (TMDB). A lokalizált címek matchelését segíti.",
+    metadataExtraLanguages: "Ezeket a nyelveket is töltsd le",
+    metadataExtraLanguagesDesc:
+      "További nyelvek, amelyeken letöltjük a metaadatot, hogy minden app a saját nyelvén mutassa a címeket. A matcheléshez a fenti alapnyelv használatos.",
     playbackTitle: "Lejátszás-optimalizálás",
     autoNormalize: "Új média automatikus optimalizálása szkenneléskor",
     autoNormalizeDesc:

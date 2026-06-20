@@ -1,3 +1,8 @@
+import i18n from "./i18n";
+
+// The UI language (2-letter), appended to read requests so the server localizes metadata.
+const uiLang = (): string => (i18n.language || "en").slice(0, 2);
+
 export type LibraryKind = "anime" | "movie" | "series";
 
 export interface Library {
@@ -185,6 +190,7 @@ export interface ServerSettings {
   auto_detect_intro: boolean;
   auto_scan: boolean;
   tmdb_language: string;
+  metadata_extra_languages: string;
   device_prefetch: boolean;
   device_retention: boolean;
   prepare_ahead_count: number;
@@ -332,7 +338,7 @@ export const api = {
       body: JSON.stringify({ library_ids: libraryIds }),
     }).then(asJson<User>),
   search: (q: string): Promise<SearchResult[]> =>
-    fetch(`/api/search?q=${encodeURIComponent(q)}`).then(asJson<SearchResult[]>),
+    fetch(`/api/search?q=${encodeURIComponent(q)}&lang=${uiLang()}`).then(asJson<SearchResult[]>),
   listLibraries: (): Promise<Library[]> => fetch("/api/libraries").then(asJson<Library[]>),
   createLibrary: (body: { path: string; name: string; kind: LibraryKind }): Promise<Library> =>
     fetch("/api/libraries", {
@@ -357,12 +363,12 @@ export const api = {
       }
     }),
   listSeries: (libraryId: number): Promise<SeriesSummary[]> =>
-    fetch(`/api/libraries/${libraryId}/series`).then(asJson<SeriesSummary[]>),
+    fetch(`/api/libraries/${libraryId}/series?lang=${uiLang()}`).then(asJson<SeriesSummary[]>),
   getSeries: (id: number): Promise<SeriesDetail> =>
-    fetch(`/api/series/${id}`).then(asJson<SeriesDetail>),
-  getHome: (): Promise<HomeData> => fetch("/api/home").then(asJson<HomeData>),
+    fetch(`/api/series/${id}?lang=${uiLang()}`).then(asJson<SeriesDetail>),
+  getHome: (): Promise<HomeData> => fetch(`/api/home?lang=${uiLang()}`).then(asJson<HomeData>),
   getPlayback: (episodeId: number): Promise<PlaybackInfo> =>
-    fetch(`/api/episodes/${episodeId}/playback`).then(asJson<PlaybackInfo>),
+    fetch(`/api/episodes/${episodeId}/playback?lang=${uiLang()}`).then(asJson<PlaybackInfo>),
   recordWatch: (
     episodeId: number,
     body: { position_seconds?: number; watched?: boolean },

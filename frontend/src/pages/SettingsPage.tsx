@@ -24,6 +24,17 @@ const LANGUAGES: [string, string][] = [
   ["ja-JP", "日本語"],
 ];
 
+// The shipped client languages (2-letter), for the extra-metadata multi-select.
+const EXTRA_LANGUAGES: [string, string][] = [
+  ["hu", "Magyar"],
+  ["en", "English"],
+  ["de", "Deutsch"],
+  ["fr", "Français"],
+  ["es", "Español"],
+  ["it", "Italiano"],
+  ["ja", "日本語"],
+];
+
 function Toggle({
   label,
   description,
@@ -169,6 +180,23 @@ export function SettingsPage(): JSX.Element {
     api.updateSettings({ tmdb_language: value }).then(setSettings).catch(() => undefined);
   };
 
+  const toggleExtraLang = (code: string): void => {
+    if (settings === null) return;
+    const set = new Set(
+      settings.metadata_extra_languages.split(",").map((s) => s.trim()).filter(Boolean),
+    );
+    if (set.has(code)) set.delete(code);
+    else set.add(code);
+    const value = [...set].join(",");
+    setSettings({ ...settings, metadata_extra_languages: value });
+    api.updateSettings({ metadata_extra_languages: value }).then(setSettings).catch(() => undefined);
+  };
+
+  const extraLangs = (settings?.metadata_extra_languages ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
   const normalizeAll = (): void => {
     setSweeping(true);
     api.normalizeAll().catch(() => undefined);
@@ -312,6 +340,32 @@ export function SettingsPage(): JSX.Element {
                 </option>
               ))}
             </select>
+          </div>
+          <div className="rounded-xl bg-white/[0.03] p-4 ring-1 ring-white/10">
+            <span className="block text-sm font-medium text-white">
+              {t("settings.metadataExtraLanguages")}
+            </span>
+            <span className="mt-0.5 block text-xs leading-relaxed text-neutral-400">
+              {t("settings.metadataExtraLanguagesDesc")}
+            </span>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {EXTRA_LANGUAGES.map(([code, name]) => {
+                const on = extraLangs.includes(code);
+                return (
+                  <button
+                    key={code}
+                    onClick={() => toggleExtraLang(code)}
+                    className={`rounded-full px-3 py-1.5 text-sm font-medium ring-1 transition ${
+                      on
+                        ? "bg-gradient-to-r from-[#7A4DFF] to-[#EC4899] text-white ring-transparent"
+                        : "bg-white/[0.06] text-neutral-300 ring-white/10 hover:bg-white/[0.1]"
+                    }`}
+                  >
+                    {name}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </section>
       )}
