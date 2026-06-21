@@ -60,6 +60,7 @@ from movora.scanner import scan_library
 from movora.streaming import DirectPlayStrategy
 from movora.subtitles import (
     discover_tracks_cached,
+    embedded_extraction_pending,
     load_subtitle,
     preserve_embedded_assets,
 )
@@ -390,12 +391,49 @@ def enqueue_thumbnail(session: Session, library_id: int) -> None:
         session.commit()
 
 
-def enqueue_subtitles(session: Session, library_id: int) -> None:
-    if not _has_active_library_task(session, library_id, TaskType.SUBTITLES):
+def enqueue_subtitles(session: Session, library_id: int, data_dir: Path) -> int:
+    """Queue per-episode embedded-subtitle pre-extraction so the Tasks view tracks progress
+    file by file (like intro detection). Only episodes that still need work are queued: a file
+    with no embedded subtitles, or one whose tracks are all cached, is skipped — so a rescan
+    re-queues nothing already warmed. One row per episode."""
+    queued = 0
+    episodes = session.scalars(
+        select(Episode)
+        .join(Episode.season)
+        .join(Season.series)
+        .where(Series.library_id == library_id)
+        .options(selectinload(Episode.media_files))
+    )
+    for episode in episodes:
+        if not episode.media_files:
+            continue
+        media_file = episode.media_files[0]
+        if media_file.original_deleted:  # subtitles already preserved at delete time
+            continue
+        path = Path(media_file.path)
+        if not path.is_file():  # offline disk — skip, not an error
+            continue
+        if not embedded_extraction_pending(path, assets_dir(media_file.id, data_dir)):
+            continue  # no embedded subtitles, or all already cached
+        active = session.scalars(
+            select(Task).where(
+                Task.type == TaskType.SUBTITLES,
+                Task.media_file_id == media_file.id,
+                Task.status.in_(_ACTIVE),
+            )
+        ).first()
+        if active is not None:  # already in flight — don't double-queue
+            continue
         session.add(
-            Task(type=TaskType.SUBTITLES, library_id=library_id, priority=PRIORITY_SUBTITLES)
+            Task(
+                type=TaskType.SUBTITLES,
+                media_file_id=media_file.id,
+                priority=PRIORITY_SUBTITLES,
+            )
         )
-        session.commit()
+        queued += 1
+    session.commit()
+    return queued
 
 
 def enqueue_intro(session: Session, library_id: int) -> int:
@@ -845,7 +883,9 @@ def _run_scan_task(session: Session, task: Task, output_dir: Path) -> None:
     # Chain: refresh metadata, extract missing thumbnails, normalize new files (if auto-on).
     enqueue_metadata(session, library.id)
     enqueue_thumbnail(session, library.id)
-    enqueue_subtitles(session, library.id)  # warm the embedded-subtitle cache off the request path
+    # Warm the embedded-subtitle cache off the request path, per episode (output_dir is
+    # .../normalized; its parent is the data dir holding assets/).
+    enqueue_subtitles(session, library.id, output_dir.parent)
     if settings_store.get_bool(session, settings_store.AUTO_DETECT_INTRO):
         enqueue_intro(session, library.id)
     if new_ids and settings_store.get_bool(session, settings_store.AUTO_NORMALIZE):
@@ -913,46 +953,33 @@ def _run_thumbnail_task(session: Session, task: Task, output_dir: Path) -> None:
 
 
 def _run_subtitles_task(session: Session, task: Task, output_dir: Path) -> None:
-    """Pre-extract embedded subtitle tracks so the first playback hits a warm cache.
+    """Pre-extract one episode's embedded subtitle tracks so the first playback hits a warm cache.
 
-    Lazily demuxing on the first subtitle request (load_subtitle on the request path)
-    made the web/TV player stutter — this warms the same assets/<id>/embedded.* cache
-    in the background instead. Best-effort: a bad track never fails the task.
+    Lazily demuxing on the first subtitle request (load_subtitle on the request path) made the
+    web/TV player stutter — this warms the same assets/<id>/embedded.* cache in the background
+    instead, one episode per task so the Tasks view tracks progress. Best-effort: a bad track
+    never fails the task.
     """
-    library = task.library
-    if library is None:
-        _finish(session, task, message="library gone")
+    media_file = task.media_file
+    if media_file is None:
+        _finish(session, task, message="file gone")
         return
     _start(session, task)
-    data_dir = output_dir.parent  # .../normalized -> data dir holding assets/
-    media_files = list(
-        session.scalars(
-            select(MediaFile)
-            .join(MediaFile.episode)
-            .join(Episode.season)
-            .join(Season.series)
-            .where(Series.library_id == library.id)
-        )
-    )
-    progress = _counter(session, task)
+    path = Path(media_file.path)
+    if media_file.original_deleted or not path.is_file():
+        _finish(session, task, message="source gone")
+        return
+    cache_dir = assets_dir(media_file.id, output_dir.parent)  # .../normalized -> data dir
     warmed = 0
-    for index, media_file in enumerate(media_files, start=1):
-        progress(index, len(media_files))
-        if media_file.original_deleted:  # subtitles already preserved at delete time
+    for track in discover_tracks_cached(path):
+        if not track.id.startswith("embedded:"):  # sidecars need no demux
             continue
-        path = Path(media_file.path)
-        if not path.is_file():  # offline disk — skip, not an error
+        try:
+            content, _ = load_subtitle(path, track.id, cache_dir=cache_dir)
+        except Exception:  # one bad track must not fail the whole task
             continue
-        cache_dir = assets_dir(media_file.id, data_dir)
-        for track in discover_tracks_cached(path):
-            if not track.id.startswith("embedded:"):  # sidecars need no demux
-                continue
-            try:
-                content, _ = load_subtitle(path, track.id, cache_dir=cache_dir)
-            except Exception:  # one bad track must not fail the whole task
-                continue
-            if content.strip():
-                warmed += 1
+        if content.strip():
+            warmed += 1
     _finish(session, task, message=f"{warmed} subtitles")
 
 

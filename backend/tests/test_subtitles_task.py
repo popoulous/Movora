@@ -1,12 +1,15 @@
-"""The SUBTITLES task warms the embedded-subtitle cache off the request path.
+"""Per-episode embedded-subtitle pre-extraction.
 
-The task is best-effort: it demuxes only embedded tracks (sidecars need none), skips
-files whose original is gone, and a single failing track never fails the whole task.
+``enqueue_subtitles`` queues one task per episode that still needs work (so the Tasks view
+tracks progress file by file), and ``_run_subtitles_task`` warms a single episode's cache.
+Both are best-effort: deleted/offline originals and sidecars are skipped, and a single failing
+track never fails the task.
 """
 
 from pathlib import Path
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from movora import normalize as normalize_module
@@ -22,8 +25,9 @@ from movora.db.models import (
     Task,
     TaskType,
 )
-from movora.normalize import _run_subtitles_task
-from movora.subtitles.tracks import SubtitleTrackInfo
+from movora.normalize import _run_subtitles_task, enqueue_subtitles
+from movora.subtitles import tracks as tracks_module
+from movora.subtitles.tracks import SubtitleTrackInfo, embedded_extraction_pending
 
 
 def _factory() -> sessionmaker[Session]:
@@ -54,18 +58,22 @@ def _add_media(
     return media_file
 
 
-def _subtitles_task(session: Session, library_id: int) -> Task:
-    task = Task(type=TaskType.SUBTITLES, library_id=library_id, priority=35)
+def _subtitles_task(session: Session, media_file_id: int) -> Task:
+    task = Task(type=TaskType.SUBTITLES, media_file_id=media_file_id, priority=35)
     session.add(task)
     session.commit()
     return task
 
 
-def test_warms_only_embedded_tracks(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+# --- _run_subtitles_task (one episode) ----------------------------------------------------
+
+
+def test_run_warms_only_embedded_tracks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     with _factory()() as session:
         library = _library(session)
         media_file = _add_media(session, library, tmp_path, "Show", on_disk=True)
-        library_id = library.id
 
         tracks = [
             SubtitleTrackInfo(id="embedded:2:ass", label="JP", language="jpn", fmt="ass"),
@@ -82,7 +90,7 @@ def test_warms_only_embedded_tracks(tmp_path: Path, monkeypatch: pytest.MonkeyPa
         monkeypatch.setattr(normalize_module, "load_subtitle", fake_load)
 
         data_dir = tmp_path / "data"
-        task = _subtitles_task(session, library_id)
+        task = _subtitles_task(session, media_file.id)
         _run_subtitles_task(session, task, data_dir / "normalized")
 
         assert task.status == JobStatus.DONE
@@ -91,19 +99,13 @@ def test_warms_only_embedded_tracks(tmp_path: Path, monkeypatch: pytest.MonkeyPa
         assert task.message == "1 subtitles"
 
 
-def test_skips_deleted_and_missing_originals(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_run_skips_deleted_original(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     with _factory()() as session:
         library = _library(session)
-        deleted = _add_media(session, library, tmp_path, "Gone", on_disk=True)
-        deleted.original_deleted = True
-        missing = _add_media(session, library, tmp_path, "Offline", on_disk=False)
+        media_file = _add_media(session, library, tmp_path, "Gone", on_disk=True)
+        media_file.original_deleted = True
         session.commit()
-        library_id = library.id
 
-        track = SubtitleTrackInfo(id="embedded:0:srt", label="EN", language="en", fmt="srt")
-        monkeypatch.setattr(normalize_module, "discover_tracks_cached", lambda _path: [track])
         called = False
 
         def fake_load(*_args: object, **_kwargs: object) -> tuple[str, str]:
@@ -113,21 +115,20 @@ def test_skips_deleted_and_missing_originals(
 
         monkeypatch.setattr(normalize_module, "load_subtitle", fake_load)
 
-        task = _subtitles_task(session, library_id)
+        task = _subtitles_task(session, media_file.id)
         _run_subtitles_task(session, task, tmp_path / "data" / "normalized")
 
         assert task.status == JobStatus.DONE
-        assert called is False  # deleted-original and offline files are both skipped
-        assert missing.id  # referenced to keep the fixture meaningful
+        assert task.message == "source gone"
+        assert called is False  # the preserved-assets file is used instead; nothing to demux
 
 
-def test_one_failing_track_does_not_fail_the_task(
+def test_run_one_failing_track_does_not_fail_the_task(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     with _factory()() as session:
         library = _library(session)
-        _add_media(session, library, tmp_path, "Show", on_disk=True)
-        library_id = library.id
+        media_file = _add_media(session, library, tmp_path, "Show", on_disk=True)
 
         track = SubtitleTrackInfo(id="embedded:1:ass", label="JP", language="jpn", fmt="ass")
         monkeypatch.setattr(normalize_module, "discover_tracks_cached", lambda _path: [track])
@@ -137,8 +138,79 @@ def test_one_failing_track_does_not_fail_the_task(
 
         monkeypatch.setattr(normalize_module, "load_subtitle", boom)
 
-        task = _subtitles_task(session, library_id)
+        task = _subtitles_task(session, media_file.id)
         _run_subtitles_task(session, task, tmp_path / "data" / "normalized")
 
         assert task.status == JobStatus.DONE  # best-effort: a bad track is swallowed
         assert task.message == "0 subtitles"
+
+
+# --- enqueue_subtitles (per-episode, filtered) --------------------------------------------
+
+
+def test_enqueue_only_episodes_that_need_work(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with _factory()() as session:
+        library = _library(session)
+        pending = _add_media(session, library, tmp_path, "Pending", on_disk=True)
+        _add_media(session, library, tmp_path, "Cached", on_disk=True)  # all tracks cached
+        _add_media(session, library, tmp_path, "NoSubs", on_disk=True)  # no embedded subs
+        deleted = _add_media(session, library, tmp_path, "Gone", on_disk=True)
+        deleted.original_deleted = True
+        _add_media(session, library, tmp_path, "Offline", on_disk=False)  # missing on disk
+        session.commit()
+
+        # Only "Pending" still has an uncached embedded track.
+        monkeypatch.setattr(
+            normalize_module,
+            "embedded_extraction_pending",
+            lambda path, _cache_dir: "Pending" in str(path),
+        )
+
+        queued = enqueue_subtitles(session, library.id, tmp_path / "data")
+
+        assert queued == 1
+        tasks = list(session.scalars(select(Task).where(Task.type == TaskType.SUBTITLES)))
+        assert [t.media_file_id for t in tasks] == [pending.id]
+
+
+def test_enqueue_does_not_double_queue(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with _factory()() as session:
+        library = _library(session)
+        media_file = _add_media(session, library, tmp_path, "Pending", on_disk=True)
+        monkeypatch.setattr(
+            normalize_module, "embedded_extraction_pending", lambda _p, _c: True
+        )
+
+        first = enqueue_subtitles(session, library.id, tmp_path / "data")
+        second = enqueue_subtitles(session, library.id, tmp_path / "data")  # task still active
+
+        assert (first, second) == (1, 0)
+        tasks = list(session.scalars(select(Task).where(Task.type == TaskType.SUBTITLES)))
+        assert [t.media_file_id for t in tasks] == [media_file.id]
+
+
+# --- embedded_extraction_pending helper ---------------------------------------------------
+
+
+def test_pending_false_without_embedded_tracks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(tracks_module, "discover_embedded_cached", lambda _path: [])
+    assert embedded_extraction_pending(tmp_path / "x.mkv", tmp_path / "assets") is False
+
+
+def test_pending_true_until_cached(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    track = SubtitleTrackInfo(id="embedded:3:srt", label="EN", language="en", fmt="srt")
+    monkeypatch.setattr(tracks_module, "discover_embedded_cached", lambda _path: [track])
+    cache_dir = tmp_path / "assets"
+    media = tmp_path / "x.mkv"
+
+    assert embedded_extraction_pending(media, cache_dir) is True  # not cached yet
+    cached = tracks_module._embedded_cache_path(cache_dir, "3", "srt")
+    cached.parent.mkdir(parents=True, exist_ok=True)
+    cached.write_text("WEBVTT\n", encoding="utf-8")
+    assert embedded_extraction_pending(media, cache_dir) is False  # now cached

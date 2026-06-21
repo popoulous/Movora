@@ -276,6 +276,20 @@ def _embedded_cache_path(cache_dir: Path, index_str: str, fmt: str) -> Path:
     return cache_dir / f"embedded.{index_str}.{'ass' if fmt == 'ass' else 'srt'}"
 
 
+def embedded_extraction_pending(media_path: Path, cache_dir: Path) -> bool:
+    """True if the file has an embedded subtitle track not yet cached in ``cache_dir``.
+
+    Lets the background pre-extraction queue only the episodes that still need work: a file
+    with no embedded subtitles, or one whose tracks are all cached, returns False.
+    """
+    for track in discover_embedded_cached(media_path):
+        index_str = track.id.split(":")[1]  # "embedded:<index>:<fmt>"
+        cached = _embedded_cache_path(cache_dir, index_str, track.fmt)
+        if not (cached.is_file() and cached.stat().st_size > 0):
+            return True
+    return False
+
+
 def _cache_write(path: Path, text: str) -> None:
     """Best-effort atomic cache write; never raises.
 

@@ -239,7 +239,8 @@ export function TasksPage(): JSX.Element {
           >
             {typeTasks[0].type === "normalize" ||
             typeTasks[0].type === "intro" ||
-            typeTasks[0].type === "prepare_variant" ? (
+            typeTasks[0].type === "prepare_variant" ||
+            typeTasks[0].type === "subtitles" ? (
               byQueue(groupBy(typeTasks, (task) => task.series_id ?? 0)).map((seriesTasks) => (
                 <SeriesGroup key={seriesTasks[0].series_id ?? 0} tasks={seriesTasks} />
               ))
