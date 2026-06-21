@@ -1,3 +1,4 @@
+/* eslint-disable react/jsx-no-bind -- inline handlers are idiomatic for this list-heavy TV UI */
 import React, { useEffect, useRef, useState } from "react";
 import { type PlaybackInfo, type Episode, type SeriesDetail, mediaUrl } from "../api/client";
 import { useDevice } from "../context/DeviceContext";
@@ -140,6 +141,7 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
   const [ended, setEnded] = useState(false);
   const [countdown, setCountdown] = useState(COUNTDOWN_START);
   const [subIdx, setSubIdx] = useState(-1);
+  const [trackSrcs, setTrackSrcs] = useState<Record<string, string>>({}); // trackId -> blob URL
   const [audioList, setAudioList] = useState<AudioMeta[]>([]);
   const [audioIdx, setAudioIdx] = useState(-1);
   const [toast, setToast] = useState<string | null>(null);
@@ -225,6 +227,42 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
     };
   }, [api, episodeId]);
 
+  // <track> elements can't load cross-origin (the backend is on another origin than the TV
+  // app), which the browser blocks ("Domains, protocols and ports must match"). CORS does
+  // allow a fetch, so we fetch each subtitle (always VTT: SRT auto-converted, ASS via
+  // &as=vtt) and hand <track> a same-origin blob URL — leaving the working <video> untouched.
+  useEffect(() => {
+    const tracks = info?.subtitle_tracks ?? [];
+    let cancelled = false;
+    const created: string[] = [];
+    void (async () => {
+      const next: Record<string, string> = {};
+      for (const tr of tracks) {
+        const url = mediaUrl(base, token, tr.format === "ass" ? `${tr.url}&as=vtt` : tr.url);
+        if (!url) continue;
+        try {
+          const res = await fetch(url);
+          if (!res.ok) continue;
+          const text = await res.text();
+          const blobUrl = URL.createObjectURL(new Blob([text], { type: "text/vtt" }));
+          next[tr.id] = blobUrl;
+          created.push(blobUrl);
+        } catch {
+          /* skip a track that fails to load; the others still work */
+        }
+      }
+      if (cancelled) {
+        created.forEach((u) => URL.revokeObjectURL(u));
+        return;
+      }
+      setTrackSrcs(next); // replaces the prior episode's map (clears stale/colliding ids)
+    })();
+    return () => {
+      cancelled = true;
+      created.forEach((u) => URL.revokeObjectURL(u));
+    };
+  }, [info, base, token]);
+
   const flat: Episode[] = series ? series.seasons.flatMap((s) => s.episodes) : [];
   const curIdx = flat.findIndex((e) => e.id === episodeId);
   const prevEpisodeId = curIdx > 0 ? flat[curIdx - 1].id : null;
@@ -260,10 +298,10 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
     if (at && at.length > 0) {
       const list: AudioMeta[] = [];
       for (let i = 0; i < at.length; i++) list.push({ language: at[i].language || "", label: at[i].label || "" });
-      const pref = localStorage.getItem(AUDIO_PREF_PREFIX + info.series_id);
+      const audioPref = localStorage.getItem(AUDIO_PREF_PREFIX + info.series_id);
       let picked = -1;
-      if (pref) {
-        for (let i = 0; i < at.length; i++) if ((at[i].language || "") === pref) { picked = i; break; }
+      if (audioPref) {
+        for (let i = 0; i < at.length; i++) if ((at[i].language || "") === audioPref) { picked = i; break; }
       }
       if (picked === -1) {
         for (let i = 0; i < at.length; i++) if (at[i].enabled) { picked = i; break; }
@@ -639,7 +677,7 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
 
   if (error) {
     return (
-      <div style={{ position: "fixed", inset: 0, background: theme.bg, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#f87171", gap: "1rem" }}>
+      <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: theme.bg, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#f87171", gap: "1rem" }}>
         <p>{t("player.loadError", { error })}</p>
         <BackButton onClick={onBack} />
       </div>
@@ -675,7 +713,7 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
       )}
 
       {blocked && (
-        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "1.1rem", background: theme.bg, textAlign: "center", padding: "2rem" }}>
+        <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "1.1rem", background: theme.bg, textAlign: "center", padding: "2rem" }}>
           <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "#fff" }}>{t("player.blockedTitle")}</div>
           <div style={{ fontSize: "1rem", color: theme.muted, maxWidth: 680, lineHeight: 1.5 }}>
             {t("player.blockedBody")}
@@ -685,7 +723,7 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
       )}
 
       {preparing && (
-        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "1.1rem", background: theme.bg, textAlign: "center", padding: "2rem" }}>
+        <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "1.1rem", background: theme.bg, textAlign: "center", padding: "2rem" }}>
           <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "#fff" }}>{t("player.preparingTitle")}</div>
           <div style={{ fontSize: "1rem", color: theme.muted, maxWidth: 680, lineHeight: 1.5 }}>
             {t("player.preparingBody")}
@@ -713,10 +751,11 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
           onPlay={() => setPaused(false)}
           onPause={() => setPaused(true)}
         >
-          {tracks.map((tr) => {
-            const url = tr.format === "ass" ? `${tr.url}?as=vtt` : tr.url;
-            return <track key={tr.id} kind="subtitles" label={tr.label} src={mediaUrl(base, token, url)} srcLang={tr.language ?? undefined} />;
-          })}
+          {/* Always render the <track> (even before its blob is ready) so textTracks
+              indices stay aligned with subtitle_tracks for the selector/cycle. */}
+          {tracks.map((tr) => (
+            <track key={tr.id} kind="subtitles" label={tr.label} src={trackSrcs[tr.id]} srcLang={tr.language ?? undefined} />
+          ))}
         </video>
       )}
 
@@ -936,7 +975,7 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
 
       {/* Ended overlay */}
       {ended && (
-        <div style={{ position: "absolute", inset: 0, background: "rgba(5,6,11,0.82)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#fff", gap: "1rem" }}>
+        <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(5,6,11,0.82)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#fff", gap: "1rem" }}>
           <p style={{ fontSize: "1.6rem", fontWeight: 800 }}>{t("player.episodeEnded")}</p>
           <p style={{ color: theme.muted }}>
             {nextEpisodeId !== null

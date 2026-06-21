@@ -38,7 +38,10 @@ body {
 .mv-focusable:focus::after {
   content: "";
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   border: 3px solid #7a4dff;
   border-radius: inherit;
   box-shadow: 0 0 16px rgba(122, 77, 255, 0.6);
