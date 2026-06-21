@@ -31,6 +31,7 @@ from sqlalchemy.orm import Session, selectinload, sessionmaker
 from sqlalchemy.orm.exc import StaleDataError
 
 from movora import settings_store
+from movora.artifacts import assets_dir
 from movora.compat import fingerprint, parse_capabilities
 from movora.db.models import (
     Device,
@@ -57,7 +58,11 @@ from movora.normalization import WEB_TARGET, RemuxFirstPlanner, needs_normalizat
 from movora.recipes import DEFAULT_RECIPE, recipe_id_for
 from movora.scanner import scan_library
 from movora.streaming import DirectPlayStrategy
-from movora.subtitles import preserve_embedded_assets
+from movora.subtitles import (
+    discover_tracks_cached,
+    load_subtitle,
+    preserve_embedded_assets,
+)
 from movora.thumbnails import extract_thumbnail
 
 # (percent, eta_seconds) -> None
@@ -77,6 +82,7 @@ PRIORITY_DEVICE_NOW = 0
 PRIORITY_SCAN = 10
 PRIORITY_METADATA = 20
 PRIORITY_THUMBNAIL = 30
+PRIORITY_SUBTITLES = 35  # warm the embedded-subtitle cache after thumbnails, before intro
 PRIORITY_INTRO = 40
 PRIORITY_NORMALIZE = 50
 PRIORITY_PREFETCH = 60
@@ -384,6 +390,14 @@ def enqueue_thumbnail(session: Session, library_id: int) -> None:
         session.commit()
 
 
+def enqueue_subtitles(session: Session, library_id: int) -> None:
+    if not _has_active_library_task(session, library_id, TaskType.SUBTITLES):
+        session.add(
+            Task(type=TaskType.SUBTITLES, library_id=library_id, priority=PRIORITY_SUBTITLES)
+        )
+        session.commit()
+
+
 def enqueue_intro(session: Session, library_id: int) -> int:
     """Queue per-episode intro/outro detection. Detection runs ONCE per episode: episodes
     already checked (``intro_checked``) are skipped, so a rescan never re-queues them —
@@ -645,6 +659,8 @@ def _process_task(
                 _run_metadata_task(session, task, registry)
             elif task.type == TaskType.THUMBNAIL:
                 _run_thumbnail_task(session, task, output_dir)
+            elif task.type == TaskType.SUBTITLES:
+                _run_subtitles_task(session, task, output_dir)
             elif task.type == TaskType.INTRO:
                 _run_intro_task(session, task)
         except _Cancelled:
@@ -829,6 +845,7 @@ def _run_scan_task(session: Session, task: Task, output_dir: Path) -> None:
     # Chain: refresh metadata, extract missing thumbnails, normalize new files (if auto-on).
     enqueue_metadata(session, library.id)
     enqueue_thumbnail(session, library.id)
+    enqueue_subtitles(session, library.id)  # warm the embedded-subtitle cache off the request path
     if settings_store.get_bool(session, settings_store.AUTO_DETECT_INTRO):
         enqueue_intro(session, library.id)
     if new_ids and settings_store.get_bool(session, settings_store.AUTO_NORMALIZE):
@@ -893,6 +910,50 @@ def _run_thumbnail_task(session: Session, task: Task, output_dir: Path) -> None:
             made += 1
             session.commit()
     _finish(session, task, message=f"{made} thumbnails")
+
+
+def _run_subtitles_task(session: Session, task: Task, output_dir: Path) -> None:
+    """Pre-extract embedded subtitle tracks so the first playback hits a warm cache.
+
+    Lazily demuxing on the first subtitle request (load_subtitle on the request path)
+    made the web/TV player stutter — this warms the same assets/<id>/embedded.* cache
+    in the background instead. Best-effort: a bad track never fails the task.
+    """
+    library = task.library
+    if library is None:
+        _finish(session, task, message="library gone")
+        return
+    _start(session, task)
+    data_dir = output_dir.parent  # .../normalized -> data dir holding assets/
+    media_files = list(
+        session.scalars(
+            select(MediaFile)
+            .join(MediaFile.episode)
+            .join(Episode.season)
+            .join(Season.series)
+            .where(Series.library_id == library.id)
+        )
+    )
+    progress = _counter(session, task)
+    warmed = 0
+    for index, media_file in enumerate(media_files, start=1):
+        progress(index, len(media_files))
+        if media_file.original_deleted:  # subtitles already preserved at delete time
+            continue
+        path = Path(media_file.path)
+        if not path.is_file():  # offline disk — skip, not an error
+            continue
+        cache_dir = assets_dir(media_file.id, data_dir)
+        for track in discover_tracks_cached(path):
+            if not track.id.startswith("embedded:"):  # sidecars need no demux
+                continue
+            try:
+                content, _ = load_subtitle(path, track.id, cache_dir=cache_dir)
+            except Exception:  # one bad track must not fail the whole task
+                continue
+            if content.strip():
+                warmed += 1
+    _finish(session, task, message=f"{warmed} subtitles")
 
 
 def _intro_neighbour(session: Session, episode: Episode) -> Path | None:

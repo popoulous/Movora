@@ -1,10 +1,17 @@
 from movora.db.models import LibraryKind
-from movora.domain import ParsedFields, SeriesMetadata
+from movora.domain import ParsedFields, SeriesLocalization, SeriesMetadata
+from movora.interfaces import MetadataProvider
 from movora.metadata.registry import MetadataRegistry
 
 
 class _Provider:
     def fetch(self, parsed: ParsedFields) -> SeriesMetadata | None:
+        return None
+
+    def with_language(self, language: str) -> MetadataProvider:
+        return self
+
+    def localize(self, external_id: str) -> SeriesLocalization | None:
         return None
 
 

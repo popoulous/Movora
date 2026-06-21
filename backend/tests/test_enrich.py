@@ -24,10 +24,25 @@ from movora.domain import (
 )
 from movora.domain import Recommendation as RecommendationMeta
 from movora.enrich import enrich_library
+from movora.interfaces import MetadataProvider
 from movora.metadata import MetadataRegistry
 
 
-class _StubProvider:
+class _StaticProvider:
+    """Stub base for providers that don't vary by language: with_language/localize are
+    no-ops, so subclasses only need to implement fetch."""
+
+    def fetch(self, parsed: ParsedFields) -> SeriesMetadata | None:
+        raise NotImplementedError
+
+    def with_language(self, language: str) -> MetadataProvider:
+        return self
+
+    def localize(self, external_id: str) -> SeriesLocalization | None:
+        return None
+
+
+class _StubProvider(_StaticProvider):
     """Returns canned metadata for Railgun, nothing for anything else."""
 
     def fetch(self, parsed: ParsedFields) -> SeriesMetadata | None:
@@ -71,7 +86,7 @@ def test_enrich_library_updates_matched_only_and_is_idempotent() -> None:
         assert enrich_library(session, library, _StubProvider(), force=True) == 1
 
 
-class _RecProvider:
+class _RecProvider(_StaticProvider):
     def fetch(self, parsed: ParsedFields) -> SeriesMetadata | None:
         return SeriesMetadata(
             provider="stub",
@@ -102,7 +117,7 @@ def test_enrich_persists_recommendations() -> None:
         assert [rec.title for rec in ordered] == ["Index", "Other"]
 
 
-class _EpisodeTitleProvider:
+class _EpisodeTitleProvider(_StaticProvider):
     def fetch(self, parsed: ParsedFields) -> SeriesMetadata | None:
         return SeriesMetadata(
             provider="stub",
@@ -136,7 +151,7 @@ def test_enrich_applies_episode_titles_to_matching_episodes() -> None:
         assert ep3.title == "Hide and Seek"
 
 
-class _CharacterProvider:
+class _CharacterProvider(_StaticProvider):
     def fetch(self, parsed: ParsedFields) -> SeriesMetadata | None:
         return SeriesMetadata(
             provider="stub",

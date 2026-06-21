@@ -358,6 +358,7 @@ class TaskType(str, enum.Enum):
     NORMALIZE = "normalize"
     THUMBNAIL = "thumbnail"  # extract a representative frame per episode
     INTRO = "intro"  # detect intro/outro skip markers per episode
+    SUBTITLES = "subtitles"  # pre-extract embedded subtitle tracks per media file
     PREPARE_VARIANT = "prepare_variant"  # build a device-specific variant (plan §13)
 
 
