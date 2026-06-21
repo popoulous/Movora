@@ -1,3 +1,4 @@
+/* eslint-disable react/jsx-no-bind -- inline handlers are idiomatic for this list-heavy TV UI */
 import React, { useEffect, useRef, useState } from "react";
 import { Panel } from "@enact/sandstone/Panels";
 import InputBase from "@enact/sandstone/Input";

@@ -1,3 +1,4 @@
+/* eslint-disable react/jsx-no-bind -- inline handlers are idiomatic for this list-heavy TV UI */
 import React, { useEffect, useState } from "react";
 import { type SeriesDetail, type Library, mediaUrl } from "../api/client";
 import { useDevice } from "../context/DeviceContext";

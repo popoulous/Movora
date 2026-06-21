@@ -1,3 +1,4 @@
+/* eslint-disable react/jsx-no-bind -- inline handlers are idiomatic for this list-heavy TV UI */
 import React, { useState } from "react";
 import ThemeDecorator from "@enact/sandstone/ThemeDecorator";
 import { I18nProvider } from "../i18n";
