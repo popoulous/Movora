@@ -395,45 +395,56 @@ def enqueue_subtitles(session: Session, library_id: int, data_dir: Path) -> int:
     """Queue per-episode embedded-subtitle pre-extraction so the Tasks view tracks progress
     file by file (like intro detection). Only episodes that still need work are queued: a file
     with no embedded subtitles, or one whose tracks are all cached, is skipped — so a rescan
-    re-queues nothing already warmed. One row per episode."""
-    queued = 0
-    episodes = session.scalars(
-        select(Episode)
+    re-queues nothing already warmed. One row per episode (the first media file).
+
+    The embedded-subtitle probe runs ffprobe per file (seconds each), so all reads happen up
+    front and the transaction is released BEFORE the probe loop: holding it would let autoflush
+    upgrade to a write transaction and keep SQLite's WAL write-lock across the slow probe,
+    blocking the web server ('database is locked')."""
+    rows = session.execute(
+        select(MediaFile.id, MediaFile.path, MediaFile.original_deleted, Episode.id)
+        .join(MediaFile.episode)
         .join(Episode.season)
         .join(Season.series)
         .where(Series.library_id == library_id)
-        .options(selectinload(Episode.media_files))
+        .order_by(Episode.id, MediaFile.id)
+    ).all()
+    active = set(
+        session.scalars(
+            select(Task.media_file_id).where(
+                Task.type == TaskType.SUBTITLES, Task.status.in_(_ACTIVE)
+            )
+        )
     )
-    for episode in episodes:
-        if not episode.media_files:
+    session.commit()  # release the read transaction before the slow ffprobe loop
+
+    seen_episodes: set[int] = set()
+    to_queue: list[int] = []
+    for media_file_id, path_str, original_deleted, episode_id in rows:
+        if episode_id in seen_episodes:  # one task per episode (the first media file)
             continue
-        media_file = episode.media_files[0]
-        if media_file.original_deleted:  # subtitles already preserved at delete time
+        seen_episodes.add(episode_id)
+        if original_deleted:  # subtitles already preserved at delete time
             continue
-        path = Path(media_file.path)
+        path = Path(path_str)
         if not path.is_file():  # offline disk — skip, not an error
             continue
-        if not embedded_extraction_pending(path, assets_dir(media_file.id, data_dir)):
-            continue  # no embedded subtitles, or all already cached
-        active = session.scalars(
-            select(Task).where(
-                Task.type == TaskType.SUBTITLES,
-                Task.media_file_id == media_file.id,
-                Task.status.in_(_ACTIVE),
-            )
-        ).first()
-        if active is not None:  # already in flight — don't double-queue
+        if media_file_id in active:  # already in flight — don't double-queue
             continue
+        if embedded_extraction_pending(path, assets_dir(media_file_id, data_dir)):
+            to_queue.append(media_file_id)
+
+    for media_file_id in to_queue:
         session.add(
             Task(
                 type=TaskType.SUBTITLES,
-                media_file_id=media_file.id,
+                media_file_id=media_file_id,
                 priority=PRIORITY_SUBTITLES,
             )
         )
-        queued += 1
-    session.commit()
-    return queued
+    if to_queue:
+        session.commit()
+    return len(to_queue)
 
 
 def enqueue_intro(session: Session, library_id: int) -> int:

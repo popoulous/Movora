@@ -175,6 +175,27 @@ def test_enqueue_only_episodes_that_need_work(
         assert [t.media_file_id for t in tasks] == [pending.id]
 
 
+def test_enqueue_releases_transaction_before_probe(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression: the slow ffprobe filter must run with NO open transaction, or autoflush
+    upgrades it to a write transaction and holds SQLite's WAL write-lock across the probe,
+    blocking the web server ('database is locked')."""
+    with _factory()() as session:
+        library = _library(session)
+        _add_media(session, library, tmp_path, "Pending", on_disk=True)
+        in_txn: list[bool] = []
+
+        def probe(_path: Path, _cache_dir: Path) -> bool:
+            in_txn.append(session.in_transaction())
+            return True
+
+        monkeypatch.setattr(normalize_module, "embedded_extraction_pending", probe)
+        enqueue_subtitles(session, library.id, tmp_path / "data")
+
+        assert in_txn == [False]
+
+
 def test_enqueue_does_not_double_queue(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
