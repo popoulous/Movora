@@ -186,7 +186,7 @@ export function LibraryPage(): JSX.Element {
 
       {/* Content */}
       {series.length === 0 ? (
-        <p className="mt-6 text-sm text-neutral-500">{t("library.noSeries")}</p>
+        <p className="mt-6 text-sm text-neutral-500">{t(`library.noSeries_${kind}`)}</p>
       ) : browsing ? (
         <div className="mt-6 space-y-8">
           {continueList.length > 0 && (
