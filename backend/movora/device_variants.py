@@ -28,9 +28,10 @@ from movora.ffprobe import probe_media
 from movora.metadata import MetadataRegistry
 from movora.normalize import (
     PRIORITY_DEVICE_NOW,
-    PRIORITY_PREFETCH,
+    PRIORITY_WATCH_AHEAD,
     enqueue_normalize,
     enqueue_prepare_variant,
+    enqueue_subtitle,
     should_normalize,
     start_workers,
 )
@@ -56,6 +57,24 @@ def _index_of(episodes: list[Episode], episode_id: int) -> int | None:
         if episode.id == episode_id:
             return index
     return None
+
+
+def _warm_lookahead_subtitles(
+    session: Session, series: Series, current: Episode, ahead: int, data_dir: Path
+) -> bool:
+    """Pre-extract embedded subtitles for the next ``ahead`` episodes (the one playing now is
+    extracted on demand by the player) at look-ahead priority. Returns True if anything queued."""
+    ordered = _ordered_episodes(series)
+    index = _index_of(ordered, current.id)
+    if index is None:
+        return False
+    queued = False
+    for candidate in ordered[index + 1 : index + ahead + 1]:
+        if candidate.media_files and enqueue_subtitle(
+            session, candidate.media_files[0].id, data_dir, PRIORITY_WATCH_AHEAD
+        ):
+            queued = True
+    return queued
 
 
 def _str(value: object) -> str | None:
@@ -107,7 +126,7 @@ def ensure_device_variants(
     for offset, candidate in enumerate(ordered[index : index + ahead + 1]):
         if not candidate.media_files:
             continue
-        priority = PRIORITY_DEVICE_NOW if offset == 0 else PRIORITY_PREFETCH
+        priority = PRIORITY_DEVICE_NOW if offset == 0 else PRIORITY_WATCH_AHEAD
         if _ensure_one(session, profile, device_id, candidate.media_files[0], priority):
             queued = True
     session.commit()
@@ -166,6 +185,10 @@ def run_device_prefetch(
         ahead = settings_store.get_int(session, settings_store.PREPARE_AHEAD_COUNT)
         behind = settings_store.get_int(session, settings_store.RETAIN_BEHIND_COUNT)
         queued = ensure_device_variants(session, profile, device.id, episode, ahead)
+        if _warm_lookahead_subtitles(
+            session, episode.season.series, episode, ahead, output_dir.parent
+        ):
+            queued = True
         if settings_store.get_bool(session, settings_store.DEVICE_RETENTION):
             enforce_retention(session, episode.season.series, episode, ahead, behind)
     if queued:
@@ -245,8 +268,12 @@ def prepare_browser_normalize(
             # Skip the (expensive) probe if it's already queued/running for this file.
             if _has_active_normalize(session, media_file.id) or not should_normalize(media_file):
                 continue
-            priority = PRIORITY_DEVICE_NOW if offset == 0 else PRIORITY_PREFETCH
+            priority = PRIORITY_DEVICE_NOW if offset == 0 else PRIORITY_WATCH_AHEAD
             if enqueue_normalize(session, [media_file.id], priority=priority) > 0:
                 queued = True
+        if _warm_lookahead_subtitles(
+            session, episode.season.series, episode, ahead, output_dir.parent
+        ):
+            queued = True
     if queued:
         start_workers(session_factory, output_dir, registry)

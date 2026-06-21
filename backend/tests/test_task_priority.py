@@ -17,7 +17,12 @@ from movora.db.models import (
     Task,
     TaskType,
 )
-from movora.normalize import enqueue_normalize, enqueue_scan
+from movora.normalize import (
+    PRIORITY_THUMBNAIL,
+    PRIORITY_WATCH_AHEAD,
+    enqueue_normalize,
+    enqueue_scan,
+)
 
 
 def _factory() -> sessionmaker[Session]:
@@ -53,3 +58,29 @@ def test_scan_preempts_an_already_queued_normalize(tmp_path: Path) -> None:
         first = _next_pending(session)
         assert first is not None
         assert first.type == TaskType.SCAN
+
+
+def test_watch_ahead_beats_background_maintenance(tmp_path: Path) -> None:
+    """The look-ahead for content being watched runs before unrelated background work."""
+    with _factory()() as session:
+        library = Library(path="/a", name="A", kind=LibraryKind.ANIME)
+        series = Series(title="Show", library=library)
+        season = Season(number=1, series=series)
+        episode = Episode(number=1, season=season)
+        media = tmp_path / "ep1.mkv"
+        media.write_bytes(b"x")
+        media_file = MediaFile(episode=episode, path=str(media))
+        session.add_all([library, series, season, episode, media_file])
+        session.commit()
+
+        # Background maintenance is queued first (older id), then a look-ahead normalize.
+        session.add(
+            Task(type=TaskType.THUMBNAIL, library_id=library.id, priority=PRIORITY_THUMBNAIL)
+        )
+        session.commit()
+        enqueue_normalize(session, [media_file.id], priority=PRIORITY_WATCH_AHEAD)
+
+        # The look-ahead (20) is picked before the thumbnail maintenance (40).
+        first = _next_pending(session)
+        assert first is not None
+        assert first.type == TaskType.NORMALIZE

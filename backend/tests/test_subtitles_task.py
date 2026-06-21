@@ -1,9 +1,9 @@
-"""Per-episode embedded-subtitle pre-extraction.
+"""Embedded-subtitle pre-extraction.
 
-``enqueue_subtitles`` queues one task per episode that still needs work (so the Tasks view
-tracks progress file by file), and ``_run_subtitles_task`` warms a single episode's cache.
-Both are best-effort: deleted/offline originals and sidecars are skipped, and a single failing
-track never fails the task.
+``_run_subtitles_task`` warms a single episode's cache; ``enqueue_subtitle`` queues that work
+for one file (the look-ahead prefetch uses it — the episode playing now is extracted on demand).
+Both are best-effort: deleted/offline originals and sidecars are skipped, a single failing track
+never fails the task, and a file with no uncached embedded subtitles is never queued.
 """
 
 from pathlib import Path
@@ -25,7 +25,12 @@ from movora.db.models import (
     Task,
     TaskType,
 )
-from movora.normalize import _run_subtitles_task, enqueue_subtitles
+from movora.normalize import (
+    PRIORITY_DEVICE_NOW,
+    PRIORITY_WATCH_AHEAD,
+    _run_subtitles_task,
+    enqueue_subtitle,
+)
 from movora.subtitles import tracks as tracks_module
 from movora.subtitles.tracks import SubtitleTrackInfo, embedded_extraction_pending
 
@@ -145,55 +150,37 @@ def test_run_one_failing_track_does_not_fail_the_task(
         assert task.message == "0 subtitles"
 
 
-# --- enqueue_subtitles (per-episode, filtered) --------------------------------------------
+# --- enqueue_subtitle (per file, look-ahead prefetch) -------------------------------------
 
 
-def test_enqueue_only_episodes_that_need_work(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_enqueue_queues_pending_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     with _factory()() as session:
         library = _library(session)
-        pending = _add_media(session, library, tmp_path, "Pending", on_disk=True)
-        _add_media(session, library, tmp_path, "Cached", on_disk=True)  # all tracks cached
-        _add_media(session, library, tmp_path, "NoSubs", on_disk=True)  # no embedded subs
+        media_file = _add_media(session, library, tmp_path, "Pending", on_disk=True)
+        monkeypatch.setattr(normalize_module, "embedded_extraction_pending", lambda _p, _c: True)
+
+        assert enqueue_subtitle(session, media_file.id, tmp_path / "data", PRIORITY_WATCH_AHEAD)
+        tasks = list(session.scalars(select(Task).where(Task.type == TaskType.SUBTITLES)))
+        assert [(t.media_file_id, t.priority) for t in tasks] == [
+            (media_file.id, PRIORITY_WATCH_AHEAD)
+        ]
+
+
+def test_enqueue_skips_when_no_work(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    with _factory()() as session:
+        library = _library(session)
+        cached = _add_media(session, library, tmp_path, "Cached", on_disk=True)
         deleted = _add_media(session, library, tmp_path, "Gone", on_disk=True)
         deleted.original_deleted = True
-        _add_media(session, library, tmp_path, "Offline", on_disk=False)  # missing on disk
+        offline = _add_media(session, library, tmp_path, "Offline", on_disk=False)
         session.commit()
+        # All tracks cached / nothing embedded -> pending is False.
+        monkeypatch.setattr(normalize_module, "embedded_extraction_pending", lambda _p, _c: False)
 
-        # Only "Pending" still has an uncached embedded track.
-        monkeypatch.setattr(
-            normalize_module,
-            "embedded_extraction_pending",
-            lambda path, _cache_dir: "Pending" in str(path),
-        )
-
-        queued = enqueue_subtitles(session, library.id, tmp_path / "data")
-
-        assert queued == 1
-        tasks = list(session.scalars(select(Task).where(Task.type == TaskType.SUBTITLES)))
-        assert [t.media_file_id for t in tasks] == [pending.id]
-
-
-def test_enqueue_releases_transaction_before_probe(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Regression: the slow ffprobe filter must run with NO open transaction, or autoflush
-    upgrades it to a write transaction and holds SQLite's WAL write-lock across the probe,
-    blocking the web server ('database is locked')."""
-    with _factory()() as session:
-        library = _library(session)
-        _add_media(session, library, tmp_path, "Pending", on_disk=True)
-        in_txn: list[bool] = []
-
-        def probe(_path: Path, _cache_dir: Path) -> bool:
-            in_txn.append(session.in_transaction())
-            return True
-
-        monkeypatch.setattr(normalize_module, "embedded_extraction_pending", probe)
-        enqueue_subtitles(session, library.id, tmp_path / "data")
-
-        assert in_txn == [False]
+        assert enqueue_subtitle(session, cached.id, tmp_path / "data") is False
+        assert enqueue_subtitle(session, deleted.id, tmp_path / "data") is False  # deleted
+        assert enqueue_subtitle(session, offline.id, tmp_path / "data") is False  # offline disk
+        assert list(session.scalars(select(Task).where(Task.type == TaskType.SUBTITLES))) == []
 
 
 def test_enqueue_does_not_double_queue(
@@ -202,16 +189,32 @@ def test_enqueue_does_not_double_queue(
     with _factory()() as session:
         library = _library(session)
         media_file = _add_media(session, library, tmp_path, "Pending", on_disk=True)
-        monkeypatch.setattr(
-            normalize_module, "embedded_extraction_pending", lambda _p, _c: True
-        )
+        monkeypatch.setattr(normalize_module, "embedded_extraction_pending", lambda _p, _c: True)
 
-        first = enqueue_subtitles(session, library.id, tmp_path / "data")
-        second = enqueue_subtitles(session, library.id, tmp_path / "data")  # task still active
-
-        assert (first, second) == (1, 0)
+        assert enqueue_subtitle(session, media_file.id, tmp_path / "data") is True
+        assert enqueue_subtitle(session, media_file.id, tmp_path / "data") is False  # active
         tasks = list(session.scalars(select(Task).where(Task.type == TaskType.SUBTITLES)))
-        assert [t.media_file_id for t in tasks] == [media_file.id]
+        assert len(tasks) == 1
+
+
+def test_enqueue_bumps_lookahead_to_now(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Starting playback promotes a file queued earlier as a far look-ahead."""
+    with _factory()() as session:
+        library = _library(session)
+        media_file = _add_media(session, library, tmp_path, "Pending", on_disk=True)
+        monkeypatch.setattr(normalize_module, "embedded_extraction_pending", lambda _p, _c: True)
+
+        assert enqueue_subtitle(session, media_file.id, tmp_path / "data", PRIORITY_WATCH_AHEAD)
+        assert enqueue_subtitle(session, media_file.id, tmp_path / "data", PRIORITY_DEVICE_NOW)
+        task = session.scalar(select(Task).where(Task.type == TaskType.SUBTITLES))
+        assert task is not None and task.priority == PRIORITY_DEVICE_NOW
+        # A worse/equal priority doesn't bump.
+        assert (
+            enqueue_subtitle(session, media_file.id, tmp_path / "data", PRIORITY_WATCH_AHEAD)
+            is False
+        )
 
 
 # --- embedded_extraction_pending helper ---------------------------------------------------

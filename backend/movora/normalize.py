@@ -77,16 +77,17 @@ _MAX_ATTEMPTS = 3  # bounded auto-retry before a task is marked failed
 # but the *next* task picked is always the highest priority pending one — so a freshly
 # queued library scan jumps ahead of queued normalizes.
 _worker_lock = threading.Lock()
-# Drain priority (lower runs first). A device you're trying to watch now beats
-# everything; then scan > metadata > thumbnails > intro > web normalize > prefetch.
-PRIORITY_DEVICE_NOW = 0
+# Drain priority (lower runs first). The content you're actively watching wins: the episode
+# playing now, then the look-ahead for that series (so the next few episodes are ready before
+# any unrelated background maintenance), then scan/metadata/thumbnails/intro and background
+# normalize. (Scan stays high — it's a quick filesystem walk that discovers new content.)
+PRIORITY_DEVICE_NOW = 0  # the episode being watched right now (its variant/normalize/subtitle)
 PRIORITY_SCAN = 10
-PRIORITY_METADATA = 20
-PRIORITY_THUMBNAIL = 30
-PRIORITY_SUBTITLES = 35  # warm the embedded-subtitle cache after thumbnails, before intro
-PRIORITY_INTRO = 40
-PRIORITY_NORMALIZE = 50
-PRIORITY_PREFETCH = 60
+PRIORITY_WATCH_AHEAD = 20  # look-ahead for the watched series (variant/normalize/subtitle)
+PRIORITY_METADATA = 30
+PRIORITY_THUMBNAIL = 40
+PRIORITY_INTRO = 50
+PRIORITY_NORMALIZE = 60  # background auto-normalize of newly scanned files
 # Production runs the workers in threads; tests set this False to run them inline.
 _run_in_thread = True
 
@@ -391,60 +392,45 @@ def enqueue_thumbnail(session: Session, library_id: int) -> None:
         session.commit()
 
 
-def enqueue_subtitles(session: Session, library_id: int, data_dir: Path) -> int:
-    """Queue per-episode embedded-subtitle pre-extraction so the Tasks view tracks progress
-    file by file (like intro detection). Only episodes that still need work are queued: a file
-    with no embedded subtitles, or one whose tracks are all cached, is skipped — so a rescan
-    re-queues nothing already warmed. One row per episode (the first media file).
+def enqueue_subtitle(
+    session: Session, media_file_id: int, data_dir: Path, priority: int = PRIORITY_WATCH_AHEAD
+) -> bool:
+    """Queue embedded-subtitle pre-extraction for ONE media file, off the playback path.
 
-    The embedded-subtitle probe runs ffprobe per file (seconds each), so all reads happen up
-    front and the transaction is released BEFORE the probe loop: holding it would let autoflush
-    upgrade to a write transaction and keep SQLite's WAL write-lock across the slow probe,
-    blocking the web server ('database is locked')."""
-    rows = session.execute(
-        select(MediaFile.id, MediaFile.path, MediaFile.original_deleted, Episode.id)
-        .join(MediaFile.episode)
-        .join(Episode.season)
-        .join(Season.series)
-        .where(Series.library_id == library_id)
-        .order_by(Episode.id, MediaFile.id)
-    ).all()
-    active = set(
-        session.scalars(
-            select(Task.media_file_id).where(
-                Task.type == TaskType.SUBTITLES, Task.status.in_(_ACTIVE)
-            )
+    Used by the look-ahead prefetch (the episode being watched is extracted on demand by the
+    player). Skipped when the file is gone or has no uncached embedded tracks; an existing
+    PENDING task at a worse priority is bumped up (starting playback promotes a file that was
+    queued earlier as a far look-ahead). Returns True if a task was queued or bumped.
+
+    The embedded probe (ffprobe) only reads the file header and runs in a background worker, so
+    a single-file commit here never holds a write lock across slow I/O (unlike the old bulk
+    sweep that caused 'database is locked')."""
+    media_file = session.get(MediaFile, media_file_id)
+    if media_file is None or media_file.original_deleted:
+        return False
+    path = Path(media_file.path)
+    if not path.is_file():  # offline disk — skip, not an error
+        return False
+    active = session.scalars(
+        select(Task).where(
+            Task.type == TaskType.SUBTITLES,
+            Task.media_file_id == media_file_id,
+            Task.status.in_(_ACTIVE),
         )
+    ).first()
+    if active is not None:
+        if active.status == JobStatus.PENDING and active.priority > priority:
+            active.priority = priority  # boost a previously look-ahead-queued file
+            session.commit()
+            return True
+        return False
+    if not embedded_extraction_pending(path, assets_dir(media_file_id, data_dir)):
+        return False  # no embedded subtitles, or all already cached
+    session.add(
+        Task(type=TaskType.SUBTITLES, media_file_id=media_file_id, priority=priority)
     )
-    session.commit()  # release the read transaction before the slow ffprobe loop
-
-    seen_episodes: set[int] = set()
-    to_queue: list[int] = []
-    for media_file_id, path_str, original_deleted, episode_id in rows:
-        if episode_id in seen_episodes:  # one task per episode (the first media file)
-            continue
-        seen_episodes.add(episode_id)
-        if original_deleted:  # subtitles already preserved at delete time
-            continue
-        path = Path(path_str)
-        if not path.is_file():  # offline disk — skip, not an error
-            continue
-        if media_file_id in active:  # already in flight — don't double-queue
-            continue
-        if embedded_extraction_pending(path, assets_dir(media_file_id, data_dir)):
-            to_queue.append(media_file_id)
-
-    for media_file_id in to_queue:
-        session.add(
-            Task(
-                type=TaskType.SUBTITLES,
-                media_file_id=media_file_id,
-                priority=PRIORITY_SUBTITLES,
-            )
-        )
-    if to_queue:
-        session.commit()
-    return len(to_queue)
+    session.commit()
+    return True
 
 
 def enqueue_intro(session: Session, library_id: int) -> int:
@@ -485,9 +471,11 @@ def enqueue_normalize(
 ) -> int:
     """Queue normalize Tasks, skipping active/already-optimized files and retrying failed.
 
-    A file that already has a queued/running task is skipped; a previously FAILED task
-    is reset to PENDING (a retry) rather than duplicated. ``priority`` lets an on-demand
-    playback normalize jump the queue (PRIORITY_DEVICE_NOW).
+    A file that already has a running task is skipped; an already-queued (PENDING) task is
+    bumped to a better ``priority`` if the caller asks for one (so starting playback promotes a
+    file that was queued earlier as a far look-ahead). A previously FAILED task is reset to
+    PENDING (a retry) rather than duplicated. ``priority`` lets an on-demand playback normalize
+    jump the queue (PRIORITY_DEVICE_NOW).
     """
     queued = 0
     for media_file_id in media_file_ids:
@@ -503,8 +491,16 @@ def enqueue_normalize(
                 )
             )
         )
-        if any(task.status in _ACTIVE for task in existing):
-            continue  # already queued or running
+        active = [task for task in existing if task.status in _ACTIVE]
+        if active:  # already queued or running — bump a PENDING one to a better priority
+            if any(
+                task.status == JobStatus.PENDING and task.priority > priority for task in active
+            ):
+                for task in active:
+                    if task.status == JobStatus.PENDING and task.priority > priority:
+                        task.priority = priority
+                queued += 1
+            continue
         failed = [task for task in existing if task.status == JobStatus.FAILED]
         if failed:
             _reset(failed[-1])  # retry the latest failed attempt in place
@@ -524,10 +520,12 @@ def enqueue_prepare_variant(
 ) -> bool:
     """Queue a PREPARE_VARIANT unless one is already active for this (file, recipe).
 
-    The caller commits (so a prefetch sweep batches several). Returns True if queued.
+    The caller commits (so a prefetch sweep batches several). An already-queued (PENDING) task
+    is bumped to a better priority (starting playback promotes a far-look-ahead variant).
+    Returns True if queued or bumped.
     """
     active = session.scalar(
-        select(Task.id).where(
+        select(Task).where(
             Task.type == TaskType.PREPARE_VARIANT,
             Task.media_file_id == media_file_id,
             Task.recipe_id == recipe_id,
@@ -535,6 +533,9 @@ def enqueue_prepare_variant(
         )
     )
     if active is not None:
+        if active.status == JobStatus.PENDING and active.priority > priority:
+            active.priority = priority
+            return True
         return False
     session.add(
         Task(
@@ -892,11 +893,11 @@ def _run_scan_task(session: Session, task: Task, output_dir: Path) -> None:
         session, library, on_progress=_counter(session, task), data_dir=output_dir.parent
     )
     # Chain: refresh metadata, extract missing thumbnails, normalize new files (if auto-on).
+    # NOTE: embedded subtitles are NOT bulk-extracted here — on a slow HDD NAS reading every
+    # file end-to-end thrashes the disk. They're warmed on demand (the episode you play) and
+    # for the look-ahead at playback (run_device_prefetch / prepare_browser_normalize) instead.
     enqueue_metadata(session, library.id)
     enqueue_thumbnail(session, library.id)
-    # Warm the embedded-subtitle cache off the request path, per episode (output_dir is
-    # .../normalized; its parent is the data dir holding assets/).
-    enqueue_subtitles(session, library.id, output_dir.parent)
     if settings_store.get_bool(session, settings_store.AUTO_DETECT_INTRO):
         enqueue_intro(session, library.id)
     if new_ids and settings_store.get_bool(session, settings_store.AUTO_NORMALIZE):
