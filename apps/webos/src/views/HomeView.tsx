@@ -227,12 +227,11 @@ export default function HomeView({ onSeries, onPlay, onLibrary, onSettings }: Pr
                     key={lib.id}
                     data-f={`${libsZ}-${i}`}
                     style={{
-                      width: 220,
+                      width: 260,
                       flexShrink: 0,
                       marginRight: "0.9rem",
                       display: "flex",
                       alignItems: "center",
-                      gap: "0.9rem",
                       background: focused ? "rgba(122,77,255,0.16)" : theme.surface,
                       border: `3px solid ${focused ? theme.accent : "transparent"}`,
                       borderRadius: theme.radius,
@@ -240,8 +239,22 @@ export default function HomeView({ onSeries, onPlay, onLibrary, onSettings }: Pr
                       boxShadow: focused ? "0 0 18px rgba(122,77,255,0.6)" : "none",
                     }}
                   >
-                    <div style={{ color: theme.accent2, flexShrink: 0, display: "flex" }}>
-                      <Icon name={lib.kind} size={30} />
+                    <div
+                      style={{
+                        width: 64,
+                        height: 64,
+                        flexShrink: 0,
+                        marginRight: "1rem",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        borderRadius: 16,
+                        background: "linear-gradient(135deg, rgba(122,77,255,0.30), rgba(236,72,153,0.20))",
+                        border: `1px solid ${theme.border}`,
+                        color: "#ddd6fe",
+                      }}
+                    >
+                      <Icon name={lib.kind} size={34} />
                     </div>
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: "1.05rem", fontWeight: 700, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lib.name}</div>
