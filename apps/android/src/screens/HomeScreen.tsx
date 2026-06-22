@@ -159,7 +159,13 @@ export default function HomeScreen({navigation}: Props): React.JSX.Element {
                 end={{x: 1, y: 1}}
                 style={styles.libBorder}>
                 <View style={styles.lib}>
-                  <Icon name={lib.kind} size={28} color={theme.accent2} />
+                  <LinearGradient
+                    colors={['rgba(122,77,255,0.30)', 'rgba(236,72,153,0.20)']}
+                    start={{x: 0, y: 0}}
+                    end={{x: 1, y: 1}}
+                    style={styles.libIcon}>
+                    <Icon name={lib.kind} size={28} color="#ddd6fe" />
+                  </LinearGradient>
                   <View style={styles.libText}>
                     <Text style={styles.libName}>{lib.name}</Text>
                     <Text style={styles.libCount}>{t('home.titleCount', {count: lib.series_count})}</Text>
@@ -271,6 +277,7 @@ const styles = StyleSheet.create({
   libs: {flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 20, gap: 12},
   libBorder: {borderRadius: theme.radius, padding: 1.5},
   lib: {flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#0C0E19', borderRadius: theme.radius - 1, paddingVertical: 14, paddingHorizontal: 16, minWidth: 160},
+  libIcon: {width: 52, height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: theme.border},
   libText: {flexShrink: 1},
   libName: {color: theme.text, fontSize: 16, fontWeight: '600'},
   libCount: {color: theme.muted, fontSize: 13, marginTop: 4},
