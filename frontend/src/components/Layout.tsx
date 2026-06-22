@@ -65,14 +65,14 @@ export function Layout(): JSX.Element {
   const item = ({ isActive }: { isActive: boolean }): string =>
     `${navClass({ isActive })} ${collapsed ? "lg:justify-center lg:px-2" : ""}`;
 
-  const loadLibraries = (): void => {
+  const loadLibraries = useCallback((): void => {
     api
       .listLibraries()
       .then(setLibraries)
       .catch(() => undefined);
-  };
+  }, []);
 
-  useEffect(loadLibraries, []);
+  useEffect(loadLibraries, [loadLibraries]);
 
   const isAdmin = user?.role === "admin";
 
@@ -133,6 +133,23 @@ export function Layout(): JSX.Element {
     optimistic ||
     busy ||
     tasks.some((task) => task.status === "running" || task.status === "pending");
+
+  // Keep the sidebar library counts fresh: while background work (e.g. a scan adding items)
+  // runs, refresh them periodically, and once more when it settles. listLibraries returns the
+  // current counts, so newly found items show up without a manual page reload.
+  const wasRunning = useRef(false);
+  useEffect(() => {
+    if (running) {
+      wasRunning.current = true;
+      const id = setInterval(loadLibraries, 5000);
+      return () => clearInterval(id);
+    }
+    if (wasRunning.current) {
+      wasRunning.current = false;
+      loadLibraries();
+    }
+    return undefined;
+  }, [running, loadLibraries]);
 
   const onAdded = (library: Library): void => {
     setPicking(false);
