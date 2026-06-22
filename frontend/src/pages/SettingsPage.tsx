@@ -121,6 +121,8 @@ export function SettingsPage(): JSX.Element {
   const [detecting, setDetecting] = useState(false);
   const tv = useTvMode();
   const [tvOverride, setTvOverrideState] = useState(() => getTvOverride());
+  // Bumped after a successful pairing so the devices list reloads without a page refresh.
+  const [devicesNonce, setDevicesNonce] = useState(0);
 
   useEffect(() => {
     const sync = () => setTvOverrideState(getTvOverride());
@@ -390,9 +392,9 @@ export function SettingsPage(): JSX.Element {
         )}
       </section>
 
-      <PairDeviceSection t={t} />
+      <PairDeviceSection t={t} onPaired={() => setDevicesNonce((n) => n + 1)} />
 
-      <DevicesSection t={t} />
+      <DevicesSection t={t} refreshNonce={devicesNonce} />
 
       {user?.role === "admin" && <UsersSection currentUserId={user.id} t={t} />}
     </div>
@@ -447,8 +449,10 @@ function DeviceOptimizationPanel({
 
 function DevicesSection({
   t,
+  refreshNonce,
 }: {
   t: ReturnType<typeof useTranslation>["t"];
+  refreshNonce: number;
 }): JSX.Element {
   const [devices, setDevices] = useState<Device[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -461,9 +465,10 @@ function DevicesSection({
       .catch(() => undefined)
       .finally(() => setLoaded(true));
   };
+  // Reload on mount and whenever a pairing succeeds (refreshNonce bumps).
   useEffect(() => {
     reload();
-  }, []);
+  }, [refreshNonce]);
 
   const revoke = (device: Device): void => {
     if (!window.confirm(t("settings.deviceDeleteConfirm", { name: device.name }))) return;
@@ -545,8 +550,10 @@ function DevicesSection({
 
 function PairDeviceSection({
   t,
+  onPaired,
 }: {
   t: ReturnType<typeof useTranslation>["t"];
+  onPaired: () => void;
 }): JSX.Element {
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
@@ -559,9 +566,10 @@ function PairDeviceSection({
     setMsg(null);
     api
       .pairApprove(code)
-      .then((device) =>
-        setMsg({ ok: true, text: t("settings.pairSuccess", { name: device.name }) }),
-      )
+      .then((device) => {
+        setMsg({ ok: true, text: t("settings.pairSuccess", { name: device.name }) });
+        onPaired(); // refresh the devices list immediately
+      })
       .catch(() => setMsg({ ok: false, text: t("settings.pairError") }))
       .finally(() => {
         setBusy(false);
