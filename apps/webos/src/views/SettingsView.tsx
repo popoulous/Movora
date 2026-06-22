@@ -85,7 +85,6 @@ function actionStyle(focused: boolean): React.CSSProperties {
   return {
     display: "flex",
     alignItems: "center",
-    gap: "0.7rem",
     width: "100%",
     boxSizing: "border-box", // include padding + border so it doesn't overflow the card
     height: 78,
@@ -341,17 +340,18 @@ export default function SettingsView({ onBack, onCapability }: Props): React.JSX
             </div>
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.8rem", marginTop: "1.4rem" }}>
+          {/* flexbox `gap` is unreliable on this webOS Chromium — use margins instead. */}
+          <div style={{ display: "flex", flexDirection: "column", marginTop: "1.4rem" }}>
             <div data-sf="2" style={actionStyle(focus === FOCUS_RESCAN)} onClick={() => { setFocus(FOCUS_RESCAN); handleRescan(); }}>
-              <Icon name="refresh" size={24} />
+              <span style={{ display: "inline-flex", marginRight: "0.7rem" }}><Icon name="refresh" size={24} /></span>
               {rescanning ? t("settings.rescanning") : t("settings.rescan")}
             </div>
-            <div data-sf="3" style={actionStyle(focus === FOCUS_UNPAIR)} onClick={() => { setFocus(FOCUS_UNPAIR); handleUnpair(); }}>
-              <Icon name="unlink" size={24} />
+            <div data-sf="3" style={{ ...actionStyle(focus === FOCUS_UNPAIR), marginTop: "0.8rem" }} onClick={() => { setFocus(FOCUS_UNPAIR); handleUnpair(); }}>
+              <span style={{ display: "inline-flex", marginRight: "0.7rem" }}><Icon name="unlink" size={24} /></span>
               {t("settings.unpair")}
             </div>
-            <div data-sf="4" style={actionStyle(focus === FOCUS_CAP)} onClick={() => { setFocus(FOCUS_CAP); onCapability(); }}>
-              <Icon name="settings" size={24} />
+            <div data-sf="4" style={{ ...actionStyle(focus === FOCUS_CAP), marginTop: "0.8rem" }} onClick={() => { setFocus(FOCUS_CAP); onCapability(); }}>
+              <span style={{ display: "inline-flex", marginRight: "0.7rem" }}><Icon name="settings" size={24} /></span>
               {t("settings.capabilityTest")}
             </div>
           </div>
@@ -368,12 +368,13 @@ export default function SettingsView({ onBack, onCapability }: Props): React.JSX
       </div>
 
       {/* Version card */}
-      <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", marginTop: "1.6rem", color: theme.muted, fontSize: "0.9rem" }}>
+      <div style={{ display: "flex", alignItems: "center", marginTop: "1.6rem", color: theme.muted, fontSize: "0.9rem" }}>
         <span
           style={{
             width: 30,
             height: 30,
             borderRadius: 9,
+            marginRight: "0.6rem",
             background: theme.gradient,
             display: "inline-flex",
             alignItems: "center",
