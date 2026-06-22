@@ -23,6 +23,14 @@ interface Props {
 const EP_W = 210;
 const REC_W = 200; // match the Home poster rows / library card proportions
 
+// The hero image dissolves into the dark background via opacity along its WHOLE left edge AND
+// its WHOLE bottom edge (not just the corner). Two perpendicular single-direction masks are
+// intersected by nesting them (outer = left fade, inner = bottom fade) — no mask-composite,
+// which is unreliable on webOS Chrome 79. Static effect, not an animation. -webkit-mask is the
+// form Chrome 79 needs; the unprefixed one covers newer Chromium.
+const LEFT_FADE = "linear-gradient(to right, transparent 0%, #000 55%)";
+const BOTTOM_FADE = "linear-gradient(to top, transparent 0%, #000 42%)";
+
 export default function SeriesView({
   seriesId,
   onPlay,
@@ -208,45 +216,59 @@ export default function SeriesView({
       {/* Hero with right-side banner fading into the background. */}
       <div style={{ position: "relative", minHeight: 360, padding: "0 2.5rem" }}>
         {banner && (
-          <>
+          <div
+            style={{
+              position: "absolute",
+              top: 0,
+              right: 0,
+              bottom: 0,
+              width: "60%",
+              // Outer layer fades the WHOLE left edge to transparent.
+              WebkitMaskImage: LEFT_FADE,
+              maskImage: LEFT_FADE,
+            }}
+          >
             <div
               style={{
                 position: "absolute",
                 top: 0,
-                right: 0,
-                bottom: 0,
-                width: "60%",
-                backgroundImage: `url(${banner})`,
-                backgroundSize: "cover",
-                backgroundPosition: "center",
-              }}
-            />
-            <div
-              style={{
-                position: "absolute",
-                top: 0, left: 0, right: 0, bottom: 0,
-                background:
-                  "linear-gradient(to right, #05060B 26%, rgba(5,6,11,0.55) 52%, rgba(5,6,11,0.05) 100%)",
-              }}
-            />
-            <div
-              style={{
-                position: "absolute",
                 left: 0,
                 right: 0,
                 bottom: 0,
-                height: 130,
-                background: "linear-gradient(to top, #05060B, transparent)",
+                backgroundImage: `url(${banner})`,
+                backgroundSize: "cover",
+                backgroundPosition: "center",
+                // Inner layer (the image) fades the WHOLE bottom edge; nested inside the outer
+                // mask the two intersect, so the image dissolves along both edges via opacity.
+                WebkitMaskImage: BOTTOM_FADE,
+                maskImage: BOTTOM_FADE,
               }}
             />
-          </>
+          </div>
         )}
 
         <div style={{ position: "relative", maxWidth: 840, paddingTop: "0.6rem" }}>
           <div style={{ marginBottom: "0.7rem" }}>
             <BackButton onClick={onBack} />
           </div>
-          <h1 style={{ fontSize: "2.4rem", fontWeight: 800, margin: "0 0 0.5rem", color: "#fff", overflowWrap: "break-word" }}>{title}</h1>
+          <h1
+            style={{
+              fontSize: "2.4rem",
+              fontWeight: 800,
+              margin: "0 0 0.5rem",
+              color: "#fff",
+              // Wrap at word boundaries (no mid-word break) and cap at two lines with an ellipsis.
+              // An explicit line-height is required, otherwise -webkit-box stacks the two lines
+              // on top of each other on some Chromium versions.
+              lineHeight: 1.2,
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+            }}
+          >
+            {title}
+          </h1>
 
           {metaParts.length > 0 && (
             <div
