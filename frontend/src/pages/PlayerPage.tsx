@@ -18,14 +18,23 @@ import { useNavigate, useParams } from "react-router-dom";
 import { type Season } from "../api";
 import { episodeLabel, seasonOrder, usePlayback } from "../hooks/usePlayback";
 
-type SubSize = "s" | "m" | "l";
+type SubSize = "s" | "m" | "l" | "xl" | "xxl" | "xxxl";
 type SubBackground = "none" | "box" | "solid";
+type SubPos = "low" | "mid" | "high";
 interface SubStyle {
   size: SubSize;
   background: SubBackground;
+  pos: SubPos;
 }
 
-const SIZE_SCALE: Record<SubSize, number> = { s: 0.8, m: 1, l: 1.3 };
+const SIZE_SCALE: Record<SubSize, number> = {
+  s: 0.8,
+  m: 1,
+  l: 1.3,
+  xl: 1.65,
+  xxl: 2.0,
+  xxxl: 2.4,
+};
 
 const AUDIO_PREF_PREFIX = "movora_audio_pref_"; // + seriesId -> remembered audio language
 
@@ -34,21 +43,31 @@ const AUDIO_PREF_PREFIX = "movora_audio_pref_"; // + seriesId -> remembered audi
 // remux. The track list comes from PlaybackInfo.audio_tracks.
 
 function loadSubStyle(): SubStyle {
+  const fallback: SubStyle = { size: "m", background: "none", pos: "low" };
   try {
     const raw = localStorage.getItem("subtitleStyle");
-    if (raw !== null) return JSON.parse(raw) as SubStyle;
+    if (raw !== null) return { ...fallback, ...(JSON.parse(raw) as Partial<SubStyle>) };
   } catch {
     /* fall through to the default */
   }
-  return { size: "m", background: "none" };
+  return fallback;
 }
 
 // Rewrite an ASS file's [V4+ Styles] for the chosen size and background box. Unchanged for the
 // default (medium, no background), so existing files render exactly as authored.
 function applyAssStyle(content: string, style: SubStyle): string {
   const scale = SIZE_SCALE[style.size];
-  if (scale === 1 && style.background === "none") return content;
+  if (scale === 1 && style.background === "none" && style.pos === "low") return content;
   const boxColour = style.background === "solid" ? "&H00000000" : "&H80000000";
+  // Vertical position: raise bottom-anchored dialogue by a fraction of the script height. (\pos
+  // signs ignore the style MarginV, so positioned signs are unaffected.)
+  const playResY = parseInt(content.match(/^\s*PlayResY:\s*(\d+)/im)?.[1] ?? "", 10) || 360;
+  const marginV =
+    style.pos === "high"
+      ? Math.round(playResY * 0.8)
+      : style.pos === "mid"
+        ? Math.round(playResY * 0.42)
+        : null; // low -> keep the authored margin
   let columns: string[] | null = null;
   return content
     .split(/\r?\n/)
@@ -82,6 +101,10 @@ function applyAssStyle(content: string, style: SubStyle): string {
           const i = at(name);
           if (i >= 0) fields[i] = "0";
         }
+      }
+      if (marginV !== null) {
+        const mv = at("marginv");
+        if (mv >= 0) fields[mv] = String(marginV);
       }
       return "Style:" + fields.join(",");
     })
@@ -431,7 +454,7 @@ export function PlayerPage(): JSX.Element {
                 <SubtitleStyleControl style={subStyle} onChange={setSubStyle} t={t} />
               </>
             )}
-            {audioTracks.length > 1 && (
+            {audioTracks.length > 0 && (
               <>
                 <span className="text-sm text-neutral-400">{t("player.audio")}:</span>
                 {audioTracks.map((track) => (
@@ -488,8 +511,9 @@ function SubtitleStyleControl({
         ? "bg-gradient-to-r from-[#7A4DFF] to-[#EC4899] text-white"
         : "bg-white/5 text-neutral-300 hover:bg-white/10"
     }`;
-  const sizes: SubSize[] = ["s", "m", "l"];
+  const sizes: SubSize[] = ["s", "m", "l", "xl", "xxl", "xxxl"];
   const backgrounds: SubBackground[] = ["none", "box", "solid"];
+  const positions: SubPos[] = ["low", "mid", "high"];
   return (
     <div ref={ref} className="relative">
       <button
@@ -503,7 +527,7 @@ function SubtitleStyleControl({
         <div className="absolute bottom-full left-0 z-20 mb-2 w-56 space-y-3 rounded-xl bg-[#0C0E19]/95 p-3 shadow-2xl ring-1 ring-white/10 backdrop-blur">
           <div>
             <div className="mb-1.5 text-xs text-neutral-400">{t("player.subtitleSize")}</div>
-            <div className="flex gap-1.5">
+            <div className="flex flex-wrap gap-1.5">
               {sizes.map((size) => (
                 <button
                   key={size}
@@ -525,6 +549,20 @@ function SubtitleStyleControl({
                   className={pill(style.background === background)}
                 >
                   {t(`player.bg_${background}`)}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="mb-1.5 text-xs text-neutral-400">{t("player.subtitlePosition")}</div>
+            <div className="flex flex-wrap gap-1.5">
+              {positions.map((pos) => (
+                <button
+                  key={pos}
+                  onClick={() => onChange({ ...style, pos })}
+                  className={pill(style.pos === pos)}
+                >
+                  {t(`player.pos_${pos}`)}
                 </button>
               ))}
             </div>

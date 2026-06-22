@@ -69,23 +69,36 @@ const AUDIO_PREF_PREFIX = "movora_audio_pref_";
 
 // ── Subtitle style ────────────────────────────────────────────────────────────
 
-type SubSize = "s" | "m" | "l";
+type SubSize = "s" | "m" | "l" | "xl" | "xxl" | "xxxl";
 type SubBackground = "none" | "box" | "solid";
+type SubPos = "low" | "mid" | "high";
 interface SubStyle {
   size: SubSize;
   background: SubBackground;
+  pos: SubPos;
 }
 
-const SUB_PX: Record<SubSize, number> = { s: 24, m: 32, l: 44 };
+const SUB_PX: Record<SubSize, number> = { s: 24, m: 32, l: 44, xl: 56, xxl: 68, xxxl: 82 };
+const SIZE_LABEL: Record<SubSize, string> = {
+  s: "S",
+  m: "M",
+  l: "L",
+  xl: "XL",
+  xxl: "2X",
+  xxxl: "3X",
+};
+// Raise the whole native-cue container from its default bottom position.
+const POS_SHIFT: Record<SubPos, string> = { low: "-2vh", mid: "-42vh", high: "-82vh" };
 
 function loadSubStyle(): SubStyle {
+  const fallback: SubStyle = { size: "m", background: "none", pos: "low" };
   try {
     const raw = localStorage.getItem("subtitleStyle");
-    if (raw !== null) return JSON.parse(raw) as SubStyle;
+    if (raw !== null) return { ...fallback, ...(JSON.parse(raw) as Partial<SubStyle>) };
   } catch {
     /* fall through */
   }
-  return { size: "m", background: "none" };
+  return fallback;
 }
 
 function hasPanelState(): boolean {
@@ -392,6 +405,7 @@ export function TvPlayerPage(): JSX.Element {
       `@font-face{font-family:'NotoSansTV';src:url('${fontExtUrl}')format('woff2');font-weight:400;font-style:normal;unicode-range:U+0100-024F,U+0259,U+1E00-1EFF;}`,
       `@font-face{font-family:'NotoSansTV';src:url('${fontUrl}')format('woff2');font-weight:400;font-style:normal;}`,
       `::cue{font-family:'NotoSansTV',sans-serif;font-size:${px}px;color:white;background-color:${bgColor};text-shadow:${shadow};}`,
+      `video::-webkit-media-text-track-container{transform:translateY(${POS_SHIFT[subStyle.pos]});}`,
     ].join("\n");
     return () => {
       el?.remove();
@@ -771,7 +785,7 @@ export function TvPlayerPage(): JSX.Element {
           )}
 
           <div className="flex flex-wrap items-center gap-3 px-6 pb-8 pt-2">
-            {audioTracks.length > 1 && (
+            {audioTracks.length > 0 && (
               <>
                 <span className="mr-1 text-sm text-neutral-400">{t("player.audio")}:</span>
                 {audioTracks.map((track) => (
@@ -817,9 +831,9 @@ export function TvPlayerPage(): JSX.Element {
                   </button>
                 ))}
 
-                {/* Subtitle size: S / M / L */}
+                {/* Subtitle size: S / M / L / XL / 2X / 3X */}
                 <span className="mx-1 h-5 w-px shrink-0 bg-white/20" />
-                {(["s", "m", "l"] as const).map((sz) => (
+                {(["s", "m", "l", "xl", "xxl", "xxxl"] as const).map((sz) => (
                   <button
                     key={sz}
                     onClick={() => setSubStyle({ ...subStyle, size: sz })}
@@ -829,7 +843,7 @@ export function TvPlayerPage(): JSX.Element {
                         : "bg-white/5 text-neutral-300 ring-1 ring-white/10 hover:bg-white/10"
                     }`}
                   >
-                    {sz === "s" ? "S" : sz === "m" ? "M" : "L"}
+                    {SIZE_LABEL[sz]}
                   </button>
                 ))}
 
@@ -846,6 +860,22 @@ export function TvPlayerPage(): JSX.Element {
                     }`}
                   >
                     {bg === "none" ? "—" : bg === "box" ? "▒" : "■"}
+                  </button>
+                ))}
+
+                {/* Subtitle position: low / middle / high */}
+                <span className="mx-1 h-5 w-px shrink-0 bg-white/20" />
+                {(["low", "mid", "high"] as const).map((pos) => (
+                  <button
+                    key={pos}
+                    onClick={() => setSubStyle({ ...subStyle, pos })}
+                    className={`rounded-full px-3 py-1.5 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 ${
+                      subStyle.pos === pos
+                        ? "bg-gradient-to-r from-[#7A4DFF] to-[#EC4899] text-white"
+                        : "bg-white/5 text-neutral-300 ring-1 ring-white/10 hover:bg-white/10"
+                    }`}
+                  >
+                    {t(`player.pos_${pos}`)}
                   </button>
                 ))}
               </>
