@@ -40,6 +40,9 @@ python_version = "3.10"
 strict = true
 files = ["movora", "tests"]
 exclude = ["movora/vendor/"]
+# Apply per-module `follow_imports = "skip"` to stub (.pyi) files too — needed to skip numpy's
+# stubs below (mypy follows stubs regardless of follow_imports by default).
+follow_imports_for_stubs = true
 
 [[tool.mypy.overrides]]
 module = ["guessit", "guessit.*", "send2trash"]
@@ -47,6 +50,14 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = ["movora.vendor.*"]
+follow_imports = "skip"
+
+# numpy's published stubs use PEP 695 `type` statements (Python 3.12 syntax). Analysing them
+# under our 3.10 target makes mypy fail ("Type statement is only supported in Python 3.12 and
+# greater") whenever CI installs a newer numpy than the dev box. We don't type-check numpy's
+# internals, so skip following into it — its symbols become Any.
+[[tool.mypy.overrides]]
+module = ["numpy", "numpy.*"]
 follow_imports = "skip"
 
 [tool.pytest.ini_options]
