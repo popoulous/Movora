@@ -41,8 +41,9 @@ def _setup_file_logging(settings: Settings) -> None:
     if any(getattr(handler, "name", "") == "movora-file" for handler in root.handlers):
         return
     try:
+        settings.data_dir.mkdir(parents=True, exist_ok=True)
         handler = RotatingFileHandler(
-            settings.database_path.parent / "movora.log",
+            settings.data_dir / "movora.log",
             maxBytes=2_000_000,
             backupCount=3,
             encoding="utf-8",
@@ -82,7 +83,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         logger.addHandler(handler)
         # A crash/reload can leave a task RUNNING with its ffmpeg killed; put those
         # back in the queue and start the worker so it resumes on its own.
-        normalized_dir = settings.database_path.parent / "normalized"
+        normalized_dir = settings.data_dir / "normalized"
         clean_partials(normalized_dir)  # drop orphaned .part.mp4 from a killed transcode
         with app.state.session_factory() as session:
             dedupe_tasks(session)  # clean up any duplicate tasks first
@@ -116,7 +117,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # Alembic owns schema migrations; init_db just ensures the tables exist so a
     # fresh dev/test database works without a manual migration step.
-    engine = create_db_engine(settings.database_path)
+    db_path = settings.db_path
+    if str(db_path) != ":memory:":
+        db_path.parent.mkdir(parents=True, exist_ok=True)  # ensure the data dir exists
+    engine = create_db_engine(db_path)
     init_db(engine)
     app.state.session_factory = create_session_factory(engine)
     # The library kind picks the provider: anime -> AniList, film/series -> TMDB.

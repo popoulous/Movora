@@ -179,7 +179,7 @@ def delete_library(
         )
     )
     media_file_ids = {media_file.id for media_file in media_files}
-    data_dir = _normalized_dir(request).parent
+    data_dir = request.app.state.settings.data_dir
     # Gather every generated path (incl. device variants) while the rows are still attached.
     artifacts: list[Path] = []
     asset_dirs: list[Path] = []
@@ -710,7 +710,7 @@ def stream_episode(
         raise HTTPException(status_code=404, detail="media file is missing on disk")
     # ?audio=N (N>0): serve a single-audio remux — the browser can't switch tracks itself.
     if audio is not None and audio > 0:
-        cache = request.app.state.settings.database_path.parent / "audio"
+        cache = request.app.state.settings.data_dir / "audio"
         remuxed = select_audio_file(source.path, audio, cache, media_file.id)
         if remuxed is not None:
             return FileResponse(remuxed, media_type="video/mp4")
@@ -814,7 +814,7 @@ def _run_worker(request: Request, background: BackgroundTasks) -> None:
 
 
 def _normalized_dir(request: Request) -> Path:
-    return Path(request.app.state.settings.database_path.parent) / "normalized"
+    return Path(request.app.state.settings.data_dir) / "normalized"
 
 
 def _device_profile(device: Device | None) -> CapabilityProfile | None:
@@ -943,7 +943,7 @@ def episode_font(
 
 
 def _assets_dir(request: Request, media_file_id: int) -> Path:
-    return Path(request.app.state.settings.database_path.parent) / "assets" / str(media_file_id)
+    return Path(request.app.state.settings.data_dir) / "assets" / str(media_file_id)
 
 
 def _subtitle_base(media_file: MediaFile, request: Request) -> Path:

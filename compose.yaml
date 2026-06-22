@@ -9,7 +9,8 @@ services:
       # Mount your media read-only; inside the app add libraries pointing at /media/...
       - ${MOVORA_MEDIA:-./media}:/media:ro
     environment:
-      MOVORA_DATABASE_PATH: /data/movora.db
+      # All generated data (db, transcodes, caches, thumbnails, log) lives in the volume.
+      MOVORA_DATA_DIR: /data
       # Set these in a .env file next to this compose (compose substitutes them here).
       MOVORA_SECRET_KEY: ${MOVORA_SECRET_KEY:-}
       MOVORA_TMDB_API_KEY: ${MOVORA_TMDB_API_KEY:-}

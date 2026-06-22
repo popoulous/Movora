@@ -19,7 +19,7 @@ target_metadata = Base.metadata
 
 def run_migrations_offline() -> None:
     context.configure(
-        url=f"sqlite:///{get_settings().database_path}",
+        url=f"sqlite:///{get_settings().db_path}",
         target_metadata=target_metadata,
         literal_binds=True,
         render_as_batch=True,
@@ -30,7 +30,10 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    engine = create_db_engine(get_settings().database_path)
+    db_path = get_settings().db_path
+    if str(db_path) != ":memory:":
+        db_path.parent.mkdir(parents=True, exist_ok=True)  # ensure the data dir exists
+    engine = create_db_engine(db_path)
     with engine.connect() as connection:
         context.configure(
             connection=connection,

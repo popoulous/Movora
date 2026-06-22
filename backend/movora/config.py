@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 INSECURE_SECRET_KEY = "dev-insecure-change-me"  # the default; warn if still used in production
@@ -19,7 +20,11 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "Movora"
-    database_path: Path = Path("movora.db")
+    # All generated data (the DB, normalized/, assets/, thumbnails/, audio/, movora.log) lives
+    # under one directory — keeps the repo root clean and makes a full wipe trivial.
+    data_dir: Path = Path("var")  # MOVORA_DATA_DIR
+    # Optional explicit DB location; defaults to {data_dir}/movora.db (see db_path).
+    database_path: Path | None = None  # MOVORA_DATABASE_PATH
     frontend_dist: Path | None = None  # if set, the backend serves the built SPA
     secret_key: str = INSECURE_SECRET_KEY  # set MOVORA_SECRET_KEY in production
     session_ttl_seconds: int = 60 * 60 * 24 * 14  # 14 days
@@ -30,6 +35,19 @@ class Settings(BaseSettings):
     # app). Comma-separated, "*" allows any. The web UI is same-origin and unaffected;
     # every /api route still requires auth, so this never bypasses authentication.
     cors_origins: str = "*"
+
+    @model_validator(mode="after")
+    def _derive_data_dir(self) -> Settings:
+        # Back-compat: when only the DB path is set (no explicit MOVORA_DATA_DIR), keep all
+        # generated data next to the database, exactly as before this setting existed.
+        if "data_dir" not in self.model_fields_set and self.database_path is not None:
+            self.data_dir = self.database_path.parent
+        return self
+
+    @property
+    def db_path(self) -> Path:
+        """Resolved SQLite path: the explicit override, else {data_dir}/movora.db."""
+        return self.database_path or self.data_dir / "movora.db"
 
     @property
     def cors_origin_list(self) -> list[str]:
