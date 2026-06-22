@@ -38,7 +38,14 @@ export function AuthPage(): JSX.Element {
         className="w-full max-w-sm space-y-5 rounded-2xl bg-[#0C0E19]/70 p-7 ring-1 ring-white/10 backdrop-blur"
       >
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Movora</h1>
+          <div className="flex items-center gap-2.5">
+            <img
+              src="/movora_logo.png"
+              alt=""
+              className="h-9 w-9 shrink-0 drop-shadow-[0_0_30px_rgba(122,77,255,0.35)]"
+            />
+            <h1 className="text-2xl font-bold tracking-tight">Movora</h1>
+          </div>
           <p className="mt-1 text-sm text-neutral-400">
             {needsSetup ? t("auth.setupSubtitle") : t("auth.loginSubtitle")}
           </p>
