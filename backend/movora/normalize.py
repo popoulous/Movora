@@ -437,26 +437,32 @@ def enqueue_intro(session: Session, library_id: int) -> int:
     """Queue per-episode intro/outro detection. Detection runs ONCE per episode: episodes
     already checked (``intro_checked``) are skipped, so a rescan never re-queues them —
     including ones where no intro was found. One row per episode in the Tasks view."""
-    queued = 0
+    # Read everything BEFORE adding any Task. A query run mid-loop (while earlier-added Task
+    # rows are pending) would trigger an autoflush, upgrading to a write transaction that holds
+    # the SQLite write lock and contends with the worker -> "database is locked". Resolving the
+    # candidates and the already-queued set up front means the only write is the final commit.
     episodes = session.scalars(
         select(Episode)
         .join(Episode.season)
         .join(Season.series)
         .where(Series.library_id == library_id, Episode.intro_checked.is_(False))
         .options(selectinload(Episode.media_files))
-    )
-    for episode in episodes:
-        if not episode.media_files:
-            continue
-        media_file_id = episode.media_files[0].id
-        active = session.scalars(
-            select(Task).where(
+    ).all()
+    candidate_ids = [ep.media_files[0].id for ep in episodes if ep.media_files]
+    if not candidate_ids:
+        return 0
+    active_ids = set(
+        session.scalars(
+            select(Task.media_file_id).where(
                 Task.type == TaskType.INTRO,
-                Task.media_file_id == media_file_id,
+                Task.media_file_id.in_(candidate_ids),
                 Task.status.in_(_ACTIVE),
             )
-        ).first()
-        if active is not None:  # already in flight — don't double-queue
+        ).all()
+    )
+    queued = 0
+    for media_file_id in candidate_ids:
+        if media_file_id in active_ids:  # already in flight — don't double-queue
             continue
         session.add(
             Task(type=TaskType.INTRO, media_file_id=media_file_id, priority=PRIORITY_INTRO)
@@ -478,39 +484,45 @@ def enqueue_normalize(
     jump the queue (PRIORITY_DEVICE_NOW).
     """
     queued = 0
-    for media_file_id in media_file_ids:
-        media_file = session.get(MediaFile, media_file_id)
-        if media_file is None:
-            continue
-        if media_file.normalized_path and Path(media_file.normalized_path).is_file():
-            continue
-        existing = list(
-            session.scalars(
-                select(Task).where(
-                    Task.type == TaskType.NORMALIZE, Task.media_file_id == media_file_id
+    # Inside no_autoflush so a per-file query doesn't autoflush Tasks added/changed in earlier
+    # iterations — that would take the SQLite write lock mid-loop and risk "database is locked"
+    # against the worker. The final commit performs all writes at once. Dedupe the ids so the
+    # suppressed autoflush can't let a repeated id be queued twice.
+    with session.no_autoflush:
+        for media_file_id in dict.fromkeys(media_file_ids):
+            media_file = session.get(MediaFile, media_file_id)
+            if media_file is None:
+                continue
+            if media_file.normalized_path and Path(media_file.normalized_path).is_file():
+                continue
+            existing = list(
+                session.scalars(
+                    select(Task).where(
+                        Task.type == TaskType.NORMALIZE, Task.media_file_id == media_file_id
+                    )
                 )
             )
-        )
-        active = [task for task in existing if task.status in _ACTIVE]
-        if active:  # already queued or running — bump a PENDING one to a better priority
-            if any(
-                task.status == JobStatus.PENDING and task.priority > priority for task in active
-            ):
-                for task in active:
-                    if task.status == JobStatus.PENDING and task.priority > priority:
-                        task.priority = priority
-                queued += 1
-            continue
-        failed = [task for task in existing if task.status == JobStatus.FAILED]
-        if failed:
-            _reset(failed[-1])  # retry the latest failed attempt in place
-            failed[-1].attempts = 0  # a manual re-queue is a fresh start
-            failed[-1].priority = priority
-        else:
-            session.add(
-                Task(type=TaskType.NORMALIZE, media_file_id=media_file_id, priority=priority)
-            )
-        queued += 1
+            active = [task for task in existing if task.status in _ACTIVE]
+            if active:  # already queued or running — bump a PENDING one to a better priority
+                if any(
+                    task.status == JobStatus.PENDING and task.priority > priority
+                    for task in active
+                ):
+                    for task in active:
+                        if task.status == JobStatus.PENDING and task.priority > priority:
+                            task.priority = priority
+                    queued += 1
+                continue
+            failed = [task for task in existing if task.status == JobStatus.FAILED]
+            if failed:
+                _reset(failed[-1])  # retry the latest failed attempt in place
+                failed[-1].attempts = 0  # a manual re-queue is a fresh start
+                failed[-1].priority = priority
+            else:
+                session.add(
+                    Task(type=TaskType.NORMALIZE, media_file_id=media_file_id, priority=priority)
+                )
+            queued += 1
     session.commit()
     return queued
 
