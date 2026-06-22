@@ -71,7 +71,10 @@ export function TopNav({
                 padding: "0.35rem 0.9rem",
                 borderRadius: 999,
                 fontSize: "1.05rem",
-                fontWeight: active || focused ? 700 : 500,
+                // Weight depends only on the active tab, never on focus: bold text is wider, so
+                // changing it as focus moves reflowed the row and made the menu jump. Focus is
+                // shown by the gradient background + glow + white text instead.
+                fontWeight: active ? 700 : 500,
                 cursor: "pointer",
                 color: focused ? "#fff" : active ? "#fff" : theme.muted,
                 background: focused ? theme.gradient : active ? "rgba(122,77,255,0.18)" : "transparent",

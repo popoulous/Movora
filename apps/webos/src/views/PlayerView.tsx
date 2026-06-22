@@ -399,7 +399,7 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
 
   const openPanel = (): void => {
     setRow("controls");
-    setCol(audioList.length > 1 ? 3 : 2); // focus play/pause (shifts when the audio button shows)
+    setCol(audioList.length > 0 ? 3 : 2); // focus play/pause (shifts when the audio button shows)
     setEpFocus(curIdx >= 0 ? curIdx : 0);
     setPanelOpen(true);
     armPanelTimer();
@@ -517,8 +517,9 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
   type Ctrl = { id: string; icon: string; big?: boolean; on?: boolean };
   const controls: Ctrl[] = [
     { id: "sub", icon: "subtitles", on: subIdx >= 0 },
-    // Only when the platform exposes more than one selectable audio track.
-    ...(audioList.length > 1 ? [{ id: "audio", icon: "audio" } as Ctrl] : []),
+    // Shown whenever the platform exposes a selectable audio track (kept visible even for a
+    // single track so the controls layout stays stable and the feature is discoverable).
+    ...(audioList.length > 0 ? [{ id: "audio", icon: "audio" } as Ctrl] : []),
     { id: "prev", icon: "prev" },
     { id: "play", icon: paused ? "play" : "pause", big: true },
     { id: "next", icon: "next" },
@@ -889,8 +890,10 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
                     background: setFocus === ri ? "rgba(122,77,255,0.14)" : "transparent",
                   }}
                 >
-                  <span style={{ width: 100, color: theme.muted, fontSize: "0.92rem" }}>{def.label}</span>
-                  <div style={{ display: "flex" }}>
+                  {/* rem-based min-width (not a fixed 100px) so the label scales with the TV's
+                      font size and long labels (Background/Position) can't slide under the pills */}
+                  <span style={{ minWidth: "7rem", flexShrink: 0, whiteSpace: "nowrap", marginRight: "1rem", color: theme.muted, fontSize: "0.92rem" }}>{def.label}</span>
+                  <div style={{ display: "flex", flexWrap: "wrap", flex: 1, minWidth: 0 }}>
                     {def.options.map((opt) => {
                       const sel = opt.v === def.cur;
                       return (
@@ -899,6 +902,7 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
                           onClick={() => applySetting(ri, opt.v)}
                           style={{
                             marginRight: "0.6rem",
+                            marginBottom: "0.35rem",
                             padding: "0.32rem 0.95rem",
                             borderRadius: 999,
                             fontSize: "0.9rem",
