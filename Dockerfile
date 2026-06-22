@@ -21,7 +21,7 @@ COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 ENV MOVORA_FRONTEND_DIST=/app/frontend/dist \
-    MOVORA_DATABASE_PATH=/data/movora.db
+    MOVORA_DATA_DIR=/data
 EXPOSE 8000
 VOLUME ["/data"]
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
