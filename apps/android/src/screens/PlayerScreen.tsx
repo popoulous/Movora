@@ -8,6 +8,7 @@ import {
   Modal,
   PanResponder,
   Pressable,
+  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
@@ -15,6 +16,7 @@ import {
   View,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import SystemNavigationBar from 'react-native-system-navigation-bar';
 import Video, {
   SelectedTrackType,
@@ -144,7 +146,10 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
   const {api, config} = useDevice();
   const {t} = useI18n();
   const {episodeId} = route.params;
-  const {height: winH} = useWindowDimensions();
+  const {width: winW, height: winH} = useWindowDimensions();
+  const landscape = winW > winH;
+  const panelPadTop = landscape ? 14 : 40;
+  const insets = useSafeAreaInsets();
   const videoRef = useRef<VideoRef>(null);
   const lastSaved = useRef(0);
   const cdTimer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -620,16 +625,33 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
           {/* Bottom panel */}
           <LinearGradient
             colors={['transparent', 'rgba(5,6,11,0.55)', 'rgba(5,6,11,0.97)']}
-            style={styles.panel}
+            style={[
+              styles.panel,
+              {
+                // Clear the system bars / display cutout in landscape so the episode strip
+                // isn't hidden under them.
+                paddingBottom: 20 + insets.bottom,
+                paddingLeft: 24 + insets.left,
+                paddingRight: 24 + insets.right,
+                // Tighter top in landscape, and capped so the panel never reaches (overlaps)
+                // the back button at the top — overflow is clipped from the top, not the strip.
+                paddingTop: panelPadTop,
+                maxHeight: winH - 56,
+              },
+            ]}
             onLayout={e => setPanelH(e.nativeEvent.layout.height)}
             pointerEvents="box-none">
-            <Text style={styles.title} numberOfLines={1}>
-              {info.series_title}
-            </Text>
-            <Text style={styles.meta} numberOfLines={1}>
-              {t('series.episode', {number: info.episode_number})}
-              {info.episode_title ? ` — ${info.episode_title}` : ''}
-            </Text>
+            {!landscape && (
+              <>
+                <Text style={styles.title} numberOfLines={1}>
+                  {info.series_title}
+                </Text>
+                <Text style={styles.meta} numberOfLines={1}>
+                  {t('series.episode', {number: info.episode_number})}
+                  {info.episode_title ? ` — ${info.episode_title}` : ''}
+                </Text>
+              </>
+            )}
 
             {/* Scrubber */}
             <View style={styles.scrubRow}>
@@ -639,7 +661,12 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
                 onLayout={e => (barWRef.current = e.nativeEvent.layout.width)}
                 {...pan.panHandlers}>
                 <View style={styles.barTrack}>
-                  <View style={[styles.barFill, {width: `${pct}%`}]} />
+                  <LinearGradient
+                    colors={theme.gradient}
+                    start={{x: 0, y: 0}}
+                    end={{x: 1, y: 0}}
+                    style={[styles.barFill, {width: `${pct}%`}]}
+                  />
                   <View style={[styles.barThumb, {left: `${pct}%`}]} />
                 </View>
               </View>
@@ -651,7 +678,7 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
               {subOptions.length > 0 && (
                 <CtrlButton icon="subtitles" on={textIndex >= 0} onPress={act(() => setPicker('text'))} />
               )}
-              {audioTracks.length > 1 && (
+              {audioTracks.length > 0 && (
                 <CtrlButton icon="audio" onPress={act(() => setPicker('audio'))} />
               )}
               {prevId != null && <CtrlButton icon="prev" onPress={act(() => goTo(prevId))} />}
@@ -703,6 +730,12 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
           </Text>
           <View style={styles.endedRow}>
             <Pressable style={styles.endedBtn} onPress={goNext}>
+              <LinearGradient
+                colors={theme.gradient}
+                start={{x: 0, y: 0}}
+                end={{x: 1, y: 1}}
+                style={StyleSheet.absoluteFill}
+              />
               <Text style={styles.endedBtnText}>
                 {nextId != null ? t('player.playNow') : t('common.back')}
               </Text>
@@ -876,6 +909,30 @@ function TrackPicker({
   );
 }
 
+function Choice({
+  active,
+  label,
+  onPress,
+}: {
+  active: boolean;
+  label: string;
+  onPress: () => void;
+}): React.JSX.Element {
+  return (
+    <Pressable onPress={onPress} style={styles.choice}>
+      {active && (
+        <LinearGradient
+          colors={theme.gradient}
+          start={{x: 0, y: 0}}
+          end={{x: 1, y: 0}}
+          style={StyleSheet.absoluteFill}
+        />
+      )}
+      <Text style={[styles.choiceText, active && styles.choiceTextActive]}>{label}</Text>
+    </Pressable>
+  );
+}
+
 function SubtitleSettings({
   visible,
   style,
@@ -893,54 +950,54 @@ function SubtitleSettings({
   onClose: () => void;
   t: (key: Key, vars?: Record<string, string | number>) => string;
 }): React.JSX.Element {
+  const insets = useSafeAreaInsets();
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose}>
-        <View style={styles.sheet}>
+        {/* ScrollView so the rows never get clipped on short (landscape) screens. */}
+        <ScrollView
+          style={styles.sheetScroll}
+          contentContainerStyle={[styles.sheetContent, {paddingBottom: insets.bottom + 20}]}
+          showsVerticalScrollIndicator={false}
+          onStartShouldSetResponder={() => true}>
           <Text style={styles.sheetTitle}>{t('player.subtitleSettings')}</Text>
 
           <Text style={styles.settingLabel}>{t('player.size')}</Text>
           <View style={styles.pillRow}>
             {SIZES.map(s => (
-              <Pressable
+              <Choice
                 key={s}
+                active={style.size === s}
+                label={t(SIZE_KEY[s])}
                 onPress={() => onSize(s)}
-                style={[styles.choice, style.size === s && styles.choiceActive]}>
-                <Text style={[styles.choiceText, style.size === s && styles.choiceTextActive]}>
-                  {t(SIZE_KEY[s])}
-                </Text>
-              </Pressable>
+              />
             ))}
           </View>
 
           <Text style={styles.settingLabel}>{t('player.background')}</Text>
           <View style={styles.pillRow}>
             {BGS.map(b => (
-              <Pressable
+              <Choice
                 key={b}
+                active={style.bg === b}
+                label={t(BG_KEY[b])}
                 onPress={() => onBg(b)}
-                style={[styles.choice, style.bg === b && styles.choiceActive]}>
-                <Text style={[styles.choiceText, style.bg === b && styles.choiceTextActive]}>
-                  {t(BG_KEY[b])}
-                </Text>
-              </Pressable>
+              />
             ))}
           </View>
 
           <Text style={styles.settingLabel}>{t('player.position')}</Text>
           <View style={styles.pillRow}>
             {POSS.map(p => (
-              <Pressable
+              <Choice
                 key={p}
+                active={style.pos === p}
+                label={t(POS_KEY[p])}
                 onPress={() => onPos(p)}
-                style={[styles.choice, style.pos === p && styles.choiceActive]}>
-                <Text style={[styles.choiceText, style.pos === p && styles.choiceTextActive]}>
-                  {t(POS_KEY[p])}
-                </Text>
-              </Pressable>
+              />
             ))}
           </View>
-        </View>
+        </ScrollView>
       </Pressable>
     </Modal>
   );
@@ -959,12 +1016,15 @@ const styles = StyleSheet.create({
   subWrap: {position: 'absolute', left: 0, right: 0, alignItems: 'center', paddingHorizontal: 24},
   subText: {color: '#fff', fontWeight: '600', textAlign: 'center', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4, overflow: 'hidden', textShadowColor: '#000', textShadowOffset: {width: 0, height: 1}, textShadowRadius: 5},
 
-  overlay: {...StyleSheet.absoluteFillObject, justifyContent: 'space-between'},
+  overlay: {...StyleSheet.absoluteFillObject},
   topBar: {flexDirection: 'row', padding: 14},
   backBtn: {flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 999, backgroundColor: 'rgba(0,0,0,0.35)'},
   backLabel: {color: '#fff', fontSize: 15, fontWeight: '600'},
 
-  panel: {paddingHorizontal: 24, paddingTop: 40, paddingBottom: 20},
+  // Anchored to the bottom (not a space-between flex child): in landscape the panel content can
+  // be taller than the screen, and an overflowing space-between child pushed the episode strip
+  // off the bottom. Absolute bottom keeps the strip pinned to the bottom; overflow spills up.
+  panel: {position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 24, paddingTop: 40, paddingBottom: 20, overflow: 'hidden', justifyContent: 'flex-end'},
   title: {color: '#fff', fontSize: 20, fontWeight: '800'},
   meta: {color: theme.muted, fontSize: 14, marginTop: 2, marginBottom: 12},
 
@@ -972,8 +1032,8 @@ const styles = StyleSheet.create({
   time: {color: '#fff', fontSize: 13, width: 56, textAlign: 'center', fontVariant: ['tabular-nums']},
   barHit: {flex: 1, paddingVertical: 12, justifyContent: 'center'},
   barTrack: {height: 6, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.25)'},
-  barFill: {position: 'absolute', left: 0, top: 0, bottom: 0, borderRadius: 999, backgroundColor: theme.accent},
-  barThumb: {position: 'absolute', top: '50%', width: 16, height: 16, borderRadius: 8, marginLeft: -8, marginTop: -8, backgroundColor: '#fff'},
+  barFill: {position: 'absolute', left: 0, top: 0, bottom: 0, borderRadius: 999},
+  barThumb: {position: 'absolute', top: '50%', width: 16, height: 16, borderRadius: 8, marginLeft: -8, marginTop: -8, backgroundColor: '#fff', shadowColor: theme.accent, shadowOpacity: 0.9, shadowRadius: 6, elevation: 4},
 
   transport: {flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginVertical: 6},
   ctrl: {marginHorizontal: 6, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.12)', borderWidth: 2, borderColor: 'rgba(255,255,255,0.18)', overflow: 'hidden'},
@@ -996,19 +1056,20 @@ const styles = StyleSheet.create({
   endedTitle: {color: '#fff', fontSize: 24, fontWeight: '800'},
   endedSub: {color: theme.muted, fontSize: 16},
   endedRow: {flexDirection: 'row', gap: 12, marginTop: 8},
-  endedBtn: {backgroundColor: theme.accent, borderRadius: 999, paddingVertical: 12, paddingHorizontal: 26},
+  endedBtn: {borderRadius: 999, paddingVertical: 12, paddingHorizontal: 26, overflow: 'hidden'},
   endedBtnText: {color: '#fff', fontWeight: '700', fontSize: 16},
 
   backdrop: {flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end'},
   sheet: {backgroundColor: '#0C0E19', borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 20, maxHeight: '70%'},
+  sheetScroll: {backgroundColor: '#0C0E19', borderTopLeftRadius: 16, borderTopRightRadius: 16, maxHeight: '85%', flexGrow: 0},
+  sheetContent: {paddingHorizontal: 20, paddingTop: 20},
   sheetTitle: {color: '#fff', fontSize: 18, fontWeight: '700', marginBottom: 12},
   option: {paddingVertical: 14},
   optionText: {color: theme.muted, fontSize: 16},
   optionActive: {color: theme.accent, fontWeight: '700'},
   settingLabel: {color: theme.muted, fontSize: 14, marginTop: 12, marginBottom: 8},
   pillRow: {flexDirection: 'row', flexWrap: 'wrap', gap: 8},
-  choice: {paddingVertical: 8, paddingHorizontal: 16, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.08)'},
-  choiceActive: {backgroundColor: theme.accent},
+  choice: {paddingVertical: 8, paddingHorizontal: 16, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.08)', overflow: 'hidden'},
   choiceText: {color: theme.muted, fontSize: 14, fontWeight: '600'},
   choiceTextActive: {color: '#fff'},
 });
