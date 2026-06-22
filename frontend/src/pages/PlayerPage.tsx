@@ -74,6 +74,14 @@ function applyAssStyle(content: string, style: SubStyle): string {
           const i = at(name);
           if (i >= 0) fields[i] = boxColour;
         }
+        // BorderStyle 3 draws a box per line, sized by Outline (plus a Shadow-offset copy).
+        // With a translucent box those per-line boxes overlap and the alpha stacks into dark
+        // horizontal stripes. Zero the padding and shadow so each line's box is tight to its
+        // text and neighbouring lines don't overlap.
+        for (const name of ["outline", "shadow"]) {
+          const i = at(name);
+          if (i >= 0) fields[i] = "0";
+        }
       }
       return "Style:" + fields.join(",");
     })
