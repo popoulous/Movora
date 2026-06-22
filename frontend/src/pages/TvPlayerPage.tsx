@@ -63,6 +63,10 @@ function findNearestInElement(
 
 const MOVORA_PANEL_KEY = "movoraPanelOpen";
 
+// + seriesId -> remembered audio language. Audio switching is server-side (the desktop player
+// does the same): browsers don't expose audioTracks, so we reload /stream?audio=N.
+const AUDIO_PREF_PREFIX = "movora_audio_pref_";
+
 // ── Subtitle style ────────────────────────────────────────────────────────────
 
 type SubSize = "s" | "m" | "l";
@@ -209,6 +213,39 @@ export function TvPlayerPage(): JSX.Element {
     setSubStyleState(next);
     localStorage.setItem("subtitleStyle", JSON.stringify(next));
   };
+
+  // ── Audio track selection (server-side, like the desktop player) ──────────────
+  const audioTracks = playback?.audio_tracks ?? [];
+  const [audioIndex, setAudioIndex] = useState(0);
+  const resumeAt = useRef<number | null>(null); // keep the position across an audio reload
+
+  // Apply the series' remembered audio language when an episode loads.
+  useEffect(() => {
+    if (playback === null || playback.audio_tracks.length <= 1) {
+      setAudioIndex(0);
+      return;
+    }
+    const pref = localStorage.getItem(AUDIO_PREF_PREFIX + playback.series_id);
+    const match =
+      pref !== null
+        ? playback.audio_tracks.find((track) => (track.language ?? "") === pref)
+        : undefined;
+    setAudioIndex(match?.index ?? 0);
+  }, [playback?.media_file_id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const selectAudio = (index: number): void => {
+    if (playback === null) return;
+    if (videoRef.current !== null) resumeAt.current = videoRef.current.currentTime;
+    setAudioIndex(index);
+    const track = playback.audio_tracks.find((a) => a.index === index);
+    localStorage.setItem(AUDIO_PREF_PREFIX + playback.series_id, track?.language ?? "");
+  };
+
+  const audioLabel = (track: {
+    index: number;
+    language: string | null;
+    title: string | null;
+  }): string => track.title ?? track.language ?? `#${track.index + 1}`;
 
   const rootRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -558,14 +595,20 @@ export function TvPlayerPage(): JSX.Element {
       {/* Video — only once a playable source exists; never play the un-optimized original. */}
       {playback.direct_play ? (
         <video
-          key={String(playback.direct_play)}
+          key={`${playback.direct_play}-${audioIndex}`}
           ref={videoRef}
-          src={playback.stream_url}
+          src={audioIndex > 0 ? `${playback.stream_url}?audio=${audioIndex}` : playback.stream_url}
           autoPlay
           onPlay={() => setPlaying(true)}
           onPause={() => setPlaying(false)}
           onLoadedMetadata={() => {
-            resume();
+            // Keep the position when reloading for an audio switch; else resume the bookmark.
+            if (resumeAt.current !== null) {
+              if (videoRef.current !== null) videoRef.current.currentTime = resumeAt.current;
+              resumeAt.current = null;
+            } else {
+              resume();
+            }
             setDuration(videoRef.current?.duration ?? 0);
           }}
           onDurationChange={() => setDuration(videoRef.current?.duration ?? 0)}
@@ -728,6 +771,25 @@ export function TvPlayerPage(): JSX.Element {
           )}
 
           <div className="flex flex-wrap items-center gap-3 px-6 pb-8 pt-2">
+            {audioTracks.length > 1 && (
+              <>
+                <span className="mr-1 text-sm text-neutral-400">{t("player.audio")}:</span>
+                {audioTracks.map((track) => (
+                  <button
+                    key={track.index}
+                    onClick={() => selectAudio(track.index)}
+                    className={`rounded-full px-4 py-1.5 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 ${
+                      audioIndex === track.index
+                        ? "bg-gradient-to-r from-[#7A4DFF] to-[#EC4899] text-white"
+                        : "bg-white/5 text-neutral-300 ring-1 ring-white/10 hover:bg-white/10"
+                    }`}
+                  >
+                    {audioLabel(track)}
+                  </button>
+                ))}
+                {vttTracks.length > 0 && <span className="mx-1 h-5 w-px shrink-0 bg-white/20" />}
+              </>
+            )}
             {vttTracks.length > 0 && (
               <>
                 <span className="mr-1 text-sm text-neutral-400">{t("player.subtitles")}:</span>
