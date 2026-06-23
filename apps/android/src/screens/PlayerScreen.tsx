@@ -22,6 +22,7 @@ import Video, {
   SelectedTrackType,
   type OnLoadData,
   type OnProgressData,
+  type OnSeekData,
   type VideoRef,
 } from 'react-native-video';
 
@@ -38,6 +39,19 @@ const SAVE_INTERVAL_S = 10;
 const PREPARE_POLL_MS = 4000;
 const COUNTDOWN_START = 10;
 const CONTROLS_TIMEOUT = 4500;
+// While a seek is in flight onProgress still reports the *old* position for a beat
+// (slow NAS sources buffer for a while). Treat the seek as landed once playback is
+// within this window of the target, so the progress bar doesn't snap back meanwhile.
+const SEEK_SETTLE_S = 1.5;
+// Give a slow remote (NAS) source more runway: a bigger forward buffer rebuffers
+// less violently, and a back-buffer keeps short rewinds instant instead of refetching.
+const BUFFER_CONFIG = {
+  minBufferMs: 15000,
+  maxBufferMs: 60000,
+  bufferForPlaybackMs: 2500,
+  bufferForPlaybackAfterRebufferMs: 5000,
+  backBufferDurationMs: 30000,
+} as const;
 const AUDIO_PREF_PREFIX = 'movora_audio_pref_'; // + seriesId -> language
 const SUB_PREF_KEY = 'movora_sub_pref'; // remembered subtitle language ('off' to disable)
 const SUB_STYLE_KEY = 'movora_sub_style';
@@ -152,6 +166,12 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
   const insets = useSafeAreaInsets();
   const videoRef = useRef<VideoRef>(null);
   const lastSaved = useRef(0);
+  // Target of an in-flight seek (null = none). While set, onProgress holds the bar
+  // at the target instead of trusting the stale pre-seek position the player reports.
+  const seekTargetRef = useRef<number | null>(null);
+  // Resume-on-open is one-shot: a re-fired onLoad (e.g. after a buffering stall on a
+  // slow source) must not yank playback back to the saved position again.
+  const didResumeRef = useRef(false);
   const cdTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -375,10 +395,19 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ended, countdown]);
 
+  // Every seek goes through here so onProgress knows a jump is in flight and won't
+  // overwrite the bar with the player's stale pre-seek position (reads refs only,
+  // so the once-created PanResponder can call it without a stale closure).
+  const seekTo = (target: number): void => {
+    seekTargetRef.current = target;
+    videoRef.current?.seek(target);
+  };
+
   const onLoad = (data: OnLoadData): void => {
     setDuration(data.duration);
-    if (info && info.resume_position > 5) {
-      videoRef.current?.seek(info.resume_position);
+    if (info && info.resume_position > 5 && !didResumeRef.current) {
+      didResumeRef.current = true;
+      seekTo(info.resume_position);
     }
     const tracks: TrackOption[] = (data.audioTracks ?? []).map((tr, i) => ({
       index: tr.index ?? i,
@@ -425,8 +454,25 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
   const setBg = (bg: SubBg): void => setSubStyle(s => persistStyle({...s, bg}));
   const setPos = (pos: SubPos): void => setSubStyle(s => persistStyle({...s, pos}));
 
+  // The seek has landed once the player itself reports being near the target.
+  const onSeek = (data: OnSeekData): void => {
+    if (Math.abs(data.currentTime - data.seekTime) < SEEK_SETTLE_S) {
+      seekTargetRef.current = null;
+    }
+  };
+
   const onProgress = (data: OnProgressData): void => {
     const pos = data.currentTime;
+    // Hold the bar at the seek target until playback actually reaches it; otherwise a
+    // slow source's stale pre-seek position would snap the bar back (the "bouncing").
+    const target = seekTargetRef.current;
+    if (target !== null) {
+      if (Math.abs(pos - target) < SEEK_SETTLE_S) {
+        seekTargetRef.current = null;
+      } else {
+        return;
+      }
+    }
     if (!scrubbing) {
       setCurrent(pos);
     }
@@ -455,7 +501,7 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
 
   const doSkip = (): void => {
     if (skip === 'intro' && info?.intro_end != null) {
-      videoRef.current?.seek(info.intro_end);
+      seekTo(info.intro_end);
       setSkip(null);
     } else if (skip === 'outro') {
       goNext();
@@ -513,7 +559,7 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
       onPanResponderMove: e => setScrubValue(seekFromX(e.nativeEvent.locationX)),
       onPanResponderRelease: e => {
         const target = seekFromX(e.nativeEvent.locationX);
-        videoRef.current?.seek(target);
+        seekTo(target);
         setScrubValue(target);
         setCurrent(target);
         setScrubbing(false);
@@ -574,11 +620,13 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
         paused={paused}
         resizeMode="contain"
         progressUpdateInterval={250}
+        bufferConfig={BUFFER_CONFIG}
         selectedAudioTrack={
           audioIndex >= 0 ? {type: SelectedTrackType.INDEX, value: audioIndex} : undefined
         }
         onLoad={onLoad}
         onProgress={onProgress}
+        onSeek={onSeek}
         onEnd={onEnd}
         onError={() => setError(t('player.error'))}
       />
