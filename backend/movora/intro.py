@@ -4,9 +4,10 @@ Two tiers, both via the bundled ffmpeg (no extra binary needed):
   1. Named chapters ("Opening"/"Ending" …) — exact and cheap for well-authored
      anime Blu-ray rips.
   2. Audio-fingerprint matching — for files with generic or no chapters, the opening
-     audio is identical across a season's episodes, so the longest shared run between
-     an episode's Chromaprint fingerprint and a neighbour's marks the intro (the
-     approach Jellyfin's Intro Skipper uses).
+     (and closing) audio is identical across a season's episodes, so the longest shared
+     run between an episode's Chromaprint fingerprint and a neighbour's marks the intro
+     near the start and the outro near the finish (the approach Jellyfin's Intro Skipper
+     uses).
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ import numpy as np
 # asymptotic rate); good enough for second-level skip markers.
 SECONDS_PER_HASH = 0.1238
 _INTRO_WINDOW = 300.0  # only the first 5 minutes are searched for an opening
+_OUTRO_WINDOW = 300.0  # only the last 5 minutes are searched for an ending
 _MIN_INTRO_SECONDS = 12.0  # shorter shared runs are not an opening
 _MAX_SHIFT_SECONDS = 90.0  # how far the opening may sit apart between two episodes
 _MAX_HAMMING = 6  # per-hash bit differences still counted as a match
@@ -97,6 +99,26 @@ def chapters_markers(path: Path, ffprobe: str | None = None) -> Markers:
     return markers_from_chapters(_probe_chapters(path, ffprobe))
 
 
+def _duration(path: Path, ffprobe: str | None) -> float | None:
+    """Container duration in seconds, used to locate the closing window. None if unknown."""
+    ffprobe = ffprobe or shutil.which("ffprobe")
+    if ffprobe is None:
+        return None
+    try:
+        result = subprocess.run(
+            [ffprobe, "-v", "quiet", "-print_format", "json", "-show_format", str(path)],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=30,
+        )
+        data = json.loads(result.stdout)
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
+        return None
+    fmt = data.get("format")
+    return _to_float(fmt.get("duration")) if isinstance(fmt, dict) else None
+
+
 def fingerprint(
     path: Path, ffmpeg: str | None = None, *, start: float = 0.0, duration: float = _INTRO_WINDOW
 ) -> np.ndarray:
@@ -161,35 +183,70 @@ def common_segment(
 
 
 # Fingerprints are cached across calls so a season's episodes, processed one task at a
-# time, don't re-fingerprint each other as neighbours. The light worker is single-threaded.
-_fp_cache: OrderedDict[str, np.ndarray] = OrderedDict()
+# time, don't re-fingerprint each other as neighbours. Keyed by span so an episode's
+# opening and closing windows cache separately. The light worker is single-threaded.
+_fp_cache: OrderedDict[tuple[str, int, int], np.ndarray] = OrderedDict()
 _FP_CACHE_MAX = 40
 
 
-def _fingerprint_cached(path: Path, ffmpeg: str | None) -> np.ndarray:
-    key = str(path)
+def _fingerprint_cached(
+    path: Path, ffmpeg: str | None, *, start: float = 0.0, duration: float = _INTRO_WINDOW
+) -> np.ndarray:
+    key = (str(path), int(start), int(duration))
     cached = _fp_cache.get(key)
     if cached is not None:
         _fp_cache.move_to_end(key)
         return cached
-    value = fingerprint(path, ffmpeg)
+    value = fingerprint(path, ffmpeg, start=start, duration=duration)
     _fp_cache[key] = value
     while len(_fp_cache) > _FP_CACHE_MAX:
         _fp_cache.popitem(last=False)
     return value
 
 
+def _outro_segment(
+    path: Path, neighbour: Path, *, ffmpeg: str | None, ffprobe: str | None
+) -> tuple[float, float] | None:
+    """Match the shared ending run between the closing windows of `path` and `neighbour`,
+    translated to absolute seconds in `path`'s timeline. None if nothing long enough matches.
+
+    The window is anchored to each file's end; the ending sits a variable distance from the
+    finish (a trailing "next episode" preview differs in length), which common_segment's
+    shift search absorbs."""
+    dur_a = _duration(path, ffprobe)
+    dur_b = _duration(neighbour, ffprobe)
+    if dur_a is None or dur_b is None:
+        return None
+    start_a = max(0.0, dur_a - _OUTRO_WINDOW)
+    start_b = max(0.0, dur_b - _OUTRO_WINDOW)
+    segment = common_segment(
+        _fingerprint_cached(path, ffmpeg, start=start_a, duration=_OUTRO_WINDOW),
+        _fingerprint_cached(neighbour, ffmpeg, start=start_b, duration=_OUTRO_WINDOW),
+    )
+    if segment is None:
+        return None
+    seg_start, seg_end = segment
+    return (start_a + seg_start, start_a + seg_end)
+
+
 def detect_episode(
     path: Path, neighbour: Path | None, *, ffmpeg: str | None = None, ffprobe: str | None = None
 ) -> Markers:
     """Markers for one episode: named chapters first, then a Chromaprint match against the
-    given neighbour for the intro if the chapters didn't reveal one (outro stays chapter-only)."""
+    given neighbour — the intro near the start and the outro near the finish — for whichever
+    side the chapters didn't reveal."""
     ffmpeg = ffmpeg or shutil.which("ffmpeg")
     markers = chapters_markers(path, ffprobe)
-    if markers.intro_end is None and neighbour is not None:
+    if neighbour is None:
+        return markers
+    if markers.intro_end is None:
         segment = common_segment(
             _fingerprint_cached(path, ffmpeg), _fingerprint_cached(neighbour, ffmpeg)
         )
         if segment is not None:
             markers.intro_start, markers.intro_end = segment
+    if markers.outro_start is None:
+        outro = _outro_segment(path, neighbour, ffmpeg=ffmpeg, ffprobe=ffprobe)
+        if outro is not None:
+            markers.outro_start, markers.outro_end = outro
     return markers

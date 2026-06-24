@@ -1034,7 +1034,7 @@ def _run_intro_task(session: Session, task: Task) -> None:
         episode.intro_start, episode.intro_end = markers.intro_start, markers.intro_end
         episode.outro_start, episode.outro_end = markers.outro_start, markers.outro_end
     episode.intro_checked = True  # detection ran; never re-queue, even with nothing found
-    _finish(session, task, message="marked" if markers.intro_end is not None else "no intro")
+    _finish(session, task, message="marked" if markers.has_any() else "no markers")
 
 
 def _start(session: Session, task: Task) -> None:
