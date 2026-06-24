@@ -4,6 +4,7 @@ import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  type GestureResponderEvent,
   Image,
   Modal,
   PanResponder,
@@ -19,6 +20,7 @@ import LinearGradient from 'react-native-linear-gradient';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import SystemNavigationBar from 'react-native-system-navigation-bar';
 import Video, {
+  BufferingStrategyType,
   SelectedTrackType,
   type OnLoadData,
   type OnProgressData,
@@ -45,13 +47,27 @@ const CONTROLS_TIMEOUT = 4500;
 const SEEK_SETTLE_S = 1.5;
 // Give a slow remote (NAS) source more runway: a bigger forward buffer rebuffers
 // less violently, and a back-buffer keeps short rewinds instant instead of refetching.
+// maxHeapAllocationPercent caps the ExoPlayer byte buffer at ~half the app's heap
+// class; without it a high-bitrate Direct-Play MKV fills the Java heap until the app
+// OOM-crashes mid-playback. It is only enforced together with bufferingStrategy
+// DependingOnMemory (set on the <Video> below) — the default strategy ignores it.
 const BUFFER_CONFIG = {
   minBufferMs: 15000,
   maxBufferMs: 60000,
   bufferForPlaybackMs: 2500,
   bufferForPlaybackAfterRebufferMs: 5000,
   backBufferDurationMs: 30000,
+  // Measured: a 256 MB heap-class device plateaus ~75 MB under the OOM ceiling at
+  // this fraction (vs. ~35 MB at 0.5), while still buffering ~90 MB ahead.
+  maxHeapAllocationPercent: 0.35,
 } as const;
+// Double-tap the left/right third of the frame to jump ∓15s (taps chain). A single tap
+// only toggles the controls, so it is deferred briefly to let a double tap pre-empt it.
+const DOUBLE_TAP_MS = 250;
+const SEEK_STEP_S = 15;
+// These rips rarely carry authored outro chapters (backend intro.py detects the outro
+// chapter-only), so surface a "next episode" prompt over the closing window regardless.
+const NEXT_EPISODE_WINDOW_S = 75;
 const AUDIO_PREF_PREFIX = 'movora_audio_pref_'; // + seriesId -> language
 const SUB_PREF_KEY = 'movora_sub_pref'; // remembered subtitle language ('off' to disable)
 const SUB_STYLE_KEY = 'movora_sub_style';
@@ -172,6 +188,10 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
   // Resume-on-open is one-shot: a re-fired onLoad (e.g. after a buffering stall on a
   // slow source) must not yank playback back to the saved position again.
   const didResumeRef = useRef(false);
+  // Double-tap-to-seek bookkeeping: the previous tap (for pairing) and the deferred
+  // single-tap timer (controls toggle) so a second tap can cancel it.
+  const lastTapRef = useRef<{t: number; side: 'l' | 'r' | 'c'} | null>(null);
+  const singleTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cdTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -268,6 +288,9 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
     return () => {
       if (hideTimer.current) {
         clearTimeout(hideTimer.current);
+      }
+      if (singleTapTimer.current) {
+        clearTimeout(singleTapTimer.current);
       }
     };
   }, []);
@@ -403,6 +426,38 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
     videoRef.current?.seek(target);
   };
 
+  // Single tap toggles the controls; a quick second tap on the left/right third seeks
+  // ∓15s instead (chained taps accumulate off the in-flight seek target). The single-tap
+  // action is deferred by DOUBLE_TAP_MS so a double tap can cancel it before it fires.
+  const handleTap = (e: GestureResponderEvent): void => {
+    const x = e.nativeEvent.locationX;
+    const side: 'l' | 'r' | 'c' = x < winW * 0.35 ? 'l' : x > winW * 0.65 ? 'r' : 'c';
+    const now = Date.now();
+    const prev = lastTapRef.current;
+    if (prev && side !== 'c' && prev.side === side && now - prev.t < DOUBLE_TAP_MS) {
+      if (singleTapTimer.current) {
+        clearTimeout(singleTapTimer.current);
+        singleTapTimer.current = null;
+      }
+      lastTapRef.current = null;
+      const from = seekTargetRef.current ?? current;
+      const target =
+        side === 'r' ? Math.min(duration || from, from + SEEK_STEP_S) : Math.max(0, from - SEEK_STEP_S);
+      seekTo(target);
+      setCurrent(target);
+      return;
+    }
+    lastTapRef.current = {t: now, side};
+    if (singleTapTimer.current) {
+      clearTimeout(singleTapTimer.current);
+    }
+    singleTapTimer.current = setTimeout(() => {
+      singleTapTimer.current = null;
+      lastTapRef.current = null;
+      toggleControls();
+    }, DOUBLE_TAP_MS);
+  };
+
   const onLoad = (data: OnLoadData): void => {
     setDuration(data.duration);
     if (info && info.resume_position > 5 && !didResumeRef.current) {
@@ -488,6 +543,10 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
       if (info.intro_start != null && info.intro_end != null && pos >= info.intro_start && pos < info.intro_end) {
         setSkip('intro');
       } else if (info.outro_start != null && pos >= info.outro_start) {
+        setSkip('outro');
+      } else if (nextId != null && duration > 0 && pos >= duration - NEXT_EPISODE_WINDOW_S) {
+        // No authored outro chapter, but a next episode exists — prompt for it over the
+        // closing window so the "next episode" button is reachable on these rips too.
         setSkip('outro');
       } else {
         setSkip(null);
@@ -606,7 +665,7 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
 
   const displayPos = scrubbing ? scrubValue : current;
   const pct = duration > 0 ? (displayPos / duration) * 100 : 0;
-  const baseBottom = subStyle.pos === 'high' ? winH * 0.6 : subStyle.pos === 'mid' ? winH * 0.34 : 40;
+  const baseBottom = subStyle.pos === 'high' ? winH * 0.6 : subStyle.pos === 'mid' ? winH * 0.34 : winH * 0.05;
   // Lift subtitles above the controls panel while it's open (measured height).
   const subBottom = controlsVisible && panelH > 0 ? panelH + 16 : baseBottom;
 
@@ -621,6 +680,7 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
         resizeMode="contain"
         progressUpdateInterval={250}
         bufferConfig={BUFFER_CONFIG}
+        bufferingStrategy={BufferingStrategyType.DEPENDING_ON_MEMORY}
         selectedAudioTrack={
           audioIndex >= 0 ? {type: SelectedTrackType.INDEX, value: audioIndex} : undefined
         }
@@ -641,8 +701,8 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
         </View>
       )}
 
-      {/* Tap layer: toggles the controls overlay. */}
-      <Pressable style={StyleSheet.absoluteFill} onPress={toggleControls} />
+      {/* Tap layer: single tap toggles the controls; double tap on an edge seeks ∓15s. */}
+      <Pressable style={StyleSheet.absoluteFill} onPress={handleTap} />
 
       {/* Skip intro/outro chip — available whether or not the overlay is open. */}
       {skip !== null && !ended && (
@@ -1097,7 +1157,7 @@ const styles = StyleSheet.create({
   epWatched: {color: theme.muted},
   epTitle: {color: theme.muted, fontSize: 11, paddingHorizontal: 8, paddingBottom: 8, paddingTop: 2},
 
-  skip: {position: 'absolute', right: 24, bottom: 110, flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 12, paddingHorizontal: 20, borderRadius: 999, overflow: 'hidden'},
+  skip: {position: 'absolute', right: 24, bottom: 24, flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 12, paddingHorizontal: 20, borderRadius: 999, overflow: 'hidden'},
   skipText: {color: '#fff', fontWeight: '700', fontSize: 15},
 
   endedOverlay: {...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(5,6,11,0.85)', alignItems: 'center', justifyContent: 'center', gap: 14},
