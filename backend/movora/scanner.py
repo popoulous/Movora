@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from movora.artifacts import remove_media_file_artifacts
 from movora.db.models import (
     Episode,
+    EpisodeMapping,
     Library,
     LibraryKind,
     MediaFile,
@@ -65,6 +66,7 @@ def scan_library(
     ]
     total = len(candidates)
     season_index = _season_map(candidates, root)
+    mappings = _load_mappings(session, library.id)
     special_next: dict[str, int] = {}  # per-show running number for Season 0 episodes
     new_files: list[MediaFile] = []
     for index, path in enumerate(candidates, start=1):
@@ -73,11 +75,21 @@ def scan_library(
         fields = parser.parse(path.name)
         title = _series_title(path, root, parser, fields, library.kind)
         series = _get_or_create_series(session, library, title)
-        season_num = _season_number(path, root, fields, season_index)
+        # A metadata-set absolute->season/episode override (from season_split) wins for a
+        # file that has no explicit season of its own — its number is an absolute one.
+        mapping = None
+        if fields.season is None and fields.episode is not None:
+            mapping = mappings.get((series.id, fields.episode))
+        season_num = mapping.season_number if mapping is not None else _season_number(
+            path, root, fields, season_index
+        )
         season = _get_or_create_season(session, series, season_num)
         if season_num == 0:  # specials: number sequentially so OVAs/movies don't collide
             special_next[title] = special_next.get(title, 0) + 1
             number = special_next[title]
+            end_number = None
+        elif mapping is not None:
+            number = mapping.episode_number
             end_number = None
         else:
             number = fields.episode or 1
@@ -102,6 +114,21 @@ def scan_library(
     _prune_empty(session, library.id)
     session.commit()
     return [media_file.id for media_file in new_files]
+
+
+def _load_mappings(
+    session: Session, library_id: int
+) -> dict[tuple[int, int], EpisodeMapping]:
+    """Absolute->season/episode overrides for the library's series, keyed (series id,
+    absolute number). Written by ``season_split`` after metadata resolves the seasons."""
+    return {
+        (mapping.series_id, mapping.absolute_number): mapping
+        for mapping in session.scalars(
+            select(EpisodeMapping)
+            .join(Series, Series.id == EpisodeMapping.series_id)
+            .where(Series.library_id == library_id)
+        )
+    }
 
 
 def _prune_missing(

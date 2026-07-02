@@ -148,3 +148,83 @@ def test_anilist_skips_network_when_no_title() -> None:
 
     assert AniListProvider(transport=transport).fetch(ParsedFields()) is None
     assert not called
+
+
+def _season(
+    media_id: int,
+    episodes: int | None,
+    *,
+    sequel: int | None = None,
+    prequel: int | None = None,
+    extra_edges: tuple[dict[str, Any], ...] = (),
+) -> dict[str, Any]:
+    edges: list[dict[str, Any]] = list(extra_edges)
+    if prequel is not None:
+        edges.append({"relationType": "PREQUEL", "node": {"id": prequel, "format": "TV"}})
+    if sequel is not None:
+        edges.append({"relationType": "SEQUEL", "node": {"id": sequel, "format": "TV"}})
+    return {
+        "id": media_id,
+        "title": {"romaji": f"Show S{media_id}"},
+        "episodes": episodes,
+        "format": "TV",
+        "relations": {"edges": edges},
+    }
+
+
+def _chain_transport(
+    universe: dict[int, dict[str, Any]], search_id: int
+) -> Any:
+    """A transport that answers the search with ``search_id`` and id look-ups from
+    ``universe`` — so ``_season_counts`` can walk the sequel chain offline."""
+
+    def transport(query: str, variables: dict[str, Any]) -> dict[str, Any]:
+        if "id" in variables:
+            return {"data": {"Media": universe[int(variables["id"])]}}
+        return {"data": {"Page": {"media": [universe[search_id]]}}}
+
+    return transport
+
+
+def test_anilist_walks_sequel_chain_for_season_counts() -> None:
+    # Noise on the first season: an OVA sequel and a manga adaptation must be ignored,
+    # only the TV sequel chain counts.
+    noise = (
+        {"relationType": "SEQUEL", "node": {"id": 99, "format": "OVA"}},
+        {"relationType": "ADAPTATION", "node": {"id": 88, "format": "MANGA"}},
+    )
+    universe = {
+        1: _season(1, 12, sequel=2, extra_edges=noise),
+        2: _season(2, 12, prequel=1, sequel=3),
+        3: _season(3, 13, prequel=2),
+    }
+    provider = AniListProvider(transport=_chain_transport(universe, search_id=1))
+    meta = provider.fetch(ParsedFields(title="Show"))
+    assert meta is not None
+    assert meta.season_episode_counts == (12, 12, 13)
+
+
+def test_anilist_walks_back_to_first_season() -> None:
+    # The search matches season 2; counts must still start at season 1 via the prequel link.
+    universe = {
+        1: _season(1, 12, sequel=2),
+        2: _season(2, 12, prequel=1, sequel=3),
+        3: _season(3, 13, prequel=2),
+    }
+    provider = AniListProvider(transport=_chain_transport(universe, search_id=2))
+    meta = provider.fetch(ParsedFields(title="Show"))
+    assert meta is not None
+    assert meta.season_episode_counts == (12, 12, 13)
+
+
+def test_anilist_stops_the_chain_at_unknown_length() -> None:
+    # Season 2 is still airing (episodes unknown): return only the known prefix so an
+    # ongoing sequel never blocks the split of the finished seasons before it.
+    universe = {
+        1: _season(1, 12, sequel=2),
+        2: _season(2, None, prequel=1),
+    }
+    provider = AniListProvider(transport=_chain_transport(universe, search_id=1))
+    meta = provider.fetch(ParsedFields(title="Show"))
+    assert meta is not None
+    assert meta.season_episode_counts == (12,)

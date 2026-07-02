@@ -82,6 +82,10 @@ class SeriesMetadata:
     title: str
     cover_image_url: str | None = None
     episode_count: int | None = None
+    # Per-season episode counts, ordered from season 1, used to split a box set that
+    # numbers its episodes continuously (absolute) across seasons into the right seasons.
+    # AniList fills this by walking the TV SEQUEL chain; TMDB from its own season list.
+    season_episode_counts: tuple[int, ...] = ()
     year: int | None = None
     banner_image_url: str | None = None
     description: str | None = None

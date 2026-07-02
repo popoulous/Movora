@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from movora.db.models import Character, Library, Recommendation, Series
 from movora.domain import ParsedFields
 from movora.interfaces import MetadataProvider
+from movora.season_split import remap_absolute_seasons
 
 ProgressFn = Callable[[int, int], None]  # (done, total)
 
@@ -76,13 +77,21 @@ def enrich_library(
             )
             for rank, char in enumerate(metadata.characters)
         )
+        # Split an absolute-numbered box set (e.g. a S01-S02 folder numbered 1-24) into
+        # its real seasons using the per-season counts; a no-op for normal layouts.
+        if metadata.season_episode_counts:
+            remap_absolute_seasons(session, series, metadata.season_episode_counts)
         # Canonical episode titles override the container-derived ones (TMDB only); a
         # multi-episode file (number=1, end_number=3) takes its start episode's title.
+        # AniList/Jikan titles come keyed as season 1 + absolute number, so an episode
+        # split out to a later season is matched back by its absolute_number.
         titles = {(ep.season_number, ep.number): ep.title for ep in metadata.episodes if ep.title}
         if titles:
             for season in series.seasons:
                 for episode in season.episodes:
                     title = titles.get((season.number, episode.number))
+                    if title is None and episode.absolute_number is not None:
+                        title = titles.get((1, episode.absolute_number))
                     if title is not None:
                         episode.title = title
         _localize(session, provider, series, metadata.external_id, extra_languages)

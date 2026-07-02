@@ -5,6 +5,7 @@ from sqlalchemy import select
 from movora.db.base import create_db_engine, create_session_factory, init_db
 from movora.db.models import (
     Episode,
+    EpisodeMapping,
     Library,
     LibraryKind,
     MediaFile,
@@ -16,6 +17,48 @@ from movora.db.models import (
 )
 from movora.scanner import scan_library
 from movora.watch import current_user, record_watch
+
+
+def test_scan_honours_absolute_episode_mappings(tmp_path: Path) -> None:
+    """A season_split override re-files a season-less (absolute-numbered) file, while a file
+    that carries its own season marker ignores the override."""
+    root = tmp_path / "lib"
+    box = root / "Show S01-S02"
+    box.mkdir(parents=True)
+    (box / "Show - 13.mkv").write_bytes(b"")  # absolute -> should follow the mapping
+    (box / "Show - 05.mkv").write_bytes(b"")  # absolute, no mapping -> folder default
+    (box / "Show S3 - 04.mkv").write_bytes(b"")  # explicit season -> mapping ignored
+
+    engine = create_db_engine(":memory:")
+    init_db(engine)
+    factory = create_session_factory(engine)
+    with factory() as session:
+        library = Library(path=str(root), name="A", kind=LibraryKind.ANIME)
+        series = Series(title="Show", library=library)
+        session.add_all([library, series])
+        session.flush()
+        session.add_all(
+            [
+                EpisodeMapping(
+                    series_id=series.id, absolute_number=13, season_number=2, episode_number=1
+                ),
+                EpisodeMapping(
+                    series_id=series.id, absolute_number=4, season_number=2, episode_number=5
+                ),
+            ]
+        )
+        session.commit()
+
+        scan_library(session, library, title_prober=lambda _p: None)
+
+        def placement(path: Path) -> tuple[int, int]:
+            media = session.scalar(select(MediaFile).where(MediaFile.path == str(path)))
+            assert media is not None
+            return media.episode.season.number, media.episode.number
+
+        assert placement(box / "Show - 13.mkv") == (2, 1)  # mapped
+        assert placement(box / "Show - 05.mkv") == (1, 5)  # folder default, no mapping
+        assert placement(box / "Show S3 - 04.mkv") == (3, 4)  # explicit S3 beats the abs=4 map
 
 
 def test_rescan_removes_generated_artifacts(tmp_path: Path) -> None:

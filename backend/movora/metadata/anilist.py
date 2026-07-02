@@ -40,6 +40,12 @@ query ($search: String) {
       format
       duration
       endDate { year }
+      relations {
+        edges {
+          relationType
+          node { id episodes format }
+        }
+      }
       recommendations(perPage: 8, sort: RATING_DESC) {
         nodes {
           mediaRecommendation {
@@ -59,6 +65,22 @@ query ($search: String) {
             image { large }
           }
         }
+      }
+    }
+  }
+}
+"""
+
+_RELATIONS_QUERY = """
+query ($id: Int) {
+  Media(id: $id, type: ANIME) {
+    id
+    episodes
+    format
+    relations {
+      edges {
+        relationType
+        node { id episodes format }
       }
     }
   }
@@ -96,6 +118,7 @@ def _to_metadata(
     media: dict[str, Any],
     fallback_title: str,
     episodes: tuple[EpisodeMetadata, ...] = (),
+    season_episode_counts: tuple[int, ...] = (),
 ) -> SeriesMetadata:
     names = media.get("title") or {}
     cover = media.get("coverImage") or {}
@@ -107,6 +130,7 @@ def _to_metadata(
         native_title=names.get("native"),
         cover_image_url=cover.get("large"),
         episode_count=media.get("episodes"),
+        season_episode_counts=season_episode_counts,
         year=media.get("seasonYear"),
         banner_image_url=media.get("bannerImage"),
         description=media.get("description"),
@@ -119,6 +143,18 @@ def _to_metadata(
         episodes=episodes,
         characters=_parse_characters(media),
     )
+
+
+def _tv_relation(media: dict[str, Any], relation_type: str) -> dict[str, Any] | None:
+    """The TV-format neighbour of a given relation type (SEQUEL / PREQUEL), ignoring
+    OVAs, movies, side-stories and manga so the season chain stays on the main line."""
+    for edge in (media.get("relations") or {}).get("edges") or []:
+        if edge.get("relationType") != relation_type:
+            continue
+        node = edge.get("node") or {}
+        if node.get("format") == "TV" and node.get("id") is not None:
+            return node
+    return None
 
 
 def _parse_characters(media: dict[str, Any]) -> tuple[CharacterMetadata, ...]:
@@ -193,8 +229,59 @@ class AniListProvider:
             seen.add(candidate)
             media = self._search(candidate)
             if media is not None:
-                return _to_metadata(media, parsed.title, self._episodes(media.get("idMal")))
+                return _to_metadata(
+                    media,
+                    parsed.title,
+                    self._episodes(media.get("idMal")),
+                    self._season_counts(media),
+                )
         return None
+
+    def _season_counts(self, media: dict[str, Any]) -> tuple[int, ...]:
+        """Per-season episode counts along the TV SEQUEL chain, ordered from season 1.
+
+        Lets the mapping layer split a box set that numbers episodes continuously across
+        seasons (1-24 -> S1 1-12 + S2 1-12). Walks back to the first TV season first (the
+        search may match a later one), then forward. Stops at an unknown-length season and
+        returns the known prefix, so an ongoing sequel never blocks splitting the finished
+        seasons before it — and we never mis-split."""
+        counts: list[int] = []
+        seen: set[int] = set()
+        node: dict[str, Any] | None = self._walk_to_first(media)
+        while node is not None and node.get("id") not in seen and len(counts) < 20:
+            seen.add(node["id"])
+            episodes = node.get("episodes")
+            if episodes is None:
+                break
+            counts.append(int(episodes))
+            sequel = _tv_relation(node, "SEQUEL")
+            node = self._fetch_media(sequel["id"]) if sequel is not None else None
+        return tuple(counts)
+
+    def _walk_to_first(self, media: dict[str, Any]) -> dict[str, Any]:
+        """Follow TV PREQUEL links back to the first season, so counts start at S1."""
+        node = media
+        seen: set[int] = set()
+        while node.get("id") not in seen:
+            seen.add(node["id"])
+            prequel = _tv_relation(node, "PREQUEL")
+            if prequel is None:
+                return node
+            fetched = self._fetch_media(prequel["id"])
+            if fetched is None:
+                return node
+            node = fetched
+        return node
+
+    def _fetch_media(self, media_id: int) -> dict[str, Any] | None:
+        """One anime (episodes + format + relations) by id, to walk the season chain. None
+        on any transport error so the walk just stops early instead of failing enrich."""
+        try:
+            payload = self._transport(_RELATIONS_QUERY, {"id": media_id})
+        except httpx.HTTPError:
+            return None
+        media: dict[str, Any] | None = (payload.get("data") or {}).get("Media")
+        return media
 
     def _episodes(self, mal_id: Any) -> tuple[EpisodeMetadata, ...]:
         """Per-episode titles from MyAnimeList via Jikan (AniList has none). The matched anime
