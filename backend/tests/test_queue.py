@@ -107,14 +107,41 @@ def test_enqueue_intro_retry_missing_requeues_gaps() -> None:
         )
         session.commit()
 
+        # Rows from the previous detection run — one per episode, plus an old leftover
+        # duplicate for none_found. A retry must reuse these, not stack new rows.
+        session.add_all(
+            [
+                Task(
+                    type=TaskType.INTRO,
+                    media_file_id=no_outro.media_files[0].id,
+                    status=JobStatus.DONE,
+                ),
+                Task(
+                    type=TaskType.INTRO,
+                    media_file_id=none_found.media_files[0].id,
+                    status=JobStatus.DONE,
+                ),
+                Task(
+                    type=TaskType.INTRO,
+                    media_file_id=none_found.media_files[0].id,
+                    status=JobStatus.DONE,
+                ),
+            ]
+        )
+        session.commit()
+
         # The automatic (post-scan) form never retries checked episodes...
         assert enqueue_intro(session, library.id) == 0
         # ...the manual trigger retries exactly the ones missing a marker on either side.
         assert enqueue_intro(session, library.id, retry_missing=True) == 2
-        queued = set(
-            session.scalars(select(Task.media_file_id).where(Task.type == TaskType.INTRO))
+        tasks = list(session.scalars(select(Task).where(Task.type == TaskType.INTRO)))
+        # One row per episode: the DONE rows were reset to PENDING, the leftover dropped.
+        assert sorted(task.media_file_id for task in tasks if task.media_file_id) == sorted(
+            [no_outro.media_files[0].id, none_found.media_files[0].id]
         )
-        assert queued == {no_outro.media_files[0].id, none_found.media_files[0].id}
+        assert all(task.status == JobStatus.PENDING for task in tasks)
+        # Queuing again while those are pending adds nothing.
+        assert enqueue_intro(session, library.id, retry_missing=True) == 0
 
 
 def test_intro_neighbours_nearest_first_and_capped() -> None:
@@ -254,6 +281,22 @@ def test_dedupe_keeps_one_best_per_file() -> None:
         tasks = list(session.scalars(select(Task)))
         assert len(tasks) == 1
         assert tasks[0].status == JobStatus.DONE  # best status survives
+
+
+def test_dedupe_intro_prefers_active_then_newest() -> None:
+    with _session() as session:
+        media_file_id = _media_file(session)
+        old_done = Task(type=TaskType.INTRO, media_file_id=media_file_id, status=JobStatus.DONE)
+        new_done = Task(type=TaskType.INTRO, media_file_id=media_file_id, status=JobStatus.DONE)
+        retry = Task(type=TaskType.INTRO, media_file_id=media_file_id, status=JobStatus.PENDING)
+        session.add_all([old_done, new_done, retry])
+        session.commit()
+
+        # The queued retry supersedes the finished history rows.
+        assert dedupe_tasks(session) == 2
+        tasks = list(session.scalars(select(Task).where(Task.type == TaskType.INTRO)))
+        assert len(tasks) == 1
+        assert tasks[0].id == retry.id and tasks[0].status == JobStatus.PENDING
 
 
 def test_requeue_leaves_failed_at_cap() -> None:

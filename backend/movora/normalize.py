@@ -458,22 +458,33 @@ def enqueue_intro(session: Session, library_id: int, *, retry_missing: bool = Fa
     candidate_ids = [ep.media_files[0].id for ep in episodes if ep.media_files]
     if not candidate_ids:
         return 0
-    active_ids = set(
-        session.scalars(
-            select(Task.media_file_id).where(
-                Task.type == TaskType.INTRO,
-                Task.media_file_id.in_(candidate_ids),
-                Task.status.in_(_ACTIVE),
-            )
-        ).all()
-    )
+    previous: dict[int, list[Task]] = {}
+    for task in session.scalars(
+        select(Task).where(Task.type == TaskType.INTRO, Task.media_file_id.in_(candidate_ids))
+    ):
+        if task.media_file_id is not None:
+            previous.setdefault(task.media_file_id, []).append(task)
+    active_ids = {
+        media_file_id
+        for media_file_id, tasks in previous.items()
+        if any(task.status in _ACTIVE for task in tasks)
+    }
     queued = 0
     for media_file_id in candidate_ids:
         if media_file_id in active_ids:  # already in flight — don't double-queue
             continue
-        session.add(
-            Task(type=TaskType.INTRO, media_file_id=media_file_id, priority=PRIORITY_INTRO)
-        )
+        # A retry reuses the episode's newest finished row (and drops older leftovers)
+        # instead of stacking a new one, keeping the Tasks view at one row per episode.
+        rows = sorted(previous.get(media_file_id, ()), key=lambda task: task.id)
+        if rows:
+            for extra in rows[:-1]:
+                session.delete(extra)
+            _reset(rows[-1])
+            rows[-1].priority = PRIORITY_INTRO
+        else:
+            session.add(
+                Task(type=TaskType.INTRO, media_file_id=media_file_id, priority=PRIORITY_INTRO)
+            )
         queued += 1
     session.commit()
     return queued
@@ -569,24 +580,31 @@ def enqueue_prepare_variant(
 
 
 def dedupe_tasks(session: Session) -> int:
-    """Keep at most one NORMALIZE task per media file, dropping redundant duplicates.
+    """Keep at most one NORMALIZE / INTRO task per media file, dropping duplicates.
 
-    Cleans up duplicates left by earlier churn; the best status wins
-    (done > running > pending > failed).
+    Cleans up rows left by earlier churn. For NORMALIZE the best status wins
+    (done > running > pending > failed) so a finished result is never re-run; for
+    INTRO an active row, else the newest, wins — a queued retry supersedes the old
+    result row it is about to replace.
     """
-    priority = {JobStatus.DONE: 0, JobStatus.RUNNING: 1, JobStatus.PENDING: 2, JobStatus.FAILED: 3}
-    by_file: dict[int, list[Task]] = {}
-    for task in session.scalars(select(Task).where(Task.type == TaskType.NORMALIZE)):
-        if task.media_file_id is not None:
-            by_file.setdefault(task.media_file_id, []).append(task)
+    rank = {JobStatus.DONE: 0, JobStatus.RUNNING: 1, JobStatus.PENDING: 2, JobStatus.FAILED: 3}
+    orders: list[tuple[TaskType, Callable[[Task], tuple[int, int]]]] = [
+        (TaskType.NORMALIZE, lambda task: (rank.get(task.status, 9), task.id)),
+        (TaskType.INTRO, lambda task: (int(task.status not in _ACTIVE), -task.id)),
+    ]
     removed = 0
-    for group in by_file.values():
-        if len(group) < 2:
-            continue
-        group.sort(key=lambda task: (priority.get(task.status, 9), task.id))
-        for extra in group[1:]:  # keep the best; delete the rest
-            session.delete(extra)
-            removed += 1
+    for task_type, keep_order in orders:
+        by_file: dict[int, list[Task]] = {}
+        for task in session.scalars(select(Task).where(Task.type == task_type)):
+            if task.media_file_id is not None:
+                by_file.setdefault(task.media_file_id, []).append(task)
+        for group in by_file.values():
+            if len(group) < 2:
+                continue
+            group.sort(key=keep_order)
+            for extra in group[1:]:  # keep the first per the type's order; delete the rest
+                session.delete(extra)
+                removed += 1
     session.commit()
     return removed
 
