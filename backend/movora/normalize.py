@@ -26,7 +26,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from send2trash import send2trash
-from sqlalchemy import select
+from sqlalchemy import ColumnElement, select
 from sqlalchemy.orm import Session, selectinload, sessionmaker
 from sqlalchemy.orm.exc import StaleDataError
 
@@ -433,19 +433,26 @@ def enqueue_subtitle(
     return True
 
 
-def enqueue_intro(session: Session, library_id: int) -> int:
+def enqueue_intro(session: Session, library_id: int, *, retry_missing: bool = False) -> int:
     """Queue per-episode intro/outro detection. Detection runs ONCE per episode: episodes
     already checked (``intro_checked``) are skipped, so a rescan never re-queues them —
-    including ones where no intro was found. One row per episode in the Tasks view."""
+    including ones where no intro was found. One row per episode in the Tasks view.
+
+    ``retry_missing`` (the manual "detect" trigger) additionally re-queues checked episodes
+    still missing a marker on either side, so an improved detector or a newly added sibling
+    can fill the gaps — a plain rescan stays cheap and never retries."""
     # Read everything BEFORE adding any Task. A query run mid-loop (while earlier-added Task
     # rows are pending) would trigger an autoflush, upgrading to a write transaction that holds
     # the SQLite write lock and contends with the worker -> "database is locked". Resolving the
     # candidates and the already-queued set up front means the only write is the final commit.
+    wanted: ColumnElement[bool] = Episode.intro_checked.is_(False)
+    if retry_missing:
+        wanted = wanted | Episode.intro_end.is_(None) | Episode.outro_start.is_(None)
     episodes = session.scalars(
         select(Episode)
         .join(Episode.season)
         .join(Season.series)
-        .where(Series.library_id == library_id, Episode.intro_checked.is_(False))
+        .where(Series.library_id == library_id, wanted)
         .options(selectinload(Episode.media_files))
     ).all()
     candidate_ids = [ep.media_files[0].id for ep in episodes if ep.media_files]
@@ -1007,18 +1014,23 @@ def _run_subtitles_task(session: Session, task: Task, output_dir: Path) -> None:
     _finish(session, task, message=f"{warmed} subtitles")
 
 
-def _intro_neighbour(session: Session, episode: Episode) -> Path | None:
-    """A sibling episode's file (nearest by number) to fingerprint against for the intro."""
+_INTRO_NEIGHBOURS = 3  # how many nearest siblings detection may fingerprint against
+
+
+def _intro_neighbours(session: Session, episode: Episode) -> list[Path]:
+    """Sibling episodes' files (nearest by number first) to fingerprint against.
+
+    Several candidates, not one: if the single nearest sibling lacks the shared opening or
+    ending (premieres and finales often do), a one-neighbour match fails both episodes as a
+    pair — the next-nearest siblings break that correlation."""
     siblings = session.scalars(
         select(Episode)
         .where(Episode.season_id == episode.season_id, Episode.id != episode.id)
         .options(selectinload(Episode.media_files))
     )
     with_files = [sibling for sibling in siblings if sibling.media_files]
-    if not with_files:
-        return None
-    nearest = min(with_files, key=lambda sibling: abs(sibling.number - episode.number))
-    return Path(nearest.media_files[0].path)
+    with_files.sort(key=lambda sibling: (abs(sibling.number - episode.number), sibling.number))
+    return [Path(sibling.media_files[0].path) for sibling in with_files[:_INTRO_NEIGHBOURS]]
 
 
 def _run_intro_task(session: Session, task: Task) -> None:
@@ -1028,12 +1040,15 @@ def _run_intro_task(session: Session, task: Task) -> None:
         return
     _start(session, task)
     episode = media_file.episode
-    neighbour = _intro_neighbour(session, episode)
-    markers = detect_episode(Path(media_file.path), neighbour)
-    if markers.has_any():
+    neighbours = _intro_neighbours(session, episode)
+    markers = detect_episode(Path(media_file.path), neighbours)
+    # Merge per side, so a retry that finds only one side never wipes the other
+    # (a re-run matches against different neighbours and is not deterministic).
+    if markers.intro_end is not None:
         episode.intro_start, episode.intro_end = markers.intro_start, markers.intro_end
+    if markers.outro_start is not None:
         episode.outro_start, episode.outro_end = markers.outro_start, markers.outro_end
-    episode.intro_checked = True  # detection ran; never re-queue, even with nothing found
+    episode.intro_checked = True  # detection ran; a plain rescan won't re-queue it
     _finish(session, task, message="marked" if markers.has_any() else "no markers")
 
 

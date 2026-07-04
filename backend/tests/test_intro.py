@@ -80,3 +80,52 @@ def test_outro_segment_translates_to_absolute_time(monkeypatch: pytest.MonkeyPat
     # The shared run begins 100 hashes into a's window and lasts 200 hashes.
     assert abs(start - (window_start + 100 * intro.SECONDS_PER_HASH)) <= 1.0
     assert abs((end - start) - 200 * intro.SECONDS_PER_HASH) <= 1.0
+
+
+def test_detect_episode_tries_further_neighbours(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The nearest sibling shares nothing (a premiere without the OP); the next one does —
+    detection must fall through to it for both the intro and the outro."""
+    rng = np.random.default_rng(3)
+
+    def noise(n: int) -> np.ndarray:
+        return rng.integers(1, 2**31, n, dtype=np.uint32)
+
+    opening = rng.integers(1, 2**31, size=200, dtype=np.uint32)
+    ending = rng.integers(1, 2**31, size=200, dtype=np.uint32)
+    heads = {
+        "a.mkv": np.concatenate([noise(100), opening, noise(500)]),
+        "n1.mkv": noise(800),  # no shared opening
+        "n2.mkv": np.concatenate([noise(50), opening, noise(550)]),
+    }
+    tails = {
+        "a.mkv": np.concatenate([noise(400), ending, noise(50)]),
+        "n1.mkv": noise(650),  # no shared ending
+        "n2.mkv": np.concatenate([noise(420), ending, noise(30)]),
+    }
+    durations = {"a.mkv": 1400.0, "n1.mkv": 1400.0, "n2.mkv": 1380.0}
+
+    def fake_fingerprint(
+        path: Path, ffmpeg: str | None, *, start: float = 0.0, duration: float = 0.0
+    ) -> np.ndarray:
+        return (heads if start == 0.0 else tails)[path.name]
+
+    monkeypatch.setattr(intro, "_fingerprint_cached", fake_fingerprint)
+    monkeypatch.setattr(intro, "_duration", lambda path, ffprobe: durations[path.name])
+    monkeypatch.setattr(intro, "chapters_markers", lambda path, ffprobe: intro.Markers())
+
+    markers = intro.detect_episode(Path("a.mkv"), [Path("n1.mkv"), Path("n2.mkv")])
+
+    assert markers.intro_start is not None and markers.intro_end is not None
+    assert abs(markers.intro_start - 100 * intro.SECONDS_PER_HASH) <= 1.0
+    assert markers.outro_start is not None
+    window_start = 1400.0 - intro._OUTRO_WINDOW
+    assert abs(markers.outro_start - (window_start + 400 * intro.SECONDS_PER_HASH)) <= 1.0
+
+
+def test_detect_episode_no_neighbours_keeps_chapter_markers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    chapter_markers = intro.Markers(intro_start=0.0, intro_end=80.0)
+    monkeypatch.setattr(intro, "chapters_markers", lambda path, ffprobe: chapter_markers)
+
+    assert intro.detect_episode(Path("a.mkv"), []) is chapter_markers

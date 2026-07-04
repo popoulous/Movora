@@ -797,9 +797,12 @@ def normalize_all(
 def detect_intros(
     session: SessionDep, request: Request, background: BackgroundTasks, admin: AdminDep
 ) -> dict[str, str]:
-    """Queue intro/outro detection for every library (background), independent of scan."""
+    """Queue intro/outro detection for every library (background), independent of scan.
+
+    The manual trigger also retries episodes a previous run left without a marker on
+    either side (the automatic post-scan detection never retries those)."""
     for library_id in session.scalars(select(Library.id)):
-        enqueue_intro(session, library_id)
+        enqueue_intro(session, library_id, retry_missing=True)
     _run_worker(request, background)
     return {"status": "queued"}
 

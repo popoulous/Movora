@@ -18,6 +18,7 @@ from movora.db.models import (
     TaskType,
 )
 from movora.normalize import (
+    _intro_neighbours,
     cancel_transcodes,
     clean_partials,
     dedupe_tasks,
@@ -78,6 +79,63 @@ def test_enqueue_intro_one_task_per_unmarked_episode() -> None:
         assert len(tasks) == 1 and tasks[0].media_file_id is not None
         # Re-running queues nothing while that task is still active.
         assert enqueue_intro(session, library.id) == 0
+
+
+def test_enqueue_intro_retry_missing_requeues_gaps() -> None:
+    with _session() as session:
+        library = Library(path="/x", name="x", kind=LibraryKind.SERIES)
+        session.add(library)
+        session.flush()
+        series = Series(title="S", library=library)
+        season = Season(series=series, number=1)
+        complete = Episode(
+            season=season, number=1, intro_end=80.0, outro_start=1300.0, intro_checked=True
+        )
+        no_outro = Episode(season=season, number=2, intro_end=75.0, intro_checked=True)
+        none_found = Episode(season=season, number=3, intro_checked=True)
+        session.add_all(
+            [
+                series,
+                season,
+                complete,
+                no_outro,
+                none_found,
+                MediaFile(episode=complete, path="/x/e1.mkv"),
+                MediaFile(episode=no_outro, path="/x/e2.mkv"),
+                MediaFile(episode=none_found, path="/x/e3.mkv"),
+            ]
+        )
+        session.commit()
+
+        # The automatic (post-scan) form never retries checked episodes...
+        assert enqueue_intro(session, library.id) == 0
+        # ...the manual trigger retries exactly the ones missing a marker on either side.
+        assert enqueue_intro(session, library.id, retry_missing=True) == 2
+        queued = set(
+            session.scalars(select(Task.media_file_id).where(Task.type == TaskType.INTRO))
+        )
+        assert queued == {no_outro.media_files[0].id, none_found.media_files[0].id}
+
+
+def test_intro_neighbours_nearest_first_and_capped() -> None:
+    with _session() as session:
+        library = Library(path="/x", name="x", kind=LibraryKind.SERIES)
+        session.add(library)
+        session.flush()
+        series = Series(title="S", library=library)
+        season = Season(series=series, number=1)
+        episodes = {}
+        for number in (1, 2, 5, 6, 9):
+            episode = Episode(season=season, number=number)
+            episodes[number] = episode
+            session.add(MediaFile(episode=episode, path=f"/x/e{number}.mkv"))
+        fileless = Episode(season=season, number=4)  # a sibling without a file is skipped
+        session.add_all([series, season, fileless, *episodes.values()])
+        session.commit()
+
+        paths = _intro_neighbours(session, episodes[5])
+        # Nearest by number first (ties broken by number), capped at three, no file-less rows.
+        assert [path.name for path in paths] == ["e6.mkv", "e2.mkv", "e1.mkv"]
 
 
 def test_requeue_interrupted_resets_running() -> None:

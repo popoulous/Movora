@@ -17,6 +17,7 @@ import re
 import shutil
 import subprocess
 from collections import OrderedDict
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -28,7 +29,10 @@ SECONDS_PER_HASH = 0.1238
 _INTRO_WINDOW = 300.0  # only the first 5 minutes are searched for an opening
 _OUTRO_WINDOW = 300.0  # only the last 5 minutes are searched for an ending
 _MIN_INTRO_SECONDS = 12.0  # shorter shared runs are not an opening
-_MAX_SHIFT_SECONDS = 90.0  # how far the opening may sit apart between two episodes
+# How far the opening may sit apart between two episodes. Openings genuinely spread this
+# much (a cold open can run 2.5+ minutes while another episode starts on the title card),
+# and a too-small cap made such pairs fail detection outright.
+_MAX_SHIFT_SECONDS = 180.0
 _MAX_HAMMING = 6  # per-hash bit differences still counted as a match
 
 _INTRO_CHAPTER = re.compile(r"\b(op|opening|intro|main\s*title)\b", re.IGNORECASE)
@@ -230,23 +234,33 @@ def _outro_segment(
 
 
 def detect_episode(
-    path: Path, neighbour: Path | None, *, ffmpeg: str | None = None, ffprobe: str | None = None
+    path: Path,
+    neighbours: Sequence[Path],
+    *,
+    ffmpeg: str | None = None,
+    ffprobe: str | None = None,
 ) -> Markers:
     """Markers for one episode: named chapters first, then a Chromaprint match against the
-    given neighbour — the intro near the start and the outro near the finish — for whichever
-    side the chapters didn't reveal."""
+    given neighbours — the intro near the start and the outro near the finish — for whichever
+    side the chapters didn't reveal.
+
+    Neighbours are tried in order until each side has a match. A single neighbour was not
+    enough: when the nearest sibling itself lacks the opening (a premiere without the OP, a
+    finale with a special ending), the pair fails TOGETHER and both episodes end up with no
+    markers — trying the next-nearest sibling breaks that correlation."""
     ffmpeg = ffmpeg or shutil.which("ffmpeg")
     markers = chapters_markers(path, ffprobe)
-    if neighbour is None:
-        return markers
-    if markers.intro_end is None:
-        segment = common_segment(
-            _fingerprint_cached(path, ffmpeg), _fingerprint_cached(neighbour, ffmpeg)
-        )
-        if segment is not None:
-            markers.intro_start, markers.intro_end = segment
-    if markers.outro_start is None:
-        outro = _outro_segment(path, neighbour, ffmpeg=ffmpeg, ffprobe=ffprobe)
-        if outro is not None:
-            markers.outro_start, markers.outro_end = outro
+    for neighbour in neighbours:
+        if markers.intro_end is None:
+            segment = common_segment(
+                _fingerprint_cached(path, ffmpeg), _fingerprint_cached(neighbour, ffmpeg)
+            )
+            if segment is not None:
+                markers.intro_start, markers.intro_end = segment
+        if markers.outro_start is None:
+            outro = _outro_segment(path, neighbour, ffmpeg=ffmpeg, ffprobe=ffprobe)
+            if outro is not None:
+                markers.outro_start, markers.outro_end = outro
+        if markers.intro_end is not None and markers.outro_start is not None:
+            break
     return markers
