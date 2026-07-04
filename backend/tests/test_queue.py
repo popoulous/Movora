@@ -109,13 +109,15 @@ def test_enqueue_intro_retry_missing_requeues_gaps() -> None:
         session.commit()
 
         # Rows from the previous detection run — one per episode, plus an old leftover
-        # duplicate for none_found. A retry must reuse these, not stack new rows.
+        # duplicate for none_found. A retry must reuse these, not stack new rows. The
+        # no_outro row FAILED at the attempt cap — the manual click must revive it too.
         session.add_all(
             [
                 Task(
                     type=TaskType.INTRO,
                     media_file_id=no_outro.media_files[0].id,
-                    status=JobStatus.DONE,
+                    status=JobStatus.FAILED,
+                    attempts=3,
                 ),
                 Task(
                     type=TaskType.INTRO,
@@ -136,11 +138,12 @@ def test_enqueue_intro_retry_missing_requeues_gaps() -> None:
         # ...the manual trigger retries exactly the ones missing a marker on either side.
         assert enqueue_intro(session, library.id, retry_missing=True) == 2
         tasks = list(session.scalars(select(Task).where(Task.type == TaskType.INTRO)))
-        # One row per episode: the DONE rows were reset to PENDING, the leftover dropped.
+        # One row per episode: DONE/FAILED rows were reset to PENDING, the leftover dropped.
         assert sorted(task.media_file_id for task in tasks if task.media_file_id) == sorted(
             [no_outro.media_files[0].id, none_found.media_files[0].id]
         )
         assert all(task.status == JobStatus.PENDING for task in tasks)
+        assert all(task.attempts == 0 for task in tasks)  # a manual retry starts fresh
         # Queuing again while those are pending adds nothing.
         assert enqueue_intro(session, library.id, retry_missing=True) == 0
 

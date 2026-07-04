@@ -496,11 +496,14 @@ def enqueue_intro(session: Session, library_id: int, *, retry_missing: bool = Fa
             continue
         # A retry reuses the episode's newest finished row (and drops older leftovers)
         # instead of stacking a new one, keeping the Tasks view at one row per episode.
+        # This also revives FAILED rows: an explicit detect click restarts them with a
+        # fresh attempt budget, even ones the automatic retry gave up on.
         history = sorted(previous.get(media_file_id, ()), key=lambda task: task.id)
         if history:
             for extra in history[:-1]:
                 session.delete(extra)
             _reset(history[-1])
+            history[-1].attempts = 0
             history[-1].priority = PRIORITY_INTRO
         else:
             session.add(
