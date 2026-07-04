@@ -156,6 +156,9 @@ class Episode(Base):
     # True once intro/outro detection has run, even if it found nothing (so a rescan never
     # re-queues it). Distinguishes "checked, no intro" from "not checked yet".
     intro_checked: Mapped[bool] = mapped_column(default=False)
+    # How many detection runs this episode has had; the manual retry stops re-queuing a
+    # still-missing side after a few — the audio is then proven unmatchable, not unlucky.
+    detect_attempts: Mapped[int] = mapped_column(default=0)
 
     season: Mapped[Season] = relationship(back_populates="episodes")
     media_files: Mapped[list[MediaFile]] = relationship(

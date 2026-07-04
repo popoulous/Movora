@@ -26,7 +26,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from send2trash import send2trash
-from sqlalchemy import ColumnElement, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload, sessionmaker
 from sqlalchemy.orm.exc import StaleDataError
 
@@ -440,22 +440,42 @@ def enqueue_intro(session: Session, library_id: int, *, retry_missing: bool = Fa
     including ones where no intro was found. One row per episode in the Tasks view.
 
     ``retry_missing`` (the manual "detect" trigger) additionally re-queues checked episodes
-    still missing a marker on either side, so an improved detector or a newly added sibling
-    can fill the gaps — a plain rescan stays cheap and never retries."""
+    still missing a marker on a side that IS detectable in their season — i.e. at least one
+    sibling already has that side. Without such evidence the season simply has no shared
+    audio there (a live-action show without a title song never yields intros), and retrying
+    forever only churns; a plain rescan stays cheap and never retries. Each episode gets a
+    few detection runs in total (``_DETECT_ATTEMPT_CAP``): a side still missing after that
+    is proven unmatchable (a premiere with a unique opening), not unlucky — so repeated
+    presses of the button eventually go quiet instead of re-churning the same files."""
     # Read everything BEFORE adding any Task. A query run mid-loop (while earlier-added Task
     # rows are pending) would trigger an autoflush, upgrading to a write transaction that holds
     # the SQLite write lock and contends with the worker -> "database is locked". Resolving the
     # candidates and the already-queued set up front means the only write is the final commit.
-    wanted: ColumnElement[bool] = Episode.intro_checked.is_(False)
-    if retry_missing:
-        wanted = wanted | Episode.intro_end.is_(None) | Episode.outro_start.is_(None)
-    episodes = session.scalars(
+    base = (
         select(Episode)
         .join(Episode.season)
         .join(Season.series)
-        .where(Series.library_id == library_id, wanted)
+        .where(Series.library_id == library_id)
         .options(selectinload(Episode.media_files))
-    ).all()
+    )
+    if retry_missing:
+        rows = session.scalars(base).all()
+        intro_proven = {ep.season_id for ep in rows if ep.intro_end is not None}
+        outro_proven = {ep.season_id for ep in rows if ep.outro_start is not None}
+        episodes = [
+            ep
+            for ep in rows
+            if not ep.intro_checked
+            or (
+                ep.detect_attempts < _DETECT_ATTEMPT_CAP
+                and (
+                    (ep.intro_end is None and ep.season_id in intro_proven)
+                    or (ep.outro_start is None and ep.season_id in outro_proven)
+                )
+            )
+        ]
+    else:
+        episodes = list(session.scalars(base.where(Episode.intro_checked.is_(False))))
     candidate_ids = [ep.media_files[0].id for ep in episodes if ep.media_files]
     if not candidate_ids:
         return 0
@@ -476,12 +496,12 @@ def enqueue_intro(session: Session, library_id: int, *, retry_missing: bool = Fa
             continue
         # A retry reuses the episode's newest finished row (and drops older leftovers)
         # instead of stacking a new one, keeping the Tasks view at one row per episode.
-        rows = sorted(previous.get(media_file_id, ()), key=lambda task: task.id)
-        if rows:
-            for extra in rows[:-1]:
+        history = sorted(previous.get(media_file_id, ()), key=lambda task: task.id)
+        if history:
+            for extra in history[:-1]:
                 session.delete(extra)
-            _reset(rows[-1])
-            rows[-1].priority = PRIORITY_INTRO
+            _reset(history[-1])
+            history[-1].priority = PRIORITY_INTRO
         else:
             session.add(
                 Task(type=TaskType.INTRO, media_file_id=media_file_id, priority=PRIORITY_INTRO)
@@ -1034,6 +1054,7 @@ def _run_subtitles_task(session: Session, task: Task, output_dir: Path) -> None:
 
 
 _INTRO_NEIGHBOURS = 3  # how many nearest siblings detection may fingerprint against
+_DETECT_ATTEMPT_CAP = 3  # total detection runs per episode before the manual retry gives up
 
 
 def _intro_neighbours(session: Session, episode: Episode) -> list[Path]:
@@ -1068,6 +1089,7 @@ def _run_intro_task(session: Session, task: Task) -> None:
     if markers.outro_start is not None:
         episode.outro_start, episode.outro_end = markers.outro_start, markers.outro_end
     episode.intro_checked = True  # detection ran; a plain rescan won't re-queue it
+    episode.detect_attempts += 1  # the manual retry gives up on a side after a few runs
     _fill_estimated_outros(session, episode.season_id)
     if markers.has_any():
         message = "marked"

@@ -145,6 +145,82 @@ def test_enqueue_intro_retry_missing_requeues_gaps() -> None:
         assert enqueue_intro(session, library.id, retry_missing=True) == 0
 
 
+def test_retry_missing_needs_season_evidence_for_the_side() -> None:
+    """A live-action season with no title song anywhere must not be retried for intros
+    forever — a side is only re-queued when at least one sibling proves it detectable."""
+    with _session() as session:
+        library = Library(path="/x", name="x", kind=LibraryKind.SERIES)
+        session.add(library)
+        session.flush()
+        series = Series(title="S", library=library)
+        season = Season(series=series, number=1)
+        # No episode in the season has an intro; outros exist on two episodes.
+        with_outro = [
+            Episode(
+                season=season, number=n, intro_checked=True,
+                outro_start=2510.0, outro_end=2540.0,
+            )
+            for n in (1, 2)
+        ]
+        outro_gap = Episode(season=season, number=3, intro_checked=True)
+        session.add_all(
+            [
+                series,
+                season,
+                *with_outro,
+                outro_gap,
+                MediaFile(episode=with_outro[0], path="/x/e1.mkv"),
+                MediaFile(episode=with_outro[1], path="/x/e2.mkv"),
+                MediaFile(episode=outro_gap, path="/x/e3.mkv"),
+            ]
+        )
+        session.commit()
+
+        # Only the outro gap is retried (outros are proven in this season); the
+        # episodes missing just an intro are left alone — no sibling ever had one.
+        assert enqueue_intro(session, library.id, retry_missing=True) == 1
+        queued = list(
+            session.scalars(select(Task.media_file_id).where(Task.type == TaskType.INTRO))
+        )
+        assert queued == [outro_gap.media_files[0].id]
+
+
+def test_retry_missing_gives_up_after_the_attempt_cap() -> None:
+    """A premiere whose opening audio is simply not the season's opening keeps failing;
+    after the attempt cap the manual retry must stop re-queuing it."""
+    with _session() as session:
+        library = Library(path="/x", name="x", kind=LibraryKind.ANIME)
+        session.add(library)
+        session.flush()
+        series = Series(title="S", library=library)
+        season = Season(series=series, number=1)
+        proven = Episode(
+            season=season, number=2, intro_checked=True,
+            intro_end=90.0, outro_start=1324.0, outro_end=1414.0, detect_attempts=1,
+        )
+        exhausted = Episode(season=season, number=1, intro_checked=True, detect_attempts=3)
+        fresh = Episode(season=season, number=3, intro_checked=True, detect_attempts=1)
+        session.add_all(
+            [
+                series,
+                season,
+                proven,
+                exhausted,
+                fresh,
+                MediaFile(episode=proven, path="/x/e2.mkv"),
+                MediaFile(episode=exhausted, path="/x/e1.mkv"),
+                MediaFile(episode=fresh, path="/x/e3.mkv"),
+            ]
+        )
+        session.commit()
+
+        assert enqueue_intro(session, library.id, retry_missing=True) == 1
+        queued = list(
+            session.scalars(select(Task.media_file_id).where(Task.type == TaskType.INTRO))
+        )
+        assert queued == [fresh.media_files[0].id]
+
+
 def test_fill_estimated_outros_inherits_season_consensus(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
