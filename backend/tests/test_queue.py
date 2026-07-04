@@ -2,6 +2,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -142,6 +143,83 @@ def test_enqueue_intro_retry_missing_requeues_gaps() -> None:
         assert all(task.status == JobStatus.PENDING for task in tasks)
         # Queuing again while those are pending adds nothing.
         assert enqueue_intro(session, library.id, retry_missing=True) == 0
+
+
+def test_fill_estimated_outros_inherits_season_consensus(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from movora import normalize
+
+    with _session() as session:
+        library = Library(path="/x", name="x", kind=LibraryKind.ANIME)
+        session.add(library)
+        session.flush()
+        series = Series(title="S", library=library)
+        season = Season(series=series, number=1)
+        premiere = Episode(season=season, number=1, intro_checked=True)  # unique ED — no match
+        unchecked = Episode(season=season, number=5)  # not yet detected: must NOT be guessed
+        marked = [
+            Episode(
+                season=season,
+                number=n,
+                intro_checked=True,
+                outro_start=1324.5 + n / 10,
+                outro_end=1414.5,
+            )
+            for n in (2, 3, 4)
+        ]
+        session.add_all(
+            [
+                series,
+                season,
+                premiere,
+                unchecked,
+                *marked,
+                MediaFile(episode=premiere, path="/x/e1.mkv"),
+                MediaFile(episode=unchecked, path="/x/e5.mkv"),
+            ]
+        )
+        session.commit()
+
+        monkeypatch.setattr(normalize, "intro_duration", lambda path, ffprobe: 1422.0)
+        assert normalize._fill_estimated_outros(session, season.id) == 1
+        assert premiere.outro_start is not None and abs(premiere.outro_start - 1324.8) < 0.2
+        assert premiere.outro_end == 1414.5
+        assert unchecked.outro_start is None  # never guess ahead of detection
+        # Idempotent: the filled episode is no longer a candidate.
+        assert normalize._fill_estimated_outros(session, season.id) == 0
+
+
+def test_fill_estimated_outros_respects_the_episodes_own_duration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from movora import normalize
+
+    with _session() as session:
+        library = Library(path="/x", name="x", kind=LibraryKind.ANIME)
+        session.add(library)
+        session.flush()
+        series = Series(title="S", library=library)
+        season = Season(series=series, number=1)
+        double_length = Episode(season=season, number=1, intro_checked=True)
+        marked = [
+            Episode(
+                season=season,
+                number=n,
+                intro_checked=True,
+                outro_start=1324.5,
+                outro_end=1414.5,
+            )
+            for n in (2, 3, 4)
+        ]
+        special_file = MediaFile(episode=double_length, path="/x/sp.mkv")
+        session.add_all([series, season, double_length, *marked, special_file])
+        session.commit()
+
+        # A double-length special: the consensus window would land mid-content.
+        monkeypatch.setattr(normalize, "intro_duration", lambda path, ffprobe: 2844.0)
+        assert normalize._fill_estimated_outros(session, season.id) == 0
+        assert double_length.outro_start is None
 
 
 def test_intro_neighbours_nearest_first_and_capped() -> None:

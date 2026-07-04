@@ -122,6 +122,29 @@ def test_detect_episode_tries_further_neighbours(monkeypatch: pytest.MonkeyPatch
     assert abs(markers.outro_start - (window_start + 400 * intro.SECONDS_PER_HASH)) <= 1.0
 
 
+def test_consensus_outro_median_of_agreeing_majority() -> None:
+    windows = [
+        (1324.5, 1414.5),
+        (1324.7, 1414.4),
+        (1324.6, 1413.9),
+        (1324.8, 1414.0),
+        (1248.5, 1300.5),  # finale with its own shorter credits — outvoted
+    ]
+    estimate = intro.consensus_outro(windows)
+    assert estimate is not None
+    start, end = estimate
+    assert abs(start - 1324.65) < 0.2
+    assert abs(end - 1414.2) < 0.3
+
+
+def test_consensus_outro_requires_majority_and_quorum() -> None:
+    # Too few windows.
+    assert intro.consensus_outro([(100.0, 200.0), (101.0, 201.0)]) is None
+    # No agreement: starts are all over the place.
+    scattered = [(1000.0, 1100.0), (1200.0, 1300.0), (1400.0, 1500.0), (800.0, 900.0)]
+    assert intro.consensus_outro(scattered) is None
+
+
 def test_detect_episode_no_neighbours_keeps_chapter_markers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

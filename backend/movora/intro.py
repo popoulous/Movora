@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import re
 import shutil
+import statistics
 import subprocess
 from collections import OrderedDict
 from collections.abc import Sequence
@@ -231,6 +232,28 @@ def _outro_segment(
         return None
     seg_start, seg_end = segment
     return (start_a + seg_start, start_a + seg_end)
+
+
+def consensus_outro(
+    windows: Sequence[tuple[float, float]], *, tolerance: float = 5.0
+) -> tuple[float, float] | None:
+    """The season's consensus outro window, when there is one.
+
+    Credits sit at the same spot across a season's episodes of one release, so when a
+    clear majority of the DETECTED windows agree (starts within ``tolerance`` of the
+    median), an episode the fingerprint pass could not match — typically a premiere or
+    finale whose credits roll to a unique song — can inherit the median window. Returns
+    None without at least three agreeing windows forming a majority."""
+    if len(windows) < 3:
+        return None
+    median_start = statistics.median(start for start, _ in windows)
+    cluster = [w for w in windows if abs(w[0] - median_start) <= tolerance]
+    if len(cluster) < 3 or len(cluster) * 2 < len(windows):
+        return None
+    return (
+        statistics.median(start for start, _ in cluster),
+        statistics.median(end for _, end in cluster),
+    )
 
 
 def detect_episode(

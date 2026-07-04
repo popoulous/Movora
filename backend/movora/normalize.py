@@ -52,7 +52,8 @@ from movora.encoders import detect_h264_encoder
 from movora.enrich import enrich_library
 from movora.ffprobe import probe_media
 from movora.interfaces import NormalizationPlanner
-from movora.intro import detect_episode
+from movora.intro import _duration as intro_duration
+from movora.intro import consensus_outro, detect_episode
 from movora.metadata import MetadataRegistry, TmdbProvider
 from movora.normalization import WEB_TARGET, RemuxFirstPlanner, needs_normalization
 from movora.recipes import DEFAULT_RECIPE, recipe_id_for
@@ -1067,7 +1068,50 @@ def _run_intro_task(session: Session, task: Task) -> None:
     if markers.outro_start is not None:
         episode.outro_start, episode.outro_end = markers.outro_start, markers.outro_end
     episode.intro_checked = True  # detection ran; a plain rescan won't re-queue it
-    _finish(session, task, message="marked" if markers.has_any() else "no markers")
+    _fill_estimated_outros(session, episode.season_id)
+    if markers.has_any():
+        message = "marked"
+    elif episode.outro_start is not None:
+        message = "outro estimated"
+    else:
+        message = "no markers"
+    _finish(session, task, message=message)
+
+
+def _fill_estimated_outros(session: Session, season_id: int) -> int:
+    """Backfill outro markers the fingerprint pass left missing, from the season's consensus.
+
+    A premiere or finale whose credits roll to a unique song shares no audio with its
+    siblings, so fingerprint matching legitimately finds nothing there — but the credits
+    still START at the same spot. When the season's detected windows clearly agree
+    (:func:`movora.intro.consensus_outro`), a checked-but-outroless episode inherits the
+    median window, provided it fits that episode's own duration and lands in its back
+    half (a double-length special must not get a mid-content marker). Runs after every
+    detection task, so gaps fill as soon as three agreeing siblings exist."""
+    episodes = session.scalars(
+        select(Episode)
+        .where(Episode.season_id == season_id)
+        .options(selectinload(Episode.media_files))
+    ).all()
+    detected = [
+        (ep.outro_start, ep.outro_end)
+        for ep in episodes
+        if ep.outro_start is not None and ep.outro_end is not None
+    ]
+    estimate = consensus_outro(detected)
+    if estimate is None:
+        return 0
+    est_start, est_end = estimate
+    filled = 0
+    for ep in episodes:
+        if not ep.intro_checked or ep.outro_start is not None or not ep.media_files:
+            continue
+        duration = intro_duration(Path(ep.media_files[0].path), None)
+        if duration is None or est_end > duration + 2.0 or est_start < duration / 2:
+            continue
+        ep.outro_start, ep.outro_end = est_start, min(est_end, duration)
+        filled += 1
+    return filled
 
 
 def _start(session: Session, task: Task) -> None:
