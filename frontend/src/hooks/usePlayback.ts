@@ -89,6 +89,9 @@ export interface UsePlaybackReturn {
   skip: "intro" | "outro" | null;
   nearEnd: boolean;
   afterOutro: boolean;
+  /** True when nothing meaningful follows the credits, so the outro chip should
+   *  advance to the next episode instead of merely seeking past the credits. */
+  outroLeadsToNext: boolean;
   normalizing: boolean;
   prepareProgress: number;
   prepareEta: number | null;
@@ -128,6 +131,7 @@ export function usePlayback(id: number): UsePlaybackReturn {
   const [skip, setSkip] = useState<"intro" | "outro" | null>(null);
   const [nearEnd, setNearEnd] = useState(false);
   const [afterOutro, setAfterOutro] = useState(false);
+  const [outroLeadsToNext, setOutroLeadsToNext] = useState(true);
 
   useEffect(() => {
     setPlayback(null);
@@ -221,6 +225,15 @@ export function usePlayback(id: number): UsePlaybackReturn {
     setNearEnd((previous) => (previous === isNearEnd ? previous : isNearEnd));
     const isAfterOutro = playback.outro_end !== null && time >= playback.outro_end;
     setAfterOutro((previous) => (previous === isAfterOutro ? previous : isAfterOutro));
+    // When the credits run to (nearly) the end of the file, "skipping the outro" and
+    // "next episode" are the same act — the chip should advance. A larger gap means
+    // post-credits content (an epilogue, a preview), so the chip must only seek past
+    // the credits and keep playing.
+    const leads =
+      playback.outro_end === null ||
+      isNaN(video.duration) ||
+      video.duration - playback.outro_end <= 10;
+    setOutroLeadsToNext((previous) => (previous === leads ? previous : leads));
   };
 
   const doSkip = (): void => {
@@ -275,6 +288,7 @@ export function usePlayback(id: number): UsePlaybackReturn {
     skip,
     nearEnd,
     afterOutro,
+    outroLeadsToNext,
     normalizing,
     prepareProgress: playback?.prepare_progress ?? 0,
     prepareEta: playback?.prepare_eta_seconds ?? null,

@@ -78,6 +78,7 @@ const en = {
   "player.preparingBody":
     "The TV can't play this episode directly, so a compatible version is being built in the background. It'll start automatically when ready.",
   "player.skipIntro": "Skip intro",
+  "player.skipOutro": "Skip outro",
   "player.nextEpisode": "Next episode",
   "player.subtitleSettings": "Subtitle settings",
   "player.size": "Size",
@@ -232,6 +233,7 @@ const hu: Record<Key, string> = {
   "player.preparingBody":
     "A TV nem tudja közvetlenül lejátszani ezt a részt, ezért a háttérben készül egy kompatibilis verzió. Amint kész, automatikusan elindul.",
   "player.skipIntro": "Intro kihagyása",
+  "player.skipOutro": "Outro kihagyása",
   "player.nextEpisode": "Következő rész",
   "player.subtitleSettings": "Felirat beállítások",
   "player.size": "Méret",
@@ -384,6 +386,7 @@ const de: Record<Key, string> = {
   "player.preparingBody":
     "Der TV kann diese Folge nicht direkt abspielen, daher wird im Hintergrund eine kompatible Version erstellt. Sie startet automatisch, sobald sie fertig ist.",
   "player.skipIntro": "Intro überspringen",
+  "player.skipOutro": "Outro überspringen",
   "player.nextEpisode": "Nächste Folge",
   "player.subtitleSettings": "Untertitel-Einstellungen",
   "player.size": "Größe",
@@ -536,6 +539,7 @@ const fr: Record<Key, string> = {
   "player.preparingBody":
     "Le téléviseur ne peut pas lire cet épisode directement, une version compatible est donc préparée en arrière-plan. La lecture démarrera automatiquement une fois prête.",
   "player.skipIntro": "Passer l'intro",
+  "player.skipOutro": "Passer l'outro",
   "player.nextEpisode": "Épisode suivant",
   "player.subtitleSettings": "Réglages des sous-titres",
   "player.size": "Taille",
@@ -688,6 +692,7 @@ const es: Record<Key, string> = {
   "player.preparingBody":
     "El televisor no puede reproducir este episodio directamente, así que se está creando una versión compatible en segundo plano. Empezará automáticamente cuando esté lista.",
   "player.skipIntro": "Saltar intro",
+  "player.skipOutro": "Saltar outro",
   "player.nextEpisode": "Siguiente episodio",
   "player.subtitleSettings": "Ajustes de subtítulos",
   "player.size": "Tamaño",
@@ -840,6 +845,7 @@ const it: Record<Key, string> = {
   "player.preparingBody":
     "Il TV non può riprodurre direttamente questo episodio, quindi viene creata una versione compatibile in background. Partirà automaticamente quando è pronta.",
   "player.skipIntro": "Salta intro",
+  "player.skipOutro": "Salta outro",
   "player.nextEpisode": "Episodio successivo",
   "player.subtitleSettings": "Impostazioni sottotitoli",
   "player.size": "Dimensione",
@@ -992,6 +998,7 @@ const ja: Record<Key, string> = {
   "player.preparingBody":
     "テレビはこのエピソードを直接再生できないため、互換性のあるバージョンをバックグラウンドで作成しています。準備ができ次第、自動的に再生されます。",
   "player.skipIntro": "イントロをスキップ",
+  "player.skipOutro": "エンディングをスキップ",
   "player.nextEpisode": "次のエピソード",
   "player.subtitleSettings": "字幕設定",
   "player.size": "サイズ",

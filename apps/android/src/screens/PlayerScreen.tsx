@@ -558,12 +558,23 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
     }
   };
 
+  // With the credits running to (nearly) the file's end, skipping the outro and "next
+  // episode" are the same act; a larger gap means post-credits content, so the chip must
+  // only seek past the credits and keep playing.
+  const outroLeadsToNext =
+    info?.outro_end == null || duration <= 0 || duration - info.outro_end <= 10;
+
   const doSkip = (): void => {
     if (skip === 'intro' && info?.intro_end != null) {
       seekTo(info.intro_end);
       setSkip(null);
     } else if (skip === 'outro') {
-      goNext();
+      if (outroLeadsToNext) {
+        goNext();
+      } else if (info?.outro_end != null) {
+        seekTo(info.outro_end);
+        setSkip(null);
+      }
     }
   };
 
@@ -715,7 +726,11 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
           />
           <Icon name="skip" size={18} color="#fff" />
           <Text style={styles.skipText}>
-            {skip === 'intro' ? t('player.skipIntro') : t('player.nextEpisode')}
+            {skip === 'intro'
+              ? t('player.skipIntro')
+              : outroLeadsToNext
+                ? t('player.nextEpisode')
+                : t('player.skipOutro')}
           </Text>
         </Pressable>
       )}

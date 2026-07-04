@@ -511,11 +511,20 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
     flashToast(t("player.audio", { label: audioTrackLabel(audioList[next] ?? { language: "", label: "" }, next) }));
   };
 
+  // With the credits running to (nearly) the file's end, skipping the outro and "next
+  // episode" are the same act; a larger gap means post-credits content, so the chip must
+  // only seek past the credits and keep playing.
+  const outroLeadsToNext =
+    info?.outro_end == null || dur <= 0 || dur - info.outro_end <= 10;
+
   const doSkip = (): void => {
     const v = videoRef.current;
     if (!v || !info) return;
     if (skip === "intro" && info.intro_end != null) v.currentTime = info.intro_end;
-    else if (skip === "outro" && nextEpisodeId !== null) onNext(nextEpisodeId);
+    else if (skip === "outro") {
+      if (outroLeadsToNext && nextEpisodeId !== null) onNext(nextEpisodeId);
+      else if (info.outro_end != null) v.currentTime = info.outro_end;
+    }
   };
 
   const runControl = (id: string): void => {
@@ -830,7 +839,11 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
           }}
         >
           <Icon name="skip" size={18} />
-          {(skip === "intro" ? t("player.skipIntro") : t("player.nextEpisode")) + (skipFocused ? " ⏎" : " ▼")}
+          {(skip === "intro"
+            ? t("player.skipIntro")
+            : outroLeadsToNext && nextEpisodeId !== null
+              ? t("player.nextEpisode")
+              : t("player.skipOutro")) + (skipFocused ? " ⏎" : " ▼")}
         </div>
       )}
 

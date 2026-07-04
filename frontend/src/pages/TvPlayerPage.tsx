@@ -199,6 +199,7 @@ export function TvPlayerPage(): JSX.Element {
     skip,
     nearEnd,
     afterOutro,
+    outroLeadsToNext,
     normalizing,
     prepareProgress,
     trackId,
@@ -720,10 +721,20 @@ export function TvPlayerPage(): JSX.Element {
       {skip !== null && !ended && !panelOpen && (
         <button
           data-tv-chip=""
-          onClick={doSkip}
+          onClick={() =>
+            skip === "outro" && outroLeadsToNext && nextEpisode !== null
+              ? navigate(`/watch/${nextEpisode.id}`)
+              : doSkip()
+          }
           className="absolute right-8 bottom-24 inline-flex items-center gap-2 rounded-xl bg-white/15 px-5 py-3 text-sm font-semibold text-white ring-1 ring-white/25 transition hover:bg-white/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
         >
-          {t(skip === "intro" ? "player.skipIntro" : "player.skipOutro")}
+          {t(
+            skip === "intro"
+              ? "player.skipIntro"
+              : outroLeadsToNext && nextEpisode !== null
+                ? "player.next"
+                : "player.skipOutro",
+          )}
           <SkipForward className="h-4 w-4" />
         </button>
       )}
