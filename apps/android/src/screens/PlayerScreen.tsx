@@ -460,7 +460,14 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
 
   const onLoad = (data: OnLoadData): void => {
     setDuration(data.duration);
-    if (info && info.resume_position > 5 && !didResumeRef.current) {
+    // Resume only to a mid-episode position — a saved point in the closing seconds
+    // (credits, or a stale save) would start an unwatched episode at its end.
+    if (
+      info &&
+      info.resume_position > 5 &&
+      info.resume_position < data.duration - 30 &&
+      !didResumeRef.current
+    ) {
       didResumeRef.current = true;
       seekTo(info.resume_position);
     }

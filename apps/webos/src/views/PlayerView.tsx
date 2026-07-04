@@ -161,6 +161,11 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
   const panelRef = useRef<HTMLDivElement>(null);
   const lastSaved = useRef(0);
   const autoAdvanced = useRef(false); // the end-screen countdown has already fired its jump
+  // Which episode the on-screen playback info belongs to. During an episode switch the OLD
+  // video keeps playing until the new info arrives — its timeupdate/ended events must not
+  // be attributed to the NEW episode id, or the old episode's end position gets saved as
+  // the new episode's resume point (and it "resumes" at the end of an unwatched episode).
+  const loadedFor = useRef<number | null>(null);
   const cdTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const panelTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handlerRef = useRef<(e: KeyboardEvent) => void>(() => undefined);
@@ -180,6 +185,10 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
     setSkip(null);
     setSkipFocused(false);
     setCountdown(COUNTDOWN_START);
+    // The previous episode's video keeps rendering until the new playback info arrives;
+    // stop it and detach its events from this episode id (see loadedFor above).
+    loadedFor.current = null;
+    videoRef.current?.pause();
     let cancelled = false;
     let timer = 0;
     let seriesFetched = false;
@@ -201,6 +210,7 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
       setSubIdx(-1);
       setPanelOpen(false);
       lastSaved.current = 0;
+      loadedFor.current = episodeId; // the video now (re)loads this episode's stream
     };
     const load = (): void => {
       api
@@ -288,7 +298,12 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
     const v = videoRef.current;
     if (!v || !info) return;
     setDur(v.duration);
-    if (info.resume_position > 5) v.currentTime = info.resume_position;
+    // Resume only to a mid-episode position: a saved point in the closing seconds is
+    // either credits the viewer walked away from or a leftover of the stale-save bug —
+    // "resuming" there would start an unwatched episode at its end.
+    if (info.resume_position > 5 && info.resume_position < v.duration - 30) {
+      v.currentTime = info.resume_position;
+    }
     // Re-apply the remembered subtitle choice on every episode.
     const pref = localStorage.getItem(SUB_PREF_KEY);
     let chosen = -1;
@@ -330,6 +345,7 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
   const handleTimeUpdate = (): void => {
     const v = videoRef.current;
     if (!v || !info || !api) return;
+    if (loadedFor.current !== episodeId) return; // stale event from the previous episode
     const pos = v.currentTime;
     setCur(pos);
     if (info.intro_start != null && info.intro_end != null && pos >= info.intro_start && pos < info.intro_end) {
@@ -347,6 +363,7 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
   };
 
   const handleEnded = (): void => {
+    if (loadedFor.current !== episodeId) return; // the OLD episode finishing mid-switch
     if (api && info) void api.recordWatch(episodeId, { watched: true });
     autoAdvanced.current = false; // a fresh end screen may auto-advance exactly once
     setEndFocused(true);

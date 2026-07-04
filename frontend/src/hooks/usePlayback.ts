@@ -249,7 +249,10 @@ export function usePlayback(id: number): UsePlaybackReturn {
 
   const resume = (): void => {
     const video = videoRef.current;
-    if (video !== null && playback !== null && playback.resume_position > 0) {
+    if (video === null || playback === null || playback.resume_position <= 0) return;
+    // Resume only to a mid-episode position — a saved point in the closing seconds
+    // (credits, or a stale save) would drop the viewer at the end of the episode.
+    if (isNaN(video.duration) || playback.resume_position < video.duration - 30) {
       video.currentTime = playback.resume_position;
     }
   };
