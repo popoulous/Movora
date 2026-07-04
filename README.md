@@ -100,6 +100,10 @@ On first run, open the app and create the **admin account** (one-time setup).
 Add a library with the **+** button, point it at a media folder, and Movora scans,
 fetches metadata and (optionally) normalizes them in the background.
 
+**Intel GPU (Quick Sync)?** The image ships the QSV driver. Uncomment the
+`devices: /dev/dri` block in `compose.yaml` and the encoder auto-detection picks
+hardware encoding on its own — no other configuration needed.
+
 ### Configuration
 
 Settings are environment variables prefixed with `MOVORA_` (see `.env.example`):

@@ -21,7 +21,10 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
-    # For QSV hardware transcode (v2), pass the render device through:
+    # Intel GPU host (e.g. an N-series mini PC): uncomment to let the container reach
+    # the GPU. The image already ships the QSV driver, so with the device passed
+    # through the encoder auto-detection picks h264_qsv on its own. Leave this
+    # commented on hosts without /dev/dri — the entry would fail container start.
     # devices:
     #   - /dev/dri:/dev/dri
 
