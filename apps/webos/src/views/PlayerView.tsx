@@ -139,6 +139,7 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
   const [skip, setSkip] = useState<SkipZone>(null);
   const [skipFocused, setSkipFocused] = useState(false);
   const [ended, setEnded] = useState(false);
+  const [endFocused, setEndFocused] = useState(true); // the end screen's button starts selected
   const [countdown, setCountdown] = useState(COUNTDOWN_START);
   const [subIdx, setSubIdx] = useState(-1);
   const [trackSrcs, setTrackSrcs] = useState<Record<string, string>>({}); // trackId -> blob URL
@@ -159,6 +160,7 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
   const barRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const lastSaved = useRef(0);
+  const autoAdvanced = useRef(false); // the end-screen countdown has already fired its jump
   const cdTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const panelTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handlerRef = useRef<(e: KeyboardEvent) => void>(() => undefined);
@@ -169,6 +171,15 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
 
   useEffect(() => {
     if (!api) return undefined;
+    // Reset the end-of-episode state SYNCHRONOUSLY on every episode change — not in ready().
+    // Waiting for the fetch left the previous episode's end screen "live" during the load:
+    // its countdown kept ticking against the NEW episode's next-id, so reaching zero (or a
+    // re-render with countdown already 0) advanced one episode further — in the worst case
+    // chaining through the whole season in one burst.
+    setEnded(false);
+    setSkip(null);
+    setSkipFocused(false);
+    setCountdown(COUNTDOWN_START);
     let cancelled = false;
     let timer = 0;
     let seriesFetched = false;
@@ -337,7 +348,17 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
 
   const handleEnded = (): void => {
     if (api && info) void api.recordWatch(episodeId, { watched: true });
+    autoAdvanced.current = false; // a fresh end screen may auto-advance exactly once
+    setEndFocused(true);
     setEnded(true);
+  };
+
+  // The end screen's single action: Next episode, or Back when the season is over. Marks
+  // the auto-advance as spent so the still-running countdown can't fire a second jump.
+  const endAction = (): void => {
+    autoAdvanced.current = true;
+    if (nextEpisodeId !== null) onNext(nextEpisodeId);
+    else onBack();
   };
 
   useEffect(() => {
@@ -352,11 +373,13 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
   }, [ended]);
 
   useEffect(() => {
-    if (countdown === 0) {
-      if (nextEpisodeId !== null) onNext(nextEpisodeId);
-      else onBack();
-    }
-  }, [countdown, nextEpisodeId, onBack, onNext]);
+    // Guarded by a ref, not just state: this effect re-runs whenever nextEpisodeId changes,
+    // and after advancing, `countdown` is still 0 for a render or two — without the ref the
+    // recomputed next-id re-fired the advance (the runaway next-next-next chain).
+    if (!ended || countdown !== 0 || autoAdvanced.current) return;
+    endAction();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ended, countdown, nextEpisodeId, onBack, onNext]);
 
   useEffect(() => {
     if (info) rootRef.current?.focus();
@@ -567,11 +590,27 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
       return;
     }
 
+    if (ended) {
+      // The end screen has a single button; it starts selected so plain remote stepping
+      // works like the skip chip: Enter activates, Up releases, Down re-selects.
+      if (k === "Enter" || k === " ") {
+        e.preventDefault();
+        if (endFocused) endAction();
+        else setEndFocused(true);
+      } else if (k === "ArrowDown") {
+        e.preventDefault();
+        setEndFocused(true);
+      } else if (k === "ArrowUp") {
+        e.preventDefault();
+        setEndFocused(false);
+      }
+      return;
+    }
+
     if (!panelOpen) {
       if (k === "Enter" || k === " ") {
         e.preventDefault();
-        if (ended && nextEpisodeId !== null) onNext(nextEpisodeId);
-        else if (skipFocused) {
+        if (skipFocused) {
           doSkip(); // the user chose to skip
           setSkipFocused(false);
         } else togglePlay();
@@ -986,8 +1025,18 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
               ? t("player.nextIn", { seconds: countdown })
               : t("player.backIn", { seconds: countdown })}
           </p>
-          <button onClick={() => (nextEpisodeId !== null ? onNext(nextEpisodeId) : onBack())} style={{ ...pillStyle, background: theme.gradient, border: "none" }}>
-            {nextEpisodeId !== null ? t("player.nextEpisode") : t("common.back")}
+          <button
+            onClick={endAction}
+            style={{
+              ...pillStyle,
+              background: theme.gradient,
+              border: `3px solid ${endFocused ? "#fff" : "transparent"}`,
+              boxShadow: endFocused ? "0 0 22px rgba(122,77,255,0.9)" : "none",
+              transform: endFocused ? "scale(1.05)" : "none",
+              transition: "transform 0.12s ease, box-shadow 0.12s ease",
+            }}
+          >
+            {(nextEpisodeId !== null ? t("player.nextEpisode") : t("common.back")) + (endFocused ? " ⏎" : "")}
           </button>
         </div>
       )}
