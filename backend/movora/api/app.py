@@ -21,7 +21,13 @@ from movora.api.device_routes import router as device_router
 from movora.api.routes import router
 from movora.config import INSECURE_SECRET_KEY, Settings, get_settings
 from movora.db.base import create_db_engine, create_session_factory, init_db
-from movora.metadata import AniListProvider, MetadataRegistry, TmdbProvider
+from movora.metadata import (
+    AniListProvider,
+    FallbackProvider,
+    JikanProvider,
+    MetadataRegistry,
+    TmdbProvider,
+)
 from movora.normalize import (
     clean_partials,
     dedupe_tasks,
@@ -123,9 +129,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     engine = create_db_engine(db_path)
     init_db(engine)
     app.state.session_factory = create_session_factory(engine)
-    # The library kind picks the provider: anime -> AniList, film/series -> TMDB.
+    # The library kind picks the provider: anime -> AniList (Jikan/MAL when AniList is
+    # unreachable), film/series -> TMDB.
     app.state.metadata_provider = MetadataRegistry(
-        anime=AniListProvider(),
+        anime=FallbackProvider(AniListProvider(), JikanProvider()),
         movie=TmdbProvider("movie", settings.tmdb_api_key),
         series=TmdbProvider("tv", settings.tmdb_api_key),
     )

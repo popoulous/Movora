@@ -983,11 +983,12 @@ def _run_metadata_task(session: Session, task: Task, registry: MetadataRegistry)
         extra_languages = tuple(
             code for code in (c.strip().lower() for c in raw.split(",")) if code and code != base
         )
-    updated = enrich_library(
+    updated, failed = enrich_library(
         session, library, provider,
         on_progress=_counter(session, task), extra_languages=extra_languages,
     )
-    _finish(session, task, message=f"{updated} updated")
+    message = f"{updated} updated" + (f", {failed} failed" if failed else "")
+    _finish(session, task, message=message)
 
 
 def _run_thumbnail_task(session: Session, task: Task, output_dir: Path) -> None:

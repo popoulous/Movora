@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import httpx
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -73,7 +74,7 @@ def test_enrich_library_updates_matched_only_and_is_idempotent() -> None:
         )
         session.commit()
 
-        assert enrich_library(session, library, _StubProvider()) == 1
+        assert enrich_library(session, library, _StubProvider()) == (1, 0)
         railgun = session.scalar(select(Series).where(Series.title.like("%Railgun%")))
         assert railgun is not None
         assert railgun.cover_image_url == "http://example/cover.jpg"
@@ -81,9 +82,41 @@ def test_enrich_library_updates_matched_only_and_is_idempotent() -> None:
         assert railgun.external_id == "42"
 
         # Re-running enriches nothing new (Railgun already has an id; the other never matches).
-        assert enrich_library(session, library, _StubProvider()) == 0
+        assert enrich_library(session, library, _StubProvider()) == (0, 0)
         # force=True re-fetches the already-enriched series.
-        assert enrich_library(session, library, _StubProvider(), force=True) == 1
+        assert enrich_library(session, library, _StubProvider(), force=True) == (1, 0)
+
+
+class _OutageProvider(_StaticProvider):
+    """Errors on one title (a provider outage), matches the other — the run must survive."""
+
+    def fetch(self, parsed: ParsedFields) -> SeriesMetadata | None:
+        if parsed.title == "Broken Show":
+            raise httpx.ConnectError("provider down")
+        return SeriesMetadata(provider="stub", external_id="7", title=parsed.title or "?")
+
+
+def test_enrich_library_survives_a_provider_error_per_series() -> None:
+    engine = create_db_engine(":memory:")
+    init_db(engine)
+    factory = create_session_factory(engine)
+    with factory() as session:
+        library = Library(path="/a", name="A", kind=LibraryKind.ANIME)
+        session.add(library)
+        session.flush()
+        session.add_all(
+            [
+                Series(title="Broken Show", library=library),
+                Series(title="Working Show", library=library),
+            ]
+        )
+        session.commit()
+
+        assert enrich_library(session, library, _OutageProvider()) == (1, 1)
+        working = session.scalar(select(Series).where(Series.title == "Working Show"))
+        assert working is not None and working.external_id == "7"
+        broken = session.scalar(select(Series).where(Series.title == "Broken Show"))
+        assert broken is not None and broken.external_id is None
 
 
 class _RecProvider(_StaticProvider):

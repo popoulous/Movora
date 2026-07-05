@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -27,19 +28,25 @@ def enrich_library(
     force: bool = False,
     on_progress: ProgressFn | None = None,
     extra_languages: tuple[str, ...] = (),
-) -> int:
+) -> tuple[int, int]:
     """Fetch metadata for the library's series. By default only not-yet-enriched ones;
-    force=True re-fetches all (e.g. after the metadata schema grows)."""
+    force=True re-fetches all (e.g. after the metadata schema grows). Returns
+    (updated, failed) — a provider outage on one series must not abort the rest."""
     query = select(Series).where(Series.library_id == library.id)
     if not force:
         query = query.where(Series.external_id.is_(None))
     series_list = list(session.scalars(query))
     total = len(series_list)
     updated = 0
+    failed = 0
     for index, series in enumerate(series_list, start=1):
         if on_progress is not None:
             on_progress(index, total)
-        metadata = provider.fetch(ParsedFields(title=series.title))
+        try:
+            metadata = provider.fetch(ParsedFields(title=series.title))
+        except httpx.HTTPError:
+            failed += 1
+            continue
         if metadata is None:
             continue
         series.external_id = metadata.external_id
@@ -97,7 +104,7 @@ def enrich_library(
         _localize(session, provider, series, metadata.external_id, extra_languages)
         updated += 1
     session.commit()
-    return updated
+    return updated, failed
 
 
 def _localize(
