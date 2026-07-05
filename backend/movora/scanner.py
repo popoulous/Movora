@@ -298,7 +298,12 @@ _SEASON_FOLDER = re.compile(r"\bS(?:eason)?\s*0*(\d{1,2})\b", re.IGNORECASE)
 
 def _clean_folder_title(folder: str) -> str:
     """Turn a release folder name into a clean show title for metadata matching."""
-    name = re.sub(r"[(\[].*?[)\]]", " ", folder)  # drop (...) and [...] groups
+    name = folder
+    if " " not in name and "." in name:
+        # Scene-style folder ("Akame.ga.Kill.1080p.x265"): the dots are the separators.
+        # A spaced name keeps its dots — they are part of the title there ("Dr. Stone").
+        name = name.replace(".", " ")
+    name = re.sub(r"[(\[].*?[)\]]", " ", name)  # drop (...) and [...] groups
     name = _SEASON_RANGE.split(name, maxsplit=1)[0]  # cut at a season marker (S01, S01-S03)
     name = _RELEASE_TAIL.sub("", name)  # drop a trailing release/format tail
     name = re.sub(r"\s+", " ", name).strip(" -_.")

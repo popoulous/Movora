@@ -24,6 +24,7 @@ from movora.normalize import (
     clean_partials,
     dedupe_tasks,
     enqueue_intro,
+    enqueue_metadata,
     enqueue_normalize,
     requeue_interrupted,
     transcode_pids,
@@ -473,3 +474,55 @@ def test_requeue_leaves_failed_at_cap() -> None:
         task = session.scalar(select(Task))
         assert task is not None
         assert task.status == JobStatus.FAILED
+
+
+def test_enqueue_metadata_reuses_the_library_row() -> None:
+    # Every press used to add a new row, leaving old FAILED runs as red marks in the
+    # Tasks view forever; the newest row is recycled and older leftovers are swept.
+    with _session() as session:
+        library = Library(path="/x", name="x", kind=LibraryKind.ANIME)
+        session.add(library)
+        session.flush()
+        session.add_all(
+            [
+                Task(
+                    type=TaskType.METADATA,
+                    library_id=library.id,
+                    status=JobStatus.FAILED,
+                    attempts=3,
+                    message="Client error '403 Forbidden'",
+                ),
+                Task(
+                    type=TaskType.METADATA,
+                    library_id=library.id,
+                    status=JobStatus.DONE,
+                    progress=100,
+                    message="0 updated, 9 failed",
+                ),
+            ]
+        )
+        session.commit()
+
+        enqueue_metadata(session, library.id)
+        tasks = list(session.scalars(select(Task).where(Task.type == TaskType.METADATA)))
+        assert len(tasks) == 1
+        assert tasks[0].status == JobStatus.PENDING
+        assert tasks[0].attempts == 0
+        assert tasks[0].message is None
+
+
+def test_enqueue_metadata_leaves_an_active_row_alone() -> None:
+    with _session() as session:
+        library = Library(path="/x", name="x", kind=LibraryKind.ANIME)
+        session.add(library)
+        session.flush()
+        running = Task(
+            type=TaskType.METADATA, library_id=library.id, status=JobStatus.RUNNING, progress=40
+        )
+        session.add(running)
+        session.commit()
+
+        enqueue_metadata(session, library.id)
+        tasks = list(session.scalars(select(Task).where(Task.type == TaskType.METADATA)))
+        assert len(tasks) == 1
+        assert tasks[0].status == JobStatus.RUNNING and tasks[0].progress == 40

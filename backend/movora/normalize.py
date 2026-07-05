@@ -378,11 +378,27 @@ def enqueue_scan_all(session: Session) -> int:
 
 
 def enqueue_metadata(session: Session, library_id: int) -> None:
-    if not _has_active_library_task(session, library_id, TaskType.METADATA):
+    if _has_active_library_task(session, library_id, TaskType.METADATA):
+        return
+    # Reuse the library's newest finished/failed row (and sweep older leftovers) so the
+    # Tasks view keeps one metadata row per library instead of stacking every run.
+    history = sorted(
+        session.scalars(
+            select(Task).where(Task.library_id == library_id, Task.type == TaskType.METADATA)
+        ),
+        key=lambda task: task.id,
+    )
+    for extra in history[:-1]:
+        session.delete(extra)
+    if history:
+        _reset(history[-1])
+        history[-1].attempts = 0
+        history[-1].priority = PRIORITY_METADATA
+    else:
         session.add(
             Task(type=TaskType.METADATA, library_id=library_id, priority=PRIORITY_METADATA)
         )
-        session.commit()
+    session.commit()
 
 
 def enqueue_thumbnail(session: Session, library_id: int) -> None:

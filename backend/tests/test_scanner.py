@@ -201,6 +201,29 @@ def test_scan_groups_by_folder_and_skips_extras(tmp_path: Path) -> None:
         assert len(list(session.scalars(select(MediaFile)))) == 3
 
 
+def test_scan_cleans_scene_style_dotted_folder_names(tmp_path: Path) -> None:
+    # A scene-style folder uses dots as separators; a spaced name keeps its dots
+    # because there they are part of the title.
+    dotted = tmp_path / "Akame.ga.Kill.1080p.BluRay.x265"
+    dotted.mkdir()
+    (dotted / "Akame.ga.Kill.S01E01.mkv").write_bytes(b"")
+    spaced = tmp_path / "Dr. Stone S01"
+    spaced.mkdir()
+    (spaced / "Dr. Stone - 01.mkv").write_bytes(b"")
+
+    engine = create_db_engine(":memory:")
+    init_db(engine)
+    factory = create_session_factory(engine)
+    with factory() as session:
+        library = Library(path=str(tmp_path), name="A", kind=LibraryKind.ANIME)
+        session.add(library)
+        session.commit()
+
+        scan_library(session, library, title_prober=lambda path: None)
+        titles = {series.title for series in session.scalars(select(Series))}
+        assert titles == {"Akame ga Kill", "Dr. Stone"}
+
+
 def test_scan_reads_season_from_subfolder(tmp_path: Path) -> None:
     show = tmp_path / "Solo Leveling S01-S02 BDBOX"
     (show / "01. Solo Leveling S01").mkdir(parents=True)
