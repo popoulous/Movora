@@ -3,10 +3,10 @@ from typing import Any
 import httpx
 import pytest
 
-from movora.domain import ParsedFields, SeriesMetadata
+from movora.domain import ParsedFields, SeriesLocalization, SeriesMetadata
 from movora.interfaces import MetadataProvider
 from movora.metadata.anilist import AniListProvider
-from movora.metadata.fallback import FallbackProvider
+from movora.metadata.fallback import FallbackProvider, SearchOnlyProvider
 from movora.metadata.jikan import JikanProvider
 
 _RAILGUN: dict[str, Any] = {
@@ -502,9 +502,15 @@ def test_jikan_stops_the_chain_at_unknown_length() -> None:
 class _FakeProvider:
     """Scripted MetadataProvider: returns `result`, or raises when `error` is set."""
 
-    def __init__(self, result: SeriesMetadata | None = None, error: bool = False) -> None:
+    def __init__(
+        self,
+        result: SeriesMetadata | None = None,
+        error: bool = False,
+        localization: SeriesLocalization | None = None,
+    ) -> None:
         self.result = result
         self.error = error
+        self.localization = localization
         self.fetch_calls = 0
         self.languages: list[str] = []
 
@@ -518,8 +524,8 @@ class _FakeProvider:
         self.languages.append(language)
         return self
 
-    def localize(self, external_id: str) -> None:
-        return None
+    def localize(self, external_id: str) -> SeriesLocalization | None:
+        return self.localization
 
 
 _META = SeriesMetadata(provider="anilist", external_id="1", title="Show")
@@ -552,3 +558,35 @@ def test_fallback_propagates_the_language_to_both() -> None:
     FallbackProvider(primary, secondary).with_language("hu")
     assert primary.languages == ["hu"]
     assert secondary.languages == ["hu"]
+
+
+# --- Search-only wrapper + the three-tier anime chain ---------------------------------
+
+
+_TMDB_META = SeriesMetadata(provider="tmdb", external_id="3", title="Show")
+
+
+def test_search_only_delegates_fetch_but_never_localizes() -> None:
+    inner = _FakeProvider(result=_TMDB_META, localization=SeriesLocalization(title="Bemutato"))
+    provider: MetadataProvider = SearchOnlyProvider(inner)
+    assert provider.fetch(ParsedFields(title="Show")) is _TMDB_META
+    # A foreign id (AniList/MAL) must not resolve in the wrapped provider's id space.
+    assert provider.localize("1") is None
+
+
+def test_search_only_propagates_the_language_to_the_inner_provider() -> None:
+    inner = _FakeProvider()
+    SearchOnlyProvider(inner).with_language("hu")
+    assert inner.languages == ["hu"]
+
+
+def test_three_tier_chain_falls_through_to_the_last_provider() -> None:
+    primary = _FakeProvider(error=True)
+    secondary = _FakeProvider(result=None)
+    tertiary = _FakeProvider(result=_TMDB_META, localization=SeriesLocalization(title="Bemutato"))
+    chain = FallbackProvider(primary, FallbackProvider(secondary, SearchOnlyProvider(tertiary)))
+    assert chain.fetch(ParsedFields(title="Show")) is _TMDB_META
+    assert secondary.fetch_calls == 1
+    # The chain's localize stops at the search-only tier instead of resolving a
+    # foreign id against the tertiary's id space.
+    assert chain.localize("1") is None

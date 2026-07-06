@@ -26,6 +26,7 @@ from movora.metadata import (
     FallbackProvider,
     JikanProvider,
     MetadataRegistry,
+    SearchOnlyProvider,
     TmdbProvider,
 )
 from movora.normalize import (
@@ -129,10 +130,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     engine = create_db_engine(db_path)
     init_db(engine)
     app.state.session_factory = create_session_factory(engine)
-    # The library kind picks the provider: anime -> AniList (Jikan/MAL when AniList is
-    # unreachable), film/series -> TMDB.
+    # The library kind picks the provider: anime -> AniList (Jikan/MAL, then TMDB when
+    # the anime sources are unreachable), film/series -> TMDB. The TMDB tier is
+    # search-only: its ids live in a different space than AniList/MAL ids, so a chain
+    # localize must never route one there.
     app.state.metadata_provider = MetadataRegistry(
-        anime=FallbackProvider(AniListProvider(), JikanProvider()),
+        anime=FallbackProvider(
+            AniListProvider(),
+            FallbackProvider(
+                JikanProvider(),
+                SearchOnlyProvider(TmdbProvider("tv", settings.tmdb_api_key)),
+            ),
+        ),
         movie=TmdbProvider("movie", settings.tmdb_api_key),
         series=TmdbProvider("tv", settings.tmdb_api_key),
     )
