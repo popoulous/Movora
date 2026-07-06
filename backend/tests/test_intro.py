@@ -20,6 +20,30 @@ def test_markers_from_named_chapters() -> None:
     assert (markers.outro_start, markers.outro_end) == (1320.0, 1416.0)
 
 
+def test_markers_prefer_the_op_chapter_over_a_cold_open_named_intro() -> None:
+    # Moozzi2-style BDs name the cold open "Intro" and the actual opening "OP"; trusting
+    # the first name-match would put the skip chip at the very start of the episode.
+    chapters: list[dict[str, object]] = [
+        {"start_time": "0.0", "end_time": "119.0", "tags": {"title": "Intro"}},
+        {"start_time": "119.0", "end_time": "209.0", "tags": {"title": "OP"}},
+        {"start_time": "209.0", "end_time": "1325.0", "tags": {"title": "Part A"}},
+        {"start_time": "1325.0", "end_time": "1415.0", "tags": {"title": "ED"}},
+    ]
+    markers = markers_from_chapters(chapters)
+    assert (markers.intro_start, markers.intro_end) == (119.0, 209.0)
+    assert (markers.outro_start, markers.outro_end) == (1325.0, 1415.0)
+
+
+def test_markers_ignore_a_lone_intro_chapter() -> None:
+    # "Intro" alone is ambiguous (cold open on some releases, opening on others), so the
+    # chapter pass yields nothing and the fingerprint pass decides.
+    chapters: list[dict[str, object]] = [
+        {"start_time": "0.0", "end_time": "90.0", "tags": {"title": "Intro"}},
+        {"start_time": "90.0", "end_time": "1400.0", "tags": {"title": "Part A"}},
+    ]
+    assert markers_from_chapters(chapters).intro_end is None
+
+
 def test_markers_from_generic_chapters_are_empty() -> None:
     chapters: list[dict[str, object]] = [
         {"start_time": "0.0", "end_time": "300.0", "tags": {"title": "Chapter 1"}},

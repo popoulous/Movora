@@ -8,6 +8,7 @@ it can be vendored later (it is unmaintained) without changing any caller.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from guessit import guessit
@@ -42,6 +43,12 @@ def _range_end(value: Any, first: int | None) -> int | None:
     return last if last is not None and first is not None and last > first else None
 
 
+# Hungarian fansub naming ("Show S2 - 07. rész (1080p)"): anitopy does not recognise
+# "rész" as an episode keyword, so the number stays unparsed and every file would
+# default to episode 1.
+_HU_EPISODE = re.compile(r"\b(\d{1,4})\s*\.\s*r[eé]sz\b", re.IGNORECASE)
+
+
 class AnimeParser:
     """Parse anime release file names with anitopy."""
 
@@ -49,6 +56,10 @@ class AnimeParser:
         data: dict[str, Any] = anitopy.parse(filename) or {}
         episode = data.get("episode_number")
         first = _first_int(episode)
+        if first is None:
+            hungarian = _HU_EPISODE.search(filename)
+            if hungarian is not None:
+                first = int(hungarian.group(1))
         return ParsedFields(
             title=data.get("anime_title"),
             episode=first,

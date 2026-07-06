@@ -36,7 +36,10 @@ _MIN_INTRO_SECONDS = 12.0  # shorter shared runs are not an opening
 _MAX_SHIFT_SECONDS = 180.0
 _MAX_HAMMING = 6  # per-hash bit differences still counted as a match
 
-_INTRO_CHAPTER = re.compile(r"\b(op|opening|intro|main\s*title)\b", re.IGNORECASE)
+# "Intro" is deliberately NOT matched: some releases (e.g. Moozzi2 BDs) name the cold
+# open "Intro" and the actual opening "OP", so the word alone cannot be trusted — files
+# with only an "Intro" chapter fall through to the fingerprint pass instead.
+_INTRO_CHAPTER = re.compile(r"\b(op|opening|main\s*title)\b", re.IGNORECASE)
 _OUTRO_CHAPTER = re.compile(r"\b(ed|ending|outro|credits?|preview|end\s*card)\b", re.IGNORECASE)
 
 
