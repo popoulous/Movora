@@ -6,11 +6,12 @@ server, browse libraries, and play episodes with **multi-audio-track and subtitl
 selection** (per-series remembered audio language), backed by `react-native-video`
 (ExoPlayer/Media3 under the hood).
 
-> **Status: buildable scaffold.** The cross-platform app (`src/`), the RN config, **and
-> the native `android/` Gradle project are all here** (RN 0.76.6, package `com.movora`,
-> minSdk 29). `npm run typecheck` is green against the real RN / react-native-video /
-> react-navigation types. It has **not been run through a full Gradle build / on a device
-> yet** — do that in Android Studio or via `npm run android`.
+> **Status: shipped.** Runs on phones and Android TV (RN 0.76.6, package `com.movora`,
+> minSdk 29); release APKs are attached to the GitHub Releases. Server auto-discovery
+> on the LAN, code pairing, the on-device capability probe, a custom VTT subtitle
+> overlay, 7-language i18n, double-tap seeking and skip-intro/outro chips all mirror
+> the other clients, and playback is OOM-safe on low-RAM devices (memory-capped
+> ExoPlayer buffering).
 
 ## Layout
 
@@ -24,13 +25,17 @@ apps/android/
     theme.ts               # Movora palette (shared look with web/webOS)
     api/client.ts          # REST client (ported from apps/webos) — fetch + bearer token
     context/DeviceContext  # pairing/config persisted in AsyncStorage
+    discovery.ts           # LAN server auto-discovery
+    i18n/                  # 7 languages (hu/en/de/fr/es/it/ja), shared key set with web/webOS
+    components/            # shared branding/gradient UI pieces
     navigation.ts          # typed route table
     screens/
-      WelcomeScreen        # server URL + 6-digit pairing code
+      WelcomeScreen        # auto-discovery + server URL + 6-digit pairing code
       HomeScreen           # continue-watching + libraries + recently added
       LibraryScreen        # poster grid
       SeriesScreen         # detail + episode list
-      PlayerScreen         # react-native-video + audio/subtitle pickers
+      PlayerScreen         # react-native-video + audio/subtitle pickers, skip chips
+      CapabilityScreen     # on-device playback probe -> capability report
       SettingsScreen       # server info + unpair
 ```
 
@@ -64,15 +69,12 @@ To list it on the TV home row, add a `LEANBACK_LAUNCHER` category to the main ac
 intent-filter plus an `android:banner` drawable. For richer TV focus control later, swap
 `react-native` for the `react-native-tvos` fork (`TVFocusGuideView`, `hasTVPreferredFocus`).
 
-## Notes / next steps
+## Notes
 
 - **Pairing** uses the same backend flow as webOS (`/api/devices/pair/*`): the app shows
   a 6-digit code, you approve it in the Movora web UI (Settings → pair a TV).
 - **Playback** streams `/api/episodes/{id}/stream?token=…`. The player lists the stream's
   audio tracks on load and remembers the chosen **language per series**
-  (`movora_audio_pref_<seriesId>`), mirroring the webOS/web clients. Subtitles are passed
-  as external VTT text tracks from `/api/episodes/{id}/subtitles` (ASS is fetched as
-  `?as=vtt`).
-- **TODO** (ports from `apps/webos`): i18n (7 languages, `src/i18n`), the on-device
-  capability probe + report, server auto-discovery, and D-pad focus polish for TV
-  (`TVFocusGuideView`, `hasTVPreferredFocus`).
+  (`movora_audio_pref_<seriesId>`), mirroring the webOS/web clients. Subtitles render in
+  a custom VTT overlay fed from `/api/episodes/{id}/subtitles` (ASS is fetched as
+  `?as=vtt`) — `react-native-video`'s own text tracks proved too limited.

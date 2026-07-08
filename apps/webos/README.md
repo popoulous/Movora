@@ -1,7 +1,9 @@
 # Movora — webOS TV client
 
-The LG webOS TV client (Enact / Sandstone). It talks to the Movora backend over the
-LAN with a device bearer token (see the backend `/api/devices` endpoints).
+The LG webOS TV client (Enact / Sandstone): explicit D-pad spatial navigation,
+on-device server auto-discovery, 6-digit code pairing, a playback capability
+self-test and full subtitle controls. It talks to the Movora backend over the LAN
+with a device bearer token (see the backend `/api/devices` endpoints).
 
 ## Deploy to a webOS TV (sideload)
 
@@ -18,8 +20,8 @@ ares-novacom --device movora-tv --getkey           # enter the Key Server passph
 
 # 3. Build, package, install, launch
 npm run pack-p                                      # -> ./dist (incl. appinfo.json + icons)
-ares-package ./dist                                 # -> hu.movora.app_0.1.0_all.ipk
-ares-install --device movora-tv ./hu.movora.app_0.1.0_all.ipk
+ares-package ./dist                                 # -> hu.movora.app_<version>_all.ipk
+ares-install --device movora-tv ./hu.movora.app_<version>_all.ipk
 ares-launch  --device movora-tv hu.movora.app
 
 # Remote DevTools while it runs
@@ -30,8 +32,9 @@ ares-inspect --device movora-tv --app hu.movora.app
 `dist/`, so no manual copy is needed before `ares-package`.
 
 > The backend must allow the TV's cross-origin requests (CORS) — the web UI is
-> same-origin, the TV app is not. Pairing (the 6-digit code flow) is a later phase;
-> until then a device + token is created via `POST /api/devices`.
+> same-origin, the TV app is not. On first launch the app finds the server on the
+> LAN (or takes a URL) and shows a **6-digit pairing code** you approve in the
+> Movora web UI (Settings → devices).
 
 ---
 

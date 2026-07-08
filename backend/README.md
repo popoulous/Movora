@@ -1,8 +1,11 @@
 # Movora — backend
 
-Python / FastAPI backend. The project is being built behind the stable
-interfaces described in the implementation plan; the first module implemented is
-the **subtitle pipeline** (the highest-risk, highest-value core).
+Python / FastAPI backend: library scanning and anime-grade filename parsing,
+metadata (AniList → Jikan/MAL → TMDB), ingest-time normalization and device-aware
+variants (ffmpeg), the subtitle pipeline, intro/outro detection (chapters +
+Chromaprint audio fingerprints), auth/RBAC and device pairing — all built behind
+stable interfaces (`ParserStrategy`, `MetadataProvider`, `StreamStrategy`, …) and
+drained by a single priority job queue.
 
 ## Develop
 

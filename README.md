@@ -78,8 +78,11 @@ LAN, code pairing and the same capability-aware playback as the other clients.
   an SRT fallback). Soft ASS renders in-browser via **JASSUB** (libass/WASM); every
   client offers size, background and position controls.
 - **Audio track selection** — switch dubs/languages per series; the choice is remembered.
-- **Metadata** — AniList for anime, TMDB for film/series, MyAnimeList episode titles,
+- **Metadata** — a resilient anime chain (**AniList → MyAnimeList/Jikan → TMDB**, so an
+  upstream outage doesn't stop ingest), TMDB for film/series, MyAnimeList episode titles,
   cast on the detail page, and **per-language titles** that follow the UI language.
+  Absolute-numbered box sets (episodes 1–24 across two seasons in one folder) are
+  **split into their real seasons** from AniList's sequel/prequel relations.
 - **Intro / outro detection + skip** — chapter names first, else a Chromaprint audio
   fingerprint matched across a season; a Skip button in the player.
 - **Continue watching, watched markers, per-episode thumbnails, progress, global search.**
@@ -170,10 +173,9 @@ Later features attach as new implementations rather than rewrites.
 
 ## Roadmap (v2)
 
-Real-time transcode (QuickSync) + adaptive HLS, AniList/MAL scrobbling, AniDB
-hash-based matching, an anime franchise/collection model with a chronological
-watch-order view, an ML dialogue-vs-signs classifier trained on the override data,
-and subtitle acquisition.
+AniList/MAL scrobbling, AniDB hash-based matching, an anime franchise/collection
+model with a chronological watch-order view, an ML dialogue-vs-signs classifier
+trained on the override data, and subtitle acquisition.
 
 ## License
 
