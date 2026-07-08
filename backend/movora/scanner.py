@@ -115,6 +115,7 @@ def scan_library(
                 episode.end_number = end_number  # keep the range in sync on re-scan
             if existing.episode_id != episode.id:
                 _migrate_watch_state(session, existing.episode_id, episode.id)
+                _migrate_thumbnail(existing, episode)
                 existing.episode = episode
             continue
         episode = _get_or_create_episode(session, season, number, prober(path), end_number)
@@ -169,6 +170,20 @@ def _prune_missing(
                 remove_media_file_artifacts(media_file, data_dir)
             session.delete(media_file)
     session.flush()
+
+
+def _migrate_thumbnail(media_file: MediaFile, new_episode: Episode) -> None:
+    """Thumbnails are extracted per media file (``thumbnails/<id>.jpg``) but stored on the
+    episode. When the file that produced the old slot's thumbnail moves away, the image
+    follows it: the new episode adopts it (unless it has one) and the old slot drops it,
+    so the thumbnail task regenerates the old slot's image from the files that stay."""
+    old_episode = media_file.episode
+    thumbnail = old_episode.thumbnail_path
+    if thumbnail is None or Path(thumbnail).name != f"{media_file.id}.jpg":
+        return
+    if new_episode.thumbnail_path is None:
+        new_episode.thumbnail_path = thumbnail
+    old_episode.thumbnail_path = None
 
 
 def _migrate_watch_state(session: Session, old_episode_id: int, new_episode_id: int) -> None:

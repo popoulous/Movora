@@ -111,13 +111,11 @@ def test_rescan_moves_a_misfiled_special_to_season_zero(tmp_path: Path) -> None:
         series = Series(title="Show", library=library)
         season = Season(series=series, number=1)
         episode = Episode(season=season, number=1, title="Episode one title")
-        session.add_all(
-            [
-                library,
-                MediaFile(episode=episode, path=str(regular)),
-                MediaFile(episode=episode, path=str(special)),
-            ]
-        )
+        special_file = MediaFile(episode=episode, path=str(special))
+        session.add_all([library, MediaFile(episode=episode, path=str(regular)), special_file])
+        session.flush()
+        # The old slot's thumbnail was extracted from the special (it was indexed first).
+        episode.thumbnail_path = f"thumbs/{special_file.id}.jpg"
         session.commit()
 
         scan_library(
@@ -131,10 +129,13 @@ def test_rescan_moves_a_misfiled_special_to_season_zero(tmp_path: Path) -> None:
         assert (moved.episode.season.number, moved.episode.number) == (0, 1)
         # The new episode carries the file's own container title, not the old slot's.
         assert moved.episode.title == "Special title"
+        # The thumbnail extracted from the special follows it; the old slot regenerates.
+        assert moved.episode.thumbnail_path == f"thumbs/{moved.id}.jpg"
         kept = session.scalar(select(MediaFile).where(MediaFile.path == str(regular)))
         assert kept is not None
         assert (kept.episode.season.number, kept.episode.number) == (1, 1)
         assert kept.episode.title == "Episode one title"
+        assert kept.episode.thumbnail_path is None
 
 
 def test_rescan_removes_generated_artifacts(tmp_path: Path) -> None:
