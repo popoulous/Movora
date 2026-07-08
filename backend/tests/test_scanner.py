@@ -61,6 +61,75 @@ def test_scan_honours_absolute_episode_mappings(tmp_path: Path) -> None:
         assert placement(box / "Show S3 - 04.mkv") == (3, 4)  # explicit S3 beats the abs=4 map
 
 
+def test_scan_puts_file_level_specials_in_season_zero(tmp_path: Path) -> None:
+    """A "Show - Special" file dropped next to the numbered episodes (no Specials
+    sub-folder) lands in Season 0 instead of on top of episode 1."""
+    root = tmp_path / "lib"
+    show = root / "Show [1080p]"
+    show.mkdir(parents=True)
+    (show / "[Grp] Show - 01 [1080p].mkv").write_bytes(b"")
+    (show / "[Grp] Show (2018) -  Special [720p].mkv").write_bytes(b"")
+    (show / "[Grp] Show - OVA 02 [1080p].mkv").write_bytes(b"")
+
+    engine = create_db_engine(":memory:")
+    init_db(engine)
+    factory = create_session_factory(engine)
+    with factory() as session:
+        library = Library(path=str(root), name="A", kind=LibraryKind.ANIME)
+        session.add(library)
+        session.commit()
+
+        scan_library(session, library, title_prober=lambda _p: None)
+
+        def placement(name: str) -> tuple[int, int]:
+            media = session.scalar(select(MediaFile).where(MediaFile.path == str(show / name)))
+            assert media is not None
+            return media.episode.season.number, media.episode.number
+
+        assert placement("[Grp] Show - 01 [1080p].mkv") == (1, 1)
+        # Specials number sequentially in scan (=path) order within Season 0.
+        assert placement("[Grp] Show (2018) -  Special [720p].mkv") == (0, 1)
+        assert placement("[Grp] Show - OVA 02 [1080p].mkv") == (0, 2)
+
+
+def test_rescan_moves_a_misfiled_special_to_season_zero(tmp_path: Path) -> None:
+    """A special that an earlier scan piled onto S01E01 is re-parented to Season 0 on
+    re-scan, and the real episode 1 stays where it is."""
+    root = tmp_path / "lib"
+    show = root / "Show [1080p]"
+    show.mkdir(parents=True)
+    regular = show / "[Grp] Show - 01 [1080p].mkv"
+    special = show / "[Grp] Show (2018) -  Special [720p].mkv"
+    regular.write_bytes(b"")
+    special.write_bytes(b"")
+
+    engine = create_db_engine(":memory:")
+    init_db(engine)
+    factory = create_session_factory(engine)
+    with factory() as session:
+        library = Library(path=str(root), name="A", kind=LibraryKind.ANIME)
+        series = Series(title="Show", library=library)
+        season = Season(series=series, number=1)
+        episode = Episode(season=season, number=1)
+        session.add_all(
+            [
+                library,
+                MediaFile(episode=episode, path=str(regular)),
+                MediaFile(episode=episode, path=str(special)),
+            ]
+        )
+        session.commit()
+
+        scan_library(session, library, title_prober=lambda _p: None)
+
+        moved = session.scalar(select(MediaFile).where(MediaFile.path == str(special)))
+        assert moved is not None
+        assert (moved.episode.season.number, moved.episode.number) == (0, 1)
+        kept = session.scalar(select(MediaFile).where(MediaFile.path == str(regular)))
+        assert kept is not None
+        assert (kept.episode.season.number, kept.episode.number) == (1, 1)
+
+
 def test_rescan_removes_generated_artifacts(tmp_path: Path) -> None:
     """A pruned media file takes its generated files with it (no leftover garbage)."""
     root = tmp_path / "lib"

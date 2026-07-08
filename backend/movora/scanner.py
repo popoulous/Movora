@@ -77,8 +77,9 @@ def scan_library(
         series = _get_or_create_series(session, library, title)
         # A metadata-set absolute->season/episode override (from season_split) wins for a
         # file that has no explicit season of its own — its number is an absolute one.
+        # A special's number counts within Season 0, so it is never an absolute one.
         mapping = None
-        if fields.season is None and fields.episode is not None:
+        if fields.season is None and fields.episode is not None and not fields.special:
             mapping = mappings.get((series.id, fields.episode))
         season_num = mapping.season_number if mapping is not None else _season_number(
             path, root, fields, season_index
@@ -275,6 +276,8 @@ def _season_number(
     path: Path, root: Path, fields: ParsedFields, season_index: dict[tuple[str, str], int]
 ) -> int:
     """Season from the file name, an explicit S01/Season-N folder, else the folder order."""
+    if fields.special:  # a "Show S2 - Special" is still a special, so this outranks season
+        return 0
     if fields.season is not None:
         return fields.season
     parts = path.relative_to(root).parts

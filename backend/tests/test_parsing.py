@@ -34,6 +34,32 @@ def test_anime_parser_prefers_anitopy_episode_over_the_hungarian_pattern() -> No
     assert fields.episode == 3
 
 
+def test_anime_parser_flags_a_file_level_special() -> None:
+    fields = AnimeParser().parse("[FeedtheGeek] Captain Tsubasa (2018) -  Special [720p].mkv")
+    assert fields.title == "Captain Tsubasa"
+    assert fields.episode is None
+    assert fields.special is True
+
+
+def test_anime_parser_flags_a_numbered_special() -> None:
+    fields = AnimeParser().parse("[Group] Show - OVA 02 [1080p].mkv")
+    assert fields.episode == 2
+    assert fields.special is True
+
+
+def test_anime_parser_does_not_flag_ona_series_episodes() -> None:
+    # Whole series ship as ONAs, so the token appears on every regular episode.
+    fields = AnimeParser().parse("[Group] Kengan Ashura ONA - 05 [1080p].mkv")
+    assert fields.episode == 5
+    assert fields.special is False
+
+
+def test_anime_parser_does_not_flag_sp_inside_a_title() -> None:
+    fields = AnimeParser().parse("Yumeiro Patissiere SP Professional - 03.mkv")
+    assert fields.episode == 3
+    assert fields.special is False
+
+
 def test_video_parser_movie() -> None:
     fields = VideoParser().parse("The.Matrix.1999.1080p.BluRay.x264-GROUP.mkv")
     assert fields.title == "The Matrix"

@@ -48,6 +48,17 @@ def _range_end(value: Any, first: int | None) -> int | None:
 # default to episode 1.
 _HU_EPISODE = re.compile(r"\b(\d{1,4})\s*\.\s*r[eé]sz\b", re.IGNORECASE)
 
+# anitopy anime_type values that mark the file itself as a special (-> Season 0), for
+# releases that drop a "Show - Special" or "Show - OVA 02" next to the numbered episodes
+# instead of using a Specials sub-folder. ONA is deliberately absent: whole series ship
+# as ONAs, so the token sits on every regular episode ("Kengan Ashura ONA - 05").
+_SPECIAL_TYPES = {"MOVIE", "GEKIJOUBAN", "OAD", "OAV", "OVA", "SPECIAL", "SPECIALS", "SP"}
+
+
+def _is_special_type(anime_type: Any) -> bool:
+    values = anime_type if isinstance(anime_type, list) else [anime_type]
+    return any(isinstance(value, str) and value.upper() in _SPECIAL_TYPES for value in values)
+
 
 class AnimeParser:
     """Parse anime release file names with anitopy."""
@@ -66,6 +77,7 @@ class AnimeParser:
             season=_first_int(data.get("anime_season")),
             release_group=data.get("release_group"),
             episode_end=_range_end(episode, first),
+            special=_is_special_type(data.get("anime_type")),
         )
 
 
