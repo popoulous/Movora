@@ -110,7 +110,7 @@ def test_rescan_moves_a_misfiled_special_to_season_zero(tmp_path: Path) -> None:
         library = Library(path=str(root), name="A", kind=LibraryKind.ANIME)
         series = Series(title="Show", library=library)
         season = Season(series=series, number=1)
-        episode = Episode(season=season, number=1)
+        episode = Episode(season=season, number=1, title="Episode one title")
         session.add_all(
             [
                 library,
@@ -120,14 +120,21 @@ def test_rescan_moves_a_misfiled_special_to_season_zero(tmp_path: Path) -> None:
         )
         session.commit()
 
-        scan_library(session, library, title_prober=lambda _p: None)
+        scan_library(
+            session,
+            library,
+            title_prober=lambda p: "Special title" if p == special else None,
+        )
 
         moved = session.scalar(select(MediaFile).where(MediaFile.path == str(special)))
         assert moved is not None
         assert (moved.episode.season.number, moved.episode.number) == (0, 1)
+        # The new episode carries the file's own container title, not the old slot's.
+        assert moved.episode.title == "Special title"
         kept = session.scalar(select(MediaFile).where(MediaFile.path == str(regular)))
         assert kept is not None
         assert (kept.episode.season.number, kept.episode.number) == (1, 1)
+        assert kept.episode.title == "Episode one title"
 
 
 def test_rescan_removes_generated_artifacts(tmp_path: Path) -> None:

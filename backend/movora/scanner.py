@@ -98,10 +98,21 @@ def scan_library(
         existing = session.scalar(select(MediaFile).where(MediaFile.path == str(path)))
         if existing is not None:
             # Re-scan reconciles: move the file if its season/episode mapping changed,
-            # keeping the media_file id so the normalized output stays linked.
-            episode = _get_or_create_episode(
-                session, season, number, existing.episode.title, end_number
+            # keeping the media_file id so the normalized output stays linked. The old
+            # episode's title described the old slot (which may keep other files), so a
+            # newly created episode takes the file's own container title — probed only
+            # when the episode is actually new, to keep re-scans cheap on slow storage.
+            episode = session.scalar(
+                select(Episode).where(
+                    Episode.season_id == season.id, Episode.number == number
+                )
             )
+            if episode is None:
+                episode = _get_or_create_episode(
+                    session, season, number, prober(path), end_number
+                )
+            else:
+                episode.end_number = end_number  # keep the range in sync on re-scan
             if existing.episode_id != episode.id:
                 _migrate_watch_state(session, existing.episode_id, episode.id)
                 existing.episode = episode
