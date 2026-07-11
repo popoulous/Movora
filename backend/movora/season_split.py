@@ -24,7 +24,11 @@ def remap_absolute_seasons(session: Session, series: Series, counts: Sequence[in
     (per-season episode counts, ordered from season 1).
 
     A scanned season is treated as absolute-numbered when it holds a number past that
-    season's own length (e.g. season 1 with episodes 13-24 while season 1 is 12 long).
+    season's own length (e.g. season 1 with episodes 13-24 while season 1 is 12 long)
+    AND its numbers sit in the series-absolute range, i.e. past all the seasons before
+    it. A later season that starts back at 1 is numbered locally, not absolutely — e.g.
+    a split-cour that metadata counts as two entries but ships as one folder ("S04"
+    with 1-22 while the chain says 11+11) — and must be left as the folder says.
     Each such episode keeps its file (absolute) number as ``absolute_number``; its
     per-season number becomes ``absolute - <episodes in the seasons before it>``, so a
     missing file leaves a gap in the right place instead of shifting later episodes down.
@@ -60,6 +64,9 @@ def remap_absolute_seasons(session: Session, series: Series, counts: Sequence[in
         episodes = list(season.episodes)
         if not any(episode.number > limit for episode in episodes):
             continue  # within the season's length -> not absolute-numbered
+        previous_total = boundaries[number - 2] if number > 1 else 0
+        if min(episode.number for episode in episodes) <= previous_total:
+            continue  # starts below this season's absolute range -> locally numbered
         for episode in episodes:
             absolute = episode.number
             target = locate(absolute)

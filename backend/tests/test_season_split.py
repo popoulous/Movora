@@ -118,6 +118,35 @@ def test_leaves_correctly_numbered_seasons_untouched() -> None:
         ) is None
 
 
+def test_leaves_a_locally_numbered_long_season_untouched() -> None:
+    with _session() as session:
+        # An "S04" folder holding both cours of a split-cour season (1-22), while the
+        # metadata chain counts them as two entries (11+11). The numbers start back at 1,
+        # so they are season-local — nothing may move to season 1.
+        series = _series_with_season(session, 4, list(range(1, 23)))
+
+        moved = remap_absolute_seasons(session, series, (13, 12, 12, 11, 11, 15))
+        session.commit()
+
+        assert moved == 0
+        assert _season_numbers(session, series, 4) == list(range(1, 23))
+        assert session.scalar(
+            select(EpisodeMapping).where(EpisodeMapping.series_id == series.id)
+        ) is None
+
+
+def test_splits_a_later_season_holding_its_own_absolute_range() -> None:
+    with _session() as session:
+        # An "S02" folder that kept the box's absolute numbering (13-24): the numbers sit
+        # in season 2's absolute range, so they renumber in place to 1-12.
+        series = _series_with_season(session, 2, list(range(13, 25)))
+
+        remap_absolute_seasons(session, series, (12, 12))
+        session.commit()
+
+        assert _season_numbers(session, series, 2) == list(range(1, 13))
+
+
 def test_is_idempotent() -> None:
     with _session() as session:
         series = _series_with_season(session, 1, list(range(1, 25)))
