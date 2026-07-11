@@ -463,6 +463,43 @@ def test_rescan_prunes_episode_carrying_watch_state(tmp_path: Path) -> None:
         assert session.scalar(select(WatchState)) is None
 
 
+def test_spinoff_folder_becomes_its_own_series(tmp_path: Path) -> None:
+    """A spin-off bundled inside a box set ("2. Spinoff" next to the season folders) is a
+    different show: its files form their own series (titled from the file names) on
+    season 1, instead of piling onto the main series as a phantom season 2."""
+    root = tmp_path / "lib"
+    box = root / "Show S01-S02 (BD 1080p)"
+    for folder in ("1. S01", "2. Spinoff", "4. S02"):
+        (box / folder).mkdir(parents=True)
+    (box / "1. S01" / "Show - 01 (BD 1080p).mkv").write_bytes(b"")
+    (box / "2. Spinoff" / "Show - Sword Tale - 01 (BD 1080p).mkv").write_bytes(b"")
+    (box / "4. S02" / "Show II - 01 (BD 1080p).mkv").write_bytes(b"")
+
+    engine = create_db_engine(":memory:")
+    init_db(engine)
+    factory = create_session_factory(engine)
+    with factory() as session:
+        library = Library(path=str(root), name="A", kind=LibraryKind.ANIME)
+        session.add(library)
+        session.commit()
+
+        scan_library(session, library, title_prober=lambda _p: None)
+
+        by_title = {series.title: series for series in session.scalars(select(Series))}
+        assert set(by_title) == {"Show", "Show - Sword Tale"}
+        spinoff = by_title["Show - Sword Tale"]
+        assert [season.number for season in spinoff.seasons] == [1]
+        # The main series keeps only its real seasons; nothing landed on a phantom S2
+        # slot from the spin-off folder's position.
+        main_files = {
+            (season.number, episode.number): [mf.path for mf in episode.media_files]
+            for season in by_title["Show"].seasons
+            for episode in season.episodes
+        }
+        assert set(main_files) == {(1, 1), (2, 1)}
+        assert all(len(paths) == 1 for paths in main_files.values())
+
+
 def test_rescan_prunes_series_carrying_episode_mappings(tmp_path: Path) -> None:
     # A series deleted from disk that still has absolute->season overrides (a split
     # box set) must prune cleanly; the series_id foreign key used to fail the delete.

@@ -252,6 +252,11 @@ def _series_title(
     use scene names ("Gladiator.2000.Extended.2160p…"), so guessit cleans those better.
     """
     relative = path.relative_to(root)
+    for folder in relative.parts[1:-1]:
+        # A spin-off bundled inside the box is a different show: title it from its own
+        # file names so it doesn't inherit (and collide with) the main series.
+        if _SPINOFF_FOLDER.search(folder) and fields.title:
+            return fields.title
     if len(relative.parts) > 1:
         folder = relative.parts[0]
         if kind is LibraryKind.ANIME:
@@ -273,7 +278,10 @@ def _season_map(candidates: list[Path], root: Path) -> dict[tuple[str, str], int
             shows.setdefault(parts[0], set()).add(parts[1])
     result: dict[tuple[str, str], int] = {}
     for show, folders in shows.items():
-        mains = sorted((f for f in folders if not _is_special(f)), key=_folder_sort_key)
+        mains = sorted(
+            (f for f in folders if not _is_special(f) and not _SPINOFF_FOLDER.search(f)),
+            key=_folder_sort_key,
+        )  # a spin-off folder is its own series, not a season slot of this show
         for number, folder in enumerate(mains, start=1):
             result[(show, folder)] = number
         for folder in folders:
@@ -286,6 +294,11 @@ _SPECIAL_FOLDER = re.compile(
     r"\b(ova|oav|oad|special|specials|sp|nced|ncop|movie|film|mozifilm|recap)\b",
     re.IGNORECASE,
 )
+
+# A release box may bundle a spin-off — a different show — as a sub-folder
+# ("2. Spinoff" next to the season folders). Its files must not pile onto the main
+# series' seasons, so such a folder becomes its own series, titled from the files.
+_SPINOFF_FOLDER = re.compile(r"\b(spin-?off|gaiden|side\s?stor(?:y|ies))\b", re.IGNORECASE)
 
 
 def _is_special(folder: str) -> bool:
