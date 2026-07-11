@@ -463,6 +463,34 @@ def test_rescan_prunes_episode_carrying_watch_state(tmp_path: Path) -> None:
         assert session.scalar(select(WatchState)) is None
 
 
+def test_rescan_prunes_series_carrying_episode_mappings(tmp_path: Path) -> None:
+    # A series deleted from disk that still has absolute->season overrides (a split
+    # box set) must prune cleanly; the series_id foreign key used to fail the delete.
+    engine = create_db_engine(":memory:")
+    init_db(engine)
+    factory = create_session_factory(engine)
+    with factory() as session:
+        library = Library(path=str(tmp_path), name="A", kind=LibraryKind.ANIME)
+        session.add(library)
+        session.flush()
+        series = Series(title="Removed box set", library=library)
+        season = Season(series=series, number=1)
+        episode = Episode(season=season, number=1)
+        session.add_all([series, season, episode])
+        session.flush()
+        session.add(
+            EpisodeMapping(
+                series_id=series.id, absolute_number=13, season_number=2, episode_number=1
+            )
+        )
+        session.commit()
+
+        # The library has no files on disk, so the series (and its mappings) prune.
+        scan_library(session, library, title_prober=lambda path: None)
+        assert session.scalar(select(Series)) is None
+        assert session.scalar(select(EpisodeMapping)) is None
+
+
 def test_scan_movie_title_cleaned_by_guessit(tmp_path: Path) -> None:
     # Film/series scene folders ("Title.Year.Extended.2160p…") clean better with guessit
     # than the anime heuristic, which would leave "Gladiator.2000.Extended".

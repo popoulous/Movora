@@ -89,6 +89,11 @@ class Series(Base):
     characters: Mapped[list[Character]] = relationship(
         back_populates="series", cascade="all, delete-orphan", order_by="Character.rank"
     )
+    # Pruning a series (e.g. removed from disk) must take its absolute->season overrides
+    # with it, or the delete fails the episode_mapping -> series foreign key.
+    episode_mappings: Mapped[list[EpisodeMapping]] = relationship(
+        cascade="all, delete-orphan"
+    )
 
 
 class Recommendation(Base):
