@@ -26,6 +26,7 @@ from movora.normalize import (
     enqueue_intro,
     enqueue_metadata,
     enqueue_normalize,
+    enqueue_scan,
     requeue_interrupted,
     transcode_pids,
 )
@@ -509,6 +510,56 @@ def test_enqueue_metadata_reuses_the_library_row() -> None:
         assert tasks[0].status == JobStatus.PENDING
         assert tasks[0].attempts == 0
         assert tasks[0].message is None
+
+
+def test_enqueue_scan_reuses_the_library_row() -> None:
+    # Same recycling as metadata: a FAILED run (e.g. a reconcile error) must not stay a
+    # red mark in the Tasks view forever once a later scan succeeds.
+    with _session() as session:
+        library = Library(path="/x", name="x", kind=LibraryKind.ANIME)
+        session.add(library)
+        session.flush()
+        session.add_all(
+            [
+                Task(
+                    type=TaskType.SCAN,
+                    library_id=library.id,
+                    status=JobStatus.FAILED,
+                    attempts=3,
+                    message="(sqlite3.IntegrityError) FOREIGN KEY constraint failed",
+                ),
+                Task(
+                    type=TaskType.SCAN,
+                    library_id=library.id,
+                    status=JobStatus.DONE,
+                    progress=100,
+                    message="0 added",
+                ),
+            ]
+        )
+        session.commit()
+
+        enqueue_scan(session, library.id)
+        tasks = list(session.scalars(select(Task).where(Task.type == TaskType.SCAN)))
+        assert len(tasks) == 1
+        assert tasks[0].status == JobStatus.PENDING
+
+
+def test_enqueue_scan_leaves_an_active_row_alone() -> None:
+    with _session() as session:
+        library = Library(path="/x", name="x", kind=LibraryKind.ANIME)
+        session.add(library)
+        session.flush()
+        running = Task(
+            type=TaskType.SCAN, library_id=library.id, status=JobStatus.RUNNING, progress=40
+        )
+        session.add(running)
+        session.commit()
+
+        enqueue_scan(session, library.id)
+        tasks = list(session.scalars(select(Task).where(Task.type == TaskType.SCAN)))
+        assert len(tasks) == 1
+        assert tasks[0].status == JobStatus.RUNNING and tasks[0].progress == 40
 
 
 def test_enqueue_metadata_leaves_an_active_row_alone() -> None:

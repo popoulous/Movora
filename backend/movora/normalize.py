@@ -364,9 +364,26 @@ def should_normalize(media_file: MediaFile) -> bool:
 
 
 def enqueue_scan(session: Session, library_id: int) -> None:
-    if not _has_active_library_task(session, library_id, TaskType.SCAN):
+    if _has_active_library_task(session, library_id, TaskType.SCAN):
+        return
+    # Reuse the library's newest finished/failed row (and sweep older leftovers) so the
+    # Tasks view keeps one scan row per library instead of stacking every run — a FAILED
+    # run would otherwise stay a red mark forever (same pattern as enqueue_metadata).
+    history = sorted(
+        session.scalars(
+            select(Task).where(Task.library_id == library_id, Task.type == TaskType.SCAN)
+        ),
+        key=lambda task: task.id,
+    )
+    for extra in history[:-1]:
+        session.delete(extra)
+    if history:
+        _reset(history[-1])
+        history[-1].attempts = 0
+        history[-1].priority = PRIORITY_SCAN
+    else:
         session.add(Task(type=TaskType.SCAN, library_id=library_id, priority=PRIORITY_SCAN))
-        session.commit()
+    session.commit()
 
 
 def enqueue_scan_all(session: Session) -> int:
