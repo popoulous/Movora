@@ -402,6 +402,46 @@ def test_season_consistency_rematches_a_truncated_window(
         assert (full_b.intro_start, full_b.intro_end) == (10.0, 99.0)
 
 
+def test_season_consistency_hunts_a_displaced_opening(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A checked episode with no intro in a season whose siblings prove one gets the
+    whole-episode hunt — a premiere's opening at the very end is found and marked."""
+    from movora import normalize
+
+    with _session() as session:
+        library = Library(path="/x", name="x", kind=LibraryKind.ANIME)
+        session.add(library)
+        session.flush()
+        series = Series(title="S", library=library)
+        season = Season(series=series, number=1)
+        premiere = Episode(season=season, number=1, intro_checked=True)
+        donors = [
+            Episode(
+                season=season, number=n, intro_checked=True, intro_start=0.0, intro_end=89.0
+            )
+            for n in (2, 3)
+        ]
+        session.add_all(
+            [
+                series,
+                season,
+                premiere,
+                *donors,
+                MediaFile(episode=premiere, path="/x/e1.mkv"),
+                MediaFile(episode=donors[0], path="/x/e2.mkv"),
+                MediaFile(episode=donors[1], path="/x/e3.mkv"),
+            ]
+        )
+        session.commit()
+
+        monkeypatch.setattr(
+            normalize, "hunt_theme", lambda path, donor, window: (1300.0, 1389.0)
+        )
+        assert normalize._season_consistency(session, season.id) == 1
+        assert (premiere.intro_start, premiere.intro_end) == (1300.0, 1389.0)
+
+
 def test_season_consistency_waits_for_the_whole_season(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

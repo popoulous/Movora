@@ -59,6 +59,7 @@ from movora.intro import (
     cluster_windows,
     configure_disk_cache,
     detect_episode,
+    hunt_theme,
     intro_segment,
     outro_segment,
 )
@@ -1197,7 +1198,12 @@ def _season_consistency(session: Session, season_id: int) -> int:
     10+ seconds shorter than a sibling's is usually a truncated match — the first pairing
     happened to diverge mid-theme — not a genuine variant. Re-matching the suspect against
     only the siblings holding longer windows (nearest first) either recovers the full
-    window or proves the short one real: a unique shortened theme keeps its markers."""
+    window or proves the short one real: a unique shortened theme keeps its markers.
+
+    Episodes still missing an intro get a displaced-theme hunt: the regular pass only
+    searches the first minutes, but a premiere often plays the season's opening at the
+    END or after a long cold open — a sibling's proven window serves as the template
+    and the WHOLE episode is searched (:func:`movora.intro.hunt_theme`)."""
     episodes = [ep for ep in _season_episodes(session, season_id) if ep.media_files]
     if not episodes or any(not ep.intro_checked for ep in episodes):
         return 0
@@ -1238,6 +1244,27 @@ def _season_consistency(session: Session, season_id: int) -> int:
         if best is not None and best[1] - best[0] > length + _IMPROVEMENT_MIN_S:
             ep.outro_start, ep.outro_end = best
             fixed += 1
+    donors = [
+        (ep, (ep.intro_start, ep.intro_end))
+        for ep in episodes
+        if ep.intro_start is not None and ep.intro_end is not None
+    ]
+    for ep in episodes:
+        if ep.intro_end is not None or not donors:
+            continue
+        path = Path(ep.media_files[0].path)
+        # The fullest window makes the strongest template; nearness breaks ties so a
+        # mid-season theme switch is hunted with the episode's own block first.
+        ranked = sorted(
+            (d for d in donors if d[0] is not ep),
+            key=lambda d: (-(d[1][1] - d[1][0]), abs(d[0].number - ep.number)),
+        )
+        for donor, window in ranked[:3]:
+            found = hunt_theme(path, Path(donor.media_files[0].path), window)
+            if found is not None:
+                ep.intro_start, ep.intro_end = found
+                fixed += 1
+                break
     return fixed
 
 

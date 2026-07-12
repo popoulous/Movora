@@ -340,6 +340,45 @@ def detect_episode(
     return markers
 
 
+# A displaced opening must be FOUND, not guessed: claim it only when a dominant share
+# of the donor's proven theme matches somewhere in the episode.
+_HUNT_MIN_FRACTION = 0.6
+
+
+def hunt_theme(
+    path: Path,
+    donor: Path,
+    donor_window: tuple[float, float],
+    *,
+    ffmpeg: str | None = None,
+    ffprobe: str | None = None,
+) -> tuple[float, float] | None:
+    """Find a sibling's proven opening ANYWHERE in ``path``, as (start, end) seconds.
+
+    The regular pass only searches the head window, but a premiere often plays the
+    season's opening at the END of the episode or after a long cold open. The donor's
+    detected window is sliced out of its head fingerprint as a template and slid across
+    the WHOLE episode. None when the donor's window doesn't fit its head window, or no
+    dominant match exists (the episode genuinely lacks the theme)."""
+    ffmpeg = ffmpeg or shutil.which("ffmpeg")
+    start, end = donor_window
+    if end > _INTRO_WINDOW:
+        return None  # the template must come out of the donor's head fingerprint
+    template = _fingerprint_cached(donor, ffmpeg)[
+        int(start / SECONDS_PER_HASH) : int(end / SECONDS_PER_HASH)
+    ]
+    duration = _duration(path, ffprobe)
+    if duration is None or template.size == 0:
+        return None
+    haystack = _fingerprint_cached(path, ffmpeg, start=0.0, duration=duration)
+    return common_segment(
+        haystack,
+        template,
+        max_shift=duration,
+        min_seconds=max(_MIN_INTRO_SECONDS, _HUNT_MIN_FRACTION * (end - start)),
+    )
+
+
 def cluster_windows(
     windows: Sequence[tuple[float, float]], *, tolerance: float = 5.0
 ) -> list[list[int]]:

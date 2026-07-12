@@ -299,6 +299,70 @@ def test_fingerprint_disk_store_invalidated_when_the_file_changes(
     assert calls == ["e1.mkv", "e1.mkv"]  # stale entry recomputed, not served
 
 
+def test_hunt_theme_finds_a_displaced_opening(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A premiere plays the season's opening deep in the episode (or at its end) — far
+    outside the head window the regular pass searches. The donor's proven window slid
+    across the whole episode must locate it."""
+    rng = np.random.default_rng(8)
+
+    def noise(n: int) -> np.ndarray:
+        return rng.integers(1, 2**31, n, dtype=np.uint32)
+
+    opening = rng.integers(1, 2**31, size=300, dtype=np.uint32)
+    fps = {
+        "donor.mkv": np.concatenate([noise(100), opening, noise(400)]),
+        "ep.mkv": np.concatenate([noise(2000), opening, noise(100)]),
+    }
+    monkeypatch.setattr(
+        intro,
+        "_fingerprint_cached",
+        lambda path, ffmpeg, *, start=0.0, duration=0.0: fps[path.name],
+    )
+    monkeypatch.setattr(intro, "_duration", lambda path, ffprobe: 400.0)
+    donor_window = (100 * intro.SECONDS_PER_HASH, 400 * intro.SECONDS_PER_HASH)
+
+    found = intro.hunt_theme(Path("ep.mkv"), Path("donor.mkv"), donor_window)
+
+    assert found is not None
+    assert abs(found[0] - 2000 * intro.SECONDS_PER_HASH) <= 1.0
+    assert abs((found[1] - found[0]) - 300 * intro.SECONDS_PER_HASH) <= 1.0
+
+
+def test_hunt_theme_rejects_a_weak_partial(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A third of the theme somewhere in the episode is background reuse, not the
+    opening — a displaced theme is only claimed on a dominant match."""
+    rng = np.random.default_rng(9)
+
+    def noise(n: int) -> np.ndarray:
+        return rng.integers(1, 2**31, n, dtype=np.uint32)
+
+    opening = rng.integers(1, 2**31, size=300, dtype=np.uint32)
+    fps = {
+        "donor.mkv": np.concatenate([noise(100), opening, noise(400)]),
+        "ep.mkv": np.concatenate([noise(2000), opening[:100], noise(300)]),
+    }
+    monkeypatch.setattr(
+        intro,
+        "_fingerprint_cached",
+        lambda path, ffmpeg, *, start=0.0, duration=0.0: fps[path.name],
+    )
+    monkeypatch.setattr(intro, "_duration", lambda path, ffprobe: 400.0)
+    donor_window = (100 * intro.SECONDS_PER_HASH, 400 * intro.SECONDS_PER_HASH)
+
+    assert intro.hunt_theme(Path("ep.mkv"), Path("donor.mkv"), donor_window) is None
+
+
+def test_hunt_theme_needs_a_head_window_donor(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A donor whose own window sits outside the head fingerprint (itself a hunted
+    premiere) cannot serve as a template."""
+
+    def explode(path: Path, ffmpeg: str | None, **kwargs: float) -> np.ndarray:
+        raise AssertionError("no fingerprint may be computed")
+
+    monkeypatch.setattr(intro, "_fingerprint_cached", explode)
+    assert intro.hunt_theme(Path("ep.mkv"), Path("donor.mkv"), (1300.0, 1390.0)) is None
+
+
 def test_cluster_windows_separates_theme_blocks() -> None:
     # Two ending blocks (a mid-season switch) plus one lone finale window.
     windows = [
