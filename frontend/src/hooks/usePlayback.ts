@@ -122,6 +122,7 @@ export function usePlayback(id: number): UsePlaybackReturn {
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const lastSaved = useRef(0);
+  const creditsSavedFor = useRef<number | null>(null); // episode whose credits-entry save went out
 
   const [playback, setPlayback] = useState<PlaybackInfo | null>(null);
   const [series, setSeries] = useState<SeriesDetail | null>(null);
@@ -202,11 +203,16 @@ export function usePlayback(id: number): UsePlaybackReturn {
     return () => clearInterval(timer);
   }, [normalizing, id]);
 
-  const saveProgress = (): void => {
+  const saveProgress = (force = false): void => {
     const video = videoRef.current;
-    if (video === null || video.currentTime - lastSaved.current < 10) return;
+    if (video === null || (!force && video.currentTime - lastSaved.current < 10)) return;
     lastSaved.current = video.currentTime;
-    void api.recordWatch(id, { position_seconds: video.currentTime }).catch(() => undefined);
+    void api
+      .recordWatch(id, {
+        position_seconds: video.currentTime,
+        duration_seconds: isNaN(video.duration) ? undefined : video.duration,
+      })
+      .catch(() => undefined);
   };
 
   const handleTimeUpdate = (): void => {
@@ -214,6 +220,16 @@ export function usePlayback(id: number): UsePlaybackReturn {
     const video = videoRef.current;
     if (video === null || playback === null) return;
     const time = video.currentTime;
+    if (
+      playback.outro_start !== null &&
+      time >= playback.outro_start &&
+      creditsSavedFor.current !== id
+    ) {
+      // Reaching the credits marks the episode watched — save the moment it happens,
+      // not on the 10s cadence, so leaving right away still counts.
+      creditsSavedFor.current = id;
+      saveProgress(true);
+    }
     const inWindow = (start: number | null, end: number | null): boolean =>
       start !== null && end !== null && time >= start && time < end - 1;
     const next: "intro" | "outro" | null = inWindow(playback.intro_start, playback.intro_end)

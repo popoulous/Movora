@@ -254,6 +254,7 @@ class SeriesWatchRead(BaseModel):
 class WatchStateUpdate(BaseModel):
     position_seconds: float | None = None
     watched: bool | None = None
+    duration_seconds: float | None = None  # lets the credits-reached rule work markerless
 
 
 class SeriesDetail(BaseModel):

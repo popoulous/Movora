@@ -252,7 +252,7 @@ export function createApiClient(baseUrl: string, token: string | null) {
 
     recordWatch: (
       episodeId: number,
-      body: {position_seconds?: number; watched?: boolean},
+      body: {position_seconds?: number; watched?: boolean; duration_seconds?: number},
     ) =>
       fetch(`${base}/api/episodes/${episodeId}/watch-state`, {
         method: 'PATCH',

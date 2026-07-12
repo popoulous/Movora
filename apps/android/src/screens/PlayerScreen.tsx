@@ -183,6 +183,7 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
   const insets = useSafeAreaInsets();
   const videoRef = useRef<VideoRef>(null);
   const lastSaved = useRef(0);
+  const creditsSavedFor = useRef<number | null>(null); // episode whose credits-entry save went out
   // Target of an in-flight seek (null = none). While set, onProgress holds the bar
   // at the target instead of trusting the stale pre-seek position the player reports.
   const seekTargetRef = useRef<number | null>(null);
@@ -552,6 +553,16 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
         setSkip('intro');
       } else if (info.outro_start != null && pos >= info.outro_start) {
         setSkip('outro');
+        if (api && creditsSavedFor.current !== episodeId) {
+          // Reaching the credits marks the episode watched — save the moment it
+          // happens, not on the 10s cadence, so leaving right away still counts.
+          creditsSavedFor.current = episodeId;
+          lastSaved.current = pos;
+          void api.recordWatch(episodeId, {
+            position_seconds: pos,
+            duration_seconds: duration > 0 ? duration : undefined,
+          });
+        }
       } else if (nextId != null && duration > 0 && pos >= duration - NEXT_EPISODE_WINDOW_S) {
         // No authored outro chapter, but a next episode exists — prompt for it over the
         // closing window so the "next episode" button is reachable on these rips too.
@@ -562,7 +573,10 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
     }
     if (api && pos - lastSaved.current >= SAVE_INTERVAL_S) {
       lastSaved.current = pos;
-      void api.recordWatch(episodeId, {position_seconds: pos});
+      void api.recordWatch(episodeId, {
+        position_seconds: pos,
+        duration_seconds: duration > 0 ? duration : undefined,
+      });
     }
   };
 

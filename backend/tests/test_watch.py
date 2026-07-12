@@ -121,3 +121,57 @@ def test_watch_state_endpoint_updates_series_detail(tmp_path: Path) -> None:
     assert detail["watch"]["status"] == "watching"
     assert detail["seasons"][0]["episodes"][0]["watched"] is True
     assert detail["seasons"][0]["episodes"][1]["watched"] is False
+
+
+def test_reaching_the_credits_marks_watched() -> None:
+    """A position save at/after the outro marker sets the flag by itself — nobody sits
+    through the credits to the last frame, and no button press should be needed."""
+    engine = create_db_engine(":memory:")
+    init_db(engine)
+    with create_session_factory(engine)() as session:
+        _, episodes = _series_with_episodes(session, 2)
+        episodes[0].outro_start = 1324.0
+        episodes[1].outro_start = 1324.0
+        session.commit()
+        user = current_user(session)
+
+        mid = record_watch(session, user, episodes[0].id, position_seconds=800.0)
+        assert mid.watched is False  # mid-episode: not watched yet
+
+        credits = record_watch(session, user, episodes[1].id, position_seconds=1325.0)
+        assert credits.watched is True
+
+
+def test_watched_fraction_covers_markerless_episodes() -> None:
+    """No outro marker (a movie, live action): the client-reported runtime stands in —
+    92% of the way through counts as watched."""
+    engine = create_db_engine(":memory:")
+    init_db(engine)
+    with create_session_factory(engine)() as session:
+        _, episodes = _series_with_episodes(session, 2)
+        user = current_user(session)
+
+        early = record_watch(
+            session, user, episodes[0].id, position_seconds=1200.0, duration_seconds=1400.0
+        )
+        assert early.watched is False  # 86% is not finished
+
+        late = record_watch(
+            session, user, episodes[1].id, position_seconds=1310.0, duration_seconds=1400.0
+        )
+        assert late.watched is True
+
+
+def test_explicit_watched_flag_wins_over_the_credits_rule() -> None:
+    engine = create_db_engine(":memory:")
+    init_db(engine)
+    with create_session_factory(engine)() as session:
+        _, episodes = _series_with_episodes(session, 1)
+        episodes[0].outro_start = 1324.0
+        session.commit()
+        user = current_user(session)
+
+        state = record_watch(
+            session, user, episodes[0].id, position_seconds=1330.0, watched=False
+        )
+        assert state.watched is False  # an explicit un-mark is respected

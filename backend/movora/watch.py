@@ -25,6 +25,12 @@ def current_user(session: Session) -> User:
     return user
 
 
+# Reaching the credits IS having watched the episode — nobody sits through them to the
+# file's last frame, and no button press should be required for the watched flag.
+_CREDITS_TOLERANCE_S = 1.0
+_WATCHED_FRACTION = 0.92  # without an outro marker, this far into the runtime counts
+
+
 def record_watch(
     session: Session,
     user: User,
@@ -32,8 +38,12 @@ def record_watch(
     *,
     position_seconds: float | None = None,
     watched: bool | None = None,
+    duration_seconds: float | None = None,
 ) -> WatchState:
-    """Upsert the watch-state for one episode (position and/or watched flag)."""
+    """Upsert the watch-state for one episode (position and/or watched flag).
+
+    A position save at/after the episode's outro marker (or ``_WATCHED_FRACTION`` of the
+    client-reported runtime when no marker exists) sets the watched flag by itself."""
     state = session.scalar(
         select(WatchState).where(
             WatchState.user_id == user.id, WatchState.episode_id == episode_id
@@ -44,6 +54,19 @@ def record_watch(
         session.add(state)
     if position_seconds is not None:
         state.position_seconds = position_seconds
+        if watched is None and not state.watched:
+            episode = session.get(Episode, episode_id)
+            outro = episode.outro_start if episode is not None else None
+            reached_credits = (
+                outro is not None and position_seconds >= outro - _CREDITS_TOLERANCE_S
+            )
+            reached_fraction = (
+                duration_seconds is not None
+                and duration_seconds > 0
+                and position_seconds >= duration_seconds * _WATCHED_FRACTION
+            )
+            if reached_credits or reached_fraction:
+                state.watched = True
     if watched is not None:
         state.watched = watched
     session.commit()

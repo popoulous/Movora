@@ -161,6 +161,7 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
   const barRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const lastSaved = useRef(0);
+  const creditsSavedFor = useRef<number | null>(null); // episode whose credits-entry save went out
   const autoAdvanced = useRef(false); // the end-screen countdown has already fired its jump
   // Which episode the on-screen playback info belongs to. During an episode switch the OLD
   // video keeps playing until the new info arrives — its timeupdate/ended events must not
@@ -353,13 +354,20 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
       setSkip("intro");
     } else if (info.outro_start != null && pos >= info.outro_start) {
       setSkip("outro");
+      if (creditsSavedFor.current !== episodeId) {
+        // Reaching the credits marks the episode watched — save the moment it happens,
+        // not on the 10s cadence, so leaving right away still counts.
+        creditsSavedFor.current = episodeId;
+        lastSaved.current = pos;
+        void api.recordWatch(episodeId, { position_seconds: pos, duration_seconds: dur > 0 ? dur : undefined });
+      }
     } else {
       setSkip(null);
       setSkipFocused(false); // the skip window passed
     }
     if (pos - lastSaved.current >= SAVE_INTERVAL_S) {
       lastSaved.current = pos;
-      void api.recordWatch(episodeId, { position_seconds: pos });
+      void api.recordWatch(episodeId, { position_seconds: pos, duration_seconds: dur > 0 ? dur : undefined });
     }
   };
 

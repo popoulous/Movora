@@ -229,7 +229,10 @@ export function createApiClient(baseUrl: string, token: string | null) {
         headers: authHeaders(),
       }).then(asJson<PlaybackInfo>),
 
-    recordWatch: (episodeId: number, body: { position_seconds?: number; watched?: boolean }) =>
+    recordWatch: (
+      episodeId: number,
+      body: { position_seconds?: number; watched?: boolean; duration_seconds?: number },
+    ) =>
       fetch(`${base}/api/episodes/${episodeId}/watch-state`, {
         method: "PATCH",
         headers: jsonHeaders(),

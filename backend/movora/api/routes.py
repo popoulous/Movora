@@ -690,6 +690,7 @@ def update_watch_state(
         episode_id,
         position_seconds=body.position_seconds,
         watched=body.watched,
+        duration_seconds=body.duration_seconds,
     )
     return Response(status_code=204)
 

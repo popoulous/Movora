@@ -379,7 +379,7 @@ export const api = {
     fetch(`/api/episodes/${episodeId}/playback?lang=${uiLang()}`).then(asJson<PlaybackInfo>),
   recordWatch: (
     episodeId: number,
-    body: { position_seconds?: number; watched?: boolean },
+    body: { position_seconds?: number; watched?: boolean; duration_seconds?: number },
   ): Promise<void> =>
     fetch(`/api/episodes/${episodeId}/watch-state`, {
       method: "PATCH",
