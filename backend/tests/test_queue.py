@@ -303,7 +303,138 @@ def test_fill_estimated_outros_respects_the_episodes_own_duration(
         assert double_length.outro_start is None
 
 
-def test_intro_neighbours_nearest_first_and_capped() -> None:
+def test_season_consistency_rematches_a_truncated_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One episode's intro came out half-length (its first pairing diverged mid-theme);
+    once the season is fully checked it is re-matched against the fuller siblings and
+    recovers the full window. Siblings agreeing with each other are left alone."""
+    from movora import normalize
+
+    with _session() as session:
+        library = Library(path="/x", name="x", kind=LibraryKind.ANIME)
+        session.add(library)
+        session.flush()
+        series = Series(title="S", library=library)
+        season = Season(series=series, number=1)
+        full_a = Episode(
+            season=season, number=1, intro_checked=True, intro_start=0.0, intro_end=89.0
+        )
+        truncated = Episode(
+            season=season, number=2, intro_checked=True, intro_start=46.0, intro_end=89.0
+        )
+        full_b = Episode(
+            season=season, number=3, intro_checked=True, intro_start=10.0, intro_end=99.0
+        )
+        session.add_all(
+            [
+                series,
+                season,
+                full_a,
+                truncated,
+                full_b,
+                MediaFile(episode=full_a, path="/x/e1.mkv"),
+                MediaFile(episode=truncated, path="/x/e2.mkv"),
+                MediaFile(episode=full_b, path="/x/e3.mkv"),
+            ]
+        )
+        session.commit()
+
+        monkeypatch.setattr(normalize, "intro_segment", lambda path, neighbour: (0.5, 89.5))
+        assert normalize._season_consistency(session, season.id) == 1
+        assert (truncated.intro_start, truncated.intro_end) == (0.5, 89.5)
+        # The agreeing siblings were never candidates and keep their own windows.
+        assert (full_a.intro_start, full_a.intro_end) == (0.0, 89.0)
+        assert (full_b.intro_start, full_b.intro_end) == (10.0, 99.0)
+
+
+def test_season_consistency_waits_for_the_whole_season(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Nothing is second-guessed while episodes are still unchecked — a half-detected
+    season would call short windows truncated prematurely."""
+    from movora import normalize
+
+    with _session() as session:
+        library = Library(path="/x", name="x", kind=LibraryKind.ANIME)
+        session.add(library)
+        session.flush()
+        series = Series(title="S", library=library)
+        season = Season(series=series, number=1)
+        truncated = Episode(
+            season=season, number=1, intro_checked=True, intro_start=46.0, intro_end=89.0
+        )
+        full = Episode(
+            season=season, number=2, intro_checked=True, intro_start=0.0, intro_end=89.0
+        )
+        pending = Episode(season=season, number=3)
+        session.add_all(
+            [
+                series,
+                season,
+                truncated,
+                full,
+                pending,
+                MediaFile(episode=truncated, path="/x/e1.mkv"),
+                MediaFile(episode=full, path="/x/e2.mkv"),
+                MediaFile(episode=pending, path="/x/e3.mkv"),
+            ]
+        )
+        session.commit()
+
+        def explode(path: object, neighbour: object) -> tuple[float, float]:
+            raise AssertionError("re-match must not run yet")
+
+        monkeypatch.setattr(normalize, "intro_segment", explode)
+        assert normalize._season_consistency(session, season.id) == 0
+        assert (truncated.intro_start, truncated.intro_end) == (46.0, 89.0)
+
+
+def test_fill_estimated_outros_uses_the_nearest_block(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A season that switches endings mid-run has two window clusters; an episode missing
+    its outro inherits the block its neighbours belong to, not a season-wide median."""
+    from movora import normalize
+
+    with _session() as session:
+        library = Library(path="/x", name="x", kind=LibraryKind.ANIME)
+        session.add(library)
+        session.flush()
+        series = Series(title="S", library=library)
+        season = Season(series=series, number=1)
+        early_block = [
+            Episode(
+                season=season,
+                number=n,
+                intro_checked=True,
+                outro_start=1324.5 + n / 10,
+                outro_end=1414.5,
+            )
+            for n in (1, 2, 3)
+        ]
+        late_block = [
+            Episode(
+                season=season,
+                number=n,
+                intro_checked=True,
+                outro_start=1200.0 + n / 10,
+                outro_end=1290.0,
+            )
+            for n in (10, 11, 12)
+        ]
+        gap = Episode(season=season, number=9, intro_checked=True)
+        gap_file = MediaFile(episode=gap, path="/x/e9.mkv")
+        session.add_all([series, season, gap, gap_file, *early_block, *late_block])
+        session.commit()
+
+        monkeypatch.setattr(normalize, "intro_duration", lambda path, ffprobe: 1422.0)
+        assert normalize._fill_estimated_outros(session, season.id) == 1
+        assert gap.outro_start is not None and abs(gap.outro_start - 1201.1) < 0.2
+        assert gap.outro_end == 1290.0
+
+
+def test_intro_neighbours_nearest_first_whole_season() -> None:
     with _session() as session:
         library = Library(path="/x", name="x", kind=LibraryKind.SERIES)
         session.add(library)
@@ -320,8 +451,9 @@ def test_intro_neighbours_nearest_first_and_capped() -> None:
         session.commit()
 
         paths = _intro_neighbours(session, episodes[5])
-        # Nearest by number first (ties broken by number), capped at three, no file-less rows.
-        assert [path.name for path in paths] == ["e6.mkv", "e2.mkv", "e1.mkv"]
+        # The whole season, nearest by number first (ties broken by number), no file-less
+        # rows — detection's early exit is what keeps the common case cheap, not a cap.
+        assert [path.name for path in paths] == ["e6.mkv", "e2.mkv", "e1.mkv", "e9.mkv"]
 
 
 def test_requeue_interrupted_resets_running() -> None:

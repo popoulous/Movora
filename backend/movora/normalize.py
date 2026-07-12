@@ -18,6 +18,7 @@ import json
 import os
 import shutil
 import signal
+import statistics
 import subprocess
 import threading
 import time
@@ -53,7 +54,7 @@ from movora.enrich import enrich_library
 from movora.ffprobe import probe_media
 from movora.interfaces import NormalizationPlanner
 from movora.intro import _duration as intro_duration
-from movora.intro import consensus_outro, detect_episode
+from movora.intro import cluster_windows, detect_episode, intro_segment, outro_segment
 from movora.metadata import MetadataRegistry, TmdbProvider
 from movora.normalization import WEB_TARGET, RemuxFirstPlanner, needs_normalization
 from movora.recipes import DEFAULT_RECIPE, recipe_id_for
@@ -1090,16 +1091,18 @@ def _run_subtitles_task(session: Session, task: Task, output_dir: Path) -> None:
     _finish(session, task, message=f"{warmed} subtitles")
 
 
-_INTRO_NEIGHBOURS = 3  # how many nearest siblings detection may fingerprint against
 _DETECT_ATTEMPT_CAP = 3  # total detection runs per episode before the manual retry gives up
+_TRUNCATION_SLACK_S = 10.0  # a window shorter than a sibling's by this much is a suspect
+_IMPROVEMENT_MIN_S = 5.0  # adopt a re-matched window only when meaningfully longer
 
 
 def _intro_neighbours(session: Session, episode: Episode) -> list[Path]:
-    """Sibling episodes' files (nearest by number first) to fingerprint against.
+    """The whole season's sibling files (nearest by number first) to fingerprint against.
 
-    Several candidates, not one: if the single nearest sibling lacks the shared opening or
-    ending (premieres and finales often do), a one-neighbour match fails both episodes as a
-    pair — the next-nearest siblings break that correlation."""
+    The full season, not a fixed few: detection exits early once a side has a full-length
+    or twice-confirmed match, so the common case still costs one or two comparisons — but
+    an episode whose nearest siblings lack its theme (premieres, finales, a season that
+    switches openings mid-run) keeps hunting until it reaches its own block."""
     siblings = session.scalars(
         select(Episode)
         .where(Episode.season_id == episode.season_id, Episode.id != episode.id)
@@ -1107,7 +1110,7 @@ def _intro_neighbours(session: Session, episode: Episode) -> list[Path]:
     )
     with_files = [sibling for sibling in siblings if sibling.media_files]
     with_files.sort(key=lambda sibling: (abs(sibling.number - episode.number), sibling.number))
-    return [Path(sibling.media_files[0].path) for sibling in with_files[:_INTRO_NEIGHBOURS]]
+    return [Path(sibling.media_files[0].path) for sibling in with_files]
 
 
 def _run_intro_task(session: Session, task: Task) -> None:
@@ -1127,6 +1130,7 @@ def _run_intro_task(session: Session, task: Task) -> None:
         episode.outro_start, episode.outro_end = markers.outro_start, markers.outro_end
     episode.intro_checked = True  # detection ran; a plain rescan won't re-queue it
     episode.detect_attempts += 1  # the manual retry gives up on a side after a few runs
+    _season_consistency(session, episode.season_id)
     _fill_estimated_outros(session, episode.season_id)
     if markers.has_any():
         message = "marked"
@@ -1137,34 +1141,119 @@ def _run_intro_task(session: Session, task: Task) -> None:
     _finish(session, task, message=message)
 
 
-def _fill_estimated_outros(session: Session, season_id: int) -> int:
-    """Backfill outro markers the fingerprint pass left missing, from the season's consensus.
+def _season_episodes(session: Session, season_id: int) -> list[Episode]:
+    return list(
+        session.scalars(
+            select(Episode)
+            .where(Episode.season_id == season_id)
+            .options(selectinload(Episode.media_files))
+        )
+    )
 
-    A premiere or finale whose credits roll to a unique song shares no audio with its
-    siblings, so fingerprint matching legitimately finds nothing there — but the credits
-    still START at the same spot. When the season's detected windows clearly agree
-    (:func:`movora.intro.consensus_outro`), a checked-but-outroless episode inherits the
-    median window, provided it fits that episode's own duration and lands in its back
-    half (a double-length special must not get a mid-content marker). Runs after every
-    detection task, so gaps fill as soon as three agreeing siblings exist."""
-    episodes = session.scalars(
-        select(Episode)
-        .where(Episode.season_id == season_id)
-        .options(selectinload(Episode.media_files))
-    ).all()
-    detected = [
-        (ep.outro_start, ep.outro_end)
+
+def _rematch_side(
+    episode: Episode, fuller: list[tuple[Episode, float]], *, outro: bool
+) -> tuple[float, float] | None:
+    """Best re-match of one side against the siblings holding longer windows.
+
+    ``fuller`` is (sibling, its window length), nearest first, so an episode lands on its
+    own theme block when a season switches themes mid-run. Stops once the best run is
+    within a couple of seconds of the fullest sibling's own window — it cannot get
+    better than the theme those siblings actually hold."""
+    path = Path(episode.media_files[0].path)
+    ceiling = max(length for _, length in fuller) - 2.0
+    best: tuple[float, float] | None = None
+    for sibling, _ in fuller:
+        neighbour = Path(sibling.media_files[0].path)
+        segment = outro_segment(path, neighbour) if outro else intro_segment(path, neighbour)
+        if segment is not None and (best is None or segment[1] - segment[0] > best[1] - best[0]):
+            best = segment
+        if best is not None and best[1] - best[0] >= ceiling:
+            break
+    return best
+
+
+def _season_consistency(session: Session, season_id: int) -> int:
+    """Once the whole season is checked, re-match truncation suspects against fuller siblings.
+
+    A theme's length is constant among the episodes sharing it, so a detected window
+    10+ seconds shorter than a sibling's is usually a truncated match — the first pairing
+    happened to diverge mid-theme — not a genuine variant. Re-matching the suspect against
+    only the siblings holding longer windows (nearest first) either recovers the full
+    window or proves the short one real: a unique shortened theme keeps its markers."""
+    episodes = [ep for ep in _season_episodes(session, season_id) if ep.media_files]
+    if not episodes or any(not ep.intro_checked for ep in episodes):
+        return 0
+    fixed = 0
+    intros = [
+        (ep, ep.intro_end - ep.intro_start)
+        for ep in episodes
+        if ep.intro_start is not None and ep.intro_end is not None
+    ]
+    for ep, length in intros:
+        fuller = [
+            (sib, other)
+            for sib, other in intros
+            if sib is not ep and other >= length + _TRUNCATION_SLACK_S
+        ]
+        if not fuller:
+            continue
+        fuller.sort(key=lambda item: (abs(item[0].number - ep.number), item[0].number))
+        best = _rematch_side(ep, fuller, outro=False)
+        if best is not None and best[1] - best[0] > length + _IMPROVEMENT_MIN_S:
+            ep.intro_start, ep.intro_end = best
+            fixed += 1
+    outros = [
+        (ep, ep.outro_end - ep.outro_start)
         for ep in episodes
         if ep.outro_start is not None and ep.outro_end is not None
     ]
-    estimate = consensus_outro(detected)
-    if estimate is None:
+    for ep, length in outros:
+        fuller = [
+            (sib, other)
+            for sib, other in outros
+            if sib is not ep and other >= length + _TRUNCATION_SLACK_S
+        ]
+        if not fuller:
+            continue
+        fuller.sort(key=lambda item: (abs(item[0].number - ep.number), item[0].number))
+        best = _rematch_side(ep, fuller, outro=True)
+        if best is not None and best[1] - best[0] > length + _IMPROVEMENT_MIN_S:
+            ep.outro_start, ep.outro_end = best
+            fixed += 1
+    return fixed
+
+
+def _fill_estimated_outros(session: Session, season_id: int) -> int:
+    """Backfill outro markers the fingerprint pass left missing, from agreeing siblings.
+
+    A premiere or finale whose credits roll to a unique song shares no audio with its
+    siblings, so fingerprint matching legitimately finds nothing there — but the credits
+    still START at the same spot. Detected windows are clustered by start
+    (:func:`movora.intro.cluster_windows`); a checked-but-outroless episode inherits the
+    median window of the NEAREST cluster with at least three members — not a season-wide
+    majority, so a season that switches endings mid-run estimates from the right block.
+    The estimate must fit the episode's own duration and land in its back half (a
+    double-length special must not get a mid-content marker). Runs after every detection
+    task, so gaps fill as soon as three agreeing siblings exist."""
+    episodes = _season_episodes(session, season_id)
+    pairs = [
+        (ep, (ep.outro_start, ep.outro_end))
+        for ep in episodes
+        if ep.outro_start is not None and ep.outro_end is not None
+    ]
+    have = [ep for ep, _ in pairs]
+    windows = [window for _, window in pairs]
+    valid = [c for c in cluster_windows(windows) if len(c) >= 3]
+    if not valid:
         return 0
-    est_start, est_end = estimate
     filled = 0
     for ep in episodes:
         if not ep.intro_checked or ep.outro_start is not None or not ep.media_files:
             continue
+        cluster = min(valid, key=lambda c: min(abs(have[i].number - ep.number) for i in c))
+        est_start = statistics.median(windows[i][0] for i in cluster)
+        est_end = statistics.median(windows[i][1] for i in cluster)
         duration = intro_duration(Path(ep.media_files[0].path), None)
         if duration is None or est_end > duration + 2.0 or est_start < duration / 2:
             continue
