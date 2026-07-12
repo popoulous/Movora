@@ -246,6 +246,59 @@ def test_detect_episode_without_neighbours_finds_nothing() -> None:
     assert not intro.detect_episode(Path("a.mkv"), []).has_any()
 
 
+def test_fingerprint_survives_a_restart_via_the_disk_store(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Decoding a five-minute window off a NAS is the expensive step — a fingerprint is
+    computed at most once ever: the disk store serves it after the in-memory cache (and
+    the process) is gone."""
+    media = tmp_path / "e1.mkv"
+    media.write_bytes(b"x" * 100)
+    calls: list[str] = []
+
+    def fake_fingerprint(
+        path: Path, ffmpeg: str | None, *, start: float = 0.0, duration: float = 0.0
+    ) -> np.ndarray:
+        calls.append(path.name)
+        return np.arange(50, dtype=np.uint32)
+
+    monkeypatch.setattr(intro, "fingerprint", fake_fingerprint)
+    monkeypatch.setattr(intro, "_disk_cache_dir", tmp_path / "fp")
+    intro._fp_cache.clear()
+
+    first = intro._fingerprint_cached(media, None)
+    intro._fp_cache.clear()  # a restart: memory gone, disk survives
+    second = intro._fingerprint_cached(media, None)
+
+    assert calls == ["e1.mkv"]  # decoded exactly once
+    assert np.array_equal(first, second)
+
+
+def test_fingerprint_disk_store_invalidated_when_the_file_changes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    media = tmp_path / "e1.mkv"
+    media.write_bytes(b"x" * 100)
+    calls: list[str] = []
+
+    def fake_fingerprint(
+        path: Path, ffmpeg: str | None, *, start: float = 0.0, duration: float = 0.0
+    ) -> np.ndarray:
+        calls.append(path.name)
+        return np.arange(50, dtype=np.uint32)
+
+    monkeypatch.setattr(intro, "fingerprint", fake_fingerprint)
+    monkeypatch.setattr(intro, "_disk_cache_dir", tmp_path / "fp")
+    intro._fp_cache.clear()
+
+    intro._fingerprint_cached(media, None)
+    media.write_bytes(b"y" * 200)  # the release was replaced (v2 file)
+    intro._fp_cache.clear()
+    intro._fingerprint_cached(media, None)
+
+    assert calls == ["e1.mkv", "e1.mkv"]  # stale entry recomputed, not served
+
+
 def test_cluster_windows_separates_theme_blocks() -> None:
     # Two ending blocks (a mid-season switch) plus one lone finale window.
     windows = [

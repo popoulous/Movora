@@ -55,7 +55,13 @@ from movora.enrich import enrich_library
 from movora.ffprobe import probe_media
 from movora.interfaces import NormalizationPlanner
 from movora.intro import _duration as intro_duration
-from movora.intro import cluster_windows, detect_episode, intro_segment, outro_segment
+from movora.intro import (
+    cluster_windows,
+    configure_disk_cache,
+    detect_episode,
+    intro_segment,
+    outro_segment,
+)
 from movora.metadata import MetadataRegistry, TmdbProvider
 from movora.normalization import WEB_TARGET, RemuxFirstPlanner, needs_normalization
 from movora.recipes import DEFAULT_RECIPE, recipe_id_for
@@ -769,6 +775,8 @@ def run_worker(
     """Drain every pending task serially, highest priority first."""
     if not _worker_lock.acquire(blocking=False):
         return  # already draining
+    # output_dir is .../normalized; its parent is the data dir holding variants/assets.
+    configure_disk_cache(output_dir.parent / "fingerprints")
     try:
         while True:
             with session_factory() as session:

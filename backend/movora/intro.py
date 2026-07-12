@@ -12,9 +12,11 @@ typed, so a marker is only ever claimed from audio the season itself proves is s
 
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 import subprocess
+import zipfile
 from collections import OrderedDict
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -163,6 +165,59 @@ def common_segment(
 _fp_cache: OrderedDict[tuple[str, int, int], np.ndarray] = OrderedDict()
 _FP_CACHE_MAX = 40
 
+# Persistent fingerprint store. A file's fingerprint never changes while the file
+# doesn't, but computing one means decoding a five-minute audio window — off a NAS the
+# most expensive step of detection by far. Persisted (~10 KB per window), every audio
+# span is decoded at most once EVER: re-detections, retries and season-consistency
+# re-matches become pure CPU work. None (the default, and in tests) disables the store.
+_disk_cache_dir: Path | None = None
+
+
+def configure_disk_cache(directory: Path | None) -> None:
+    global _disk_cache_dir
+    _disk_cache_dir = directory
+
+
+def _disk_cache_file(directory: Path, path: Path, start: float, duration: float) -> Path:
+    digest = hashlib.sha1(f"{path}|{int(start)}|{int(duration)}".encode()).hexdigest()
+    return directory / f"{digest}.npz"
+
+
+def _disk_load(path: Path, start: float, duration: float) -> np.ndarray | None:
+    """The stored fingerprint, or None when absent or stale (the file changed)."""
+    if _disk_cache_dir is None:
+        return None
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+    try:
+        with np.load(_disk_cache_file(_disk_cache_dir, path, start, duration)) as data:
+            if (
+                int(data["mtime_ns"]) == stat.st_mtime_ns
+                and int(data["size"]) == stat.st_size
+            ):
+                return data["fp"].astype(np.uint32)
+    except (OSError, ValueError, KeyError, EOFError, zipfile.BadZipFile):
+        pass  # missing or corrupt entry — recompute and overwrite
+    return None
+
+
+def _disk_store(path: Path, start: float, duration: float, value: np.ndarray) -> None:
+    if _disk_cache_dir is None or value.size == 0:  # an empty print is an ffmpeg failure
+        return
+    try:
+        stat = path.stat()
+        _disk_cache_dir.mkdir(parents=True, exist_ok=True)
+        np.savez(
+            _disk_cache_file(_disk_cache_dir, path, start, duration),
+            fp=value,
+            mtime_ns=stat.st_mtime_ns,
+            size=stat.st_size,
+        )
+    except OSError:
+        pass  # a failed cache write must never fail detection
+
 
 def _fingerprint_cached(
     path: Path, ffmpeg: str | None, *, start: float = 0.0, duration: float = _INTRO_WINDOW
@@ -172,7 +227,10 @@ def _fingerprint_cached(
     if cached is not None:
         _fp_cache.move_to_end(key)
         return cached
-    value = fingerprint(path, ffmpeg, start=start, duration=duration)
+    value = _disk_load(path, start, duration)
+    if value is None:
+        value = fingerprint(path, ffmpeg, start=start, duration=duration)
+        _disk_store(path, start, duration, value)
     _fp_cache[key] = value
     while len(_fp_cache) > _FP_CACHE_MAX:
         _fp_cache.popitem(last=False)
