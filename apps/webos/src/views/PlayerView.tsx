@@ -19,6 +19,7 @@ type SkipZone = "intro" | "outro" | null;
 type Row = "scrub" | "controls" | "episodes";
 
 const SAVE_INTERVAL_S = 10;
+const SKIP_LANDING_MARGIN_S = 0.75; // skip lands a beat past the marker, never inside it
 const COUNTDOWN_START = 10;
 const PANEL_TIMEOUT = 6000;
 const PREPARE_POLL_MS = 4000; // re-ask while a device variant is being built
@@ -537,10 +538,14 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
   const doSkip = (): void => {
     const v = videoRef.current;
     if (!v || !info) return;
-    if (skip === "intro" && info.intro_end != null) v.currentTime = info.intro_end;
-    else if (skip === "outro") {
+    // Land a beat AFTER the marker: the fingerprint-matched end is soft by up to a
+    // second where the theme crossfades into the episode, and landing inside that
+    // tail would still show a flash of the intro/outro.
+    if (skip === "intro" && info.intro_end != null) {
+      v.currentTime = info.intro_end + SKIP_LANDING_MARGIN_S;
+    } else if (skip === "outro") {
       if (outroLeadsToNext && nextEpisodeId !== null) onNext(nextEpisodeId);
-      else if (info.outro_end != null) v.currentTime = info.outro_end;
+      else if (info.outro_end != null) v.currentTime = info.outro_end + SKIP_LANDING_MARGIN_S;
     }
   };
 

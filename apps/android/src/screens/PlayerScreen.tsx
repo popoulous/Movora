@@ -38,6 +38,7 @@ import {theme} from '../theme';
 type Props = NativeStackScreenProps<RootStackParamList, 'Player'>;
 
 const SAVE_INTERVAL_S = 10;
+const SKIP_LANDING_MARGIN_S = 0.75; // skip lands a beat past the marker, never inside it
 const PREPARE_POLL_MS = 4000;
 const COUNTDOWN_START = 10;
 const CONTROLS_TIMEOUT = 4500;
@@ -572,14 +573,17 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
     info?.outro_end == null || duration <= 0 || duration - info.outro_end <= 10;
 
   const doSkip = (): void => {
+    // Land a beat AFTER the marker: the fingerprint-matched end is soft by up to a
+    // second where the theme crossfades into the episode, and landing inside that
+    // tail would still show a flash of the intro/outro.
     if (skip === 'intro' && info?.intro_end != null) {
-      seekTo(info.intro_end);
+      seekTo(info.intro_end + SKIP_LANDING_MARGIN_S);
       setSkip(null);
     } else if (skip === 'outro') {
       if (outroLeadsToNext) {
         goNext();
       } else if (info?.outro_end != null) {
-        seekTo(info.outro_end);
+        seekTo(info.outro_end + SKIP_LANDING_MARGIN_S);
         setSkip(null);
       }
     }

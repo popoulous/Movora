@@ -6,6 +6,8 @@ import { useActivity } from "../ActivityContext";
 import { useAuth } from "../AuthContext";
 import { api, type Episode, type PlaybackInfo, type SeriesDetail, type SubtitleTrack } from "../api";
 
+const SKIP_LANDING_MARGIN_S = 0.75; // skip lands a beat past the marker, never inside it
+
 const LANG_NAMES: Record<string, string> = {
   hu: "Magyar",
   hun: "Magyar",
@@ -239,7 +241,10 @@ export function usePlayback(id: number): UsePlaybackReturn {
   const doSkip = (): void => {
     const video = videoRef.current;
     const end = skip === "intro" ? playback?.intro_end : playback?.outro_end;
-    if (video !== null && end != null) video.currentTime = end;
+    // Land a beat AFTER the marker: the fingerprint-matched end is soft by up to a
+    // second where the theme crossfades into the episode, and landing inside that
+    // tail would still show a flash of the intro/outro.
+    if (video !== null && end != null) video.currentTime = end + SKIP_LANDING_MARGIN_S;
   };
 
   const markWatched = (): void => {
