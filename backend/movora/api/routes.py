@@ -799,10 +799,11 @@ def detect_intros(
 ) -> dict[str, str]:
     """Queue intro/outro detection for every library (background), independent of scan.
 
-    The manual trigger also retries episodes a previous run left without a marker on
-    either side (the automatic post-scan detection never retries those)."""
+    Detection is deterministic and converges within one run, so this queues exactly what
+    the automatic post-scan chain would: never-checked episodes, plus the old gaps of any
+    season holding new arrivals. On a settled library it queues nothing."""
     for library_id in session.scalars(select(Library.id)):
-        enqueue_intro(session, library_id, retry_missing=True)
+        enqueue_intro(session, library_id)
     _run_worker(request, background)
     return {"status": "queued"}
 

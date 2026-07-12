@@ -476,22 +476,21 @@ def enqueue_subtitle(
     return True
 
 
-def enqueue_intro(session: Session, library_id: int, *, retry_missing: bool = False) -> int:
-    """Queue per-episode intro/outro detection. Detection runs ONCE per episode: episodes
-    already checked (``intro_checked``) are skipped, so a rescan never re-queues them —
-    including ones where no intro was found. One row per episode in the Tasks view.
+def enqueue_intro(session: Session, library_id: int) -> int:
+    """Queue per-episode intro/outro detection. Detection is deterministic and the
+    season pass converges within one run, so re-running it on unchanged data is pure
+    waste — an episode is only (re-)queued when something it could match against
+    changed. One row per episode in the Tasks view.
 
     A MOVIE library queues nothing: a movie has no season siblings whose shared audio a
     fingerprint could ever match.
 
-    ``retry_missing`` (the manual "detect" trigger) additionally re-queues checked episodes
-    still missing a marker on a side that IS detectable in their season — i.e. at least one
-    sibling already has that side. Without such evidence the season simply has no shared
-    audio there (a live-action show without a title song never yields intros), and retrying
-    forever only churns; a plain rescan stays cheap and never retries. Each episode gets a
-    few detection runs in total (``_DETECT_ATTEMPT_CAP``): a side still missing after that
-    is proven unmatchable (a premiere with a unique opening), not unlucky — so repeated
-    presses of the button eventually go quiet instead of re-churning the same files.
+    Candidates are the never-checked episodes, plus the old gaps of any season holding
+    new arrivals: the new sibling is exactly the donor that can make a previously
+    unmatchable premiere matchable, and an upload must be handled by the automatic chain
+    end to end — the average user never presses a detect button. A settled season queues
+    nothing, including episodes where no marker was ever found (a genuinely themeless
+    file stays quiet forever).
 
     Rows are always FRESH and laid down series -> season -> episode. The worker drains by
     (priority, id), so a recycled row would keep its historic id and scatter one season's
@@ -506,32 +505,24 @@ def enqueue_intro(session: Session, library_id: int, *, retry_missing: bool = Fa
     # rows are pending) would trigger an autoflush, upgrading to a write transaction that holds
     # the SQLite write lock and contends with the worker -> "database is locked". Resolving the
     # candidates and the already-queued set up front means the only write is the final commit.
-    base = (
+    rows = session.scalars(
         select(Episode)
         .join(Episode.season)
         .join(Season.series)
         .where(Series.library_id == library_id)
         .order_by(Season.series_id, Season.number, Episode.number)
         .options(selectinload(Episode.media_files))
-    )
-    if retry_missing:
-        rows = session.scalars(base).all()
-        intro_proven = {ep.season_id for ep in rows if ep.intro_end is not None}
-        outro_proven = {ep.season_id for ep in rows if ep.outro_start is not None}
-        episodes = [
-            ep
-            for ep in rows
-            if not ep.intro_checked
-            or (
-                ep.detect_attempts < _DETECT_ATTEMPT_CAP
-                and (
-                    (ep.intro_end is None and ep.season_id in intro_proven)
-                    or (ep.outro_start is None and ep.season_id in outro_proven)
-                )
-            )
-        ]
-    else:
-        episodes = list(session.scalars(base.where(Episode.intro_checked.is_(False))))
+    ).all()
+    fresh_seasons = {ep.season_id for ep in rows if not ep.intro_checked and ep.media_files}
+    episodes = [
+        ep
+        for ep in rows
+        if not ep.intro_checked
+        or (
+            ep.season_id in fresh_seasons
+            and (ep.intro_end is None or ep.outro_start is None)
+        )
+    ]
     candidate_ids = [ep.media_files[0].id for ep in episodes if ep.media_files]
     if not candidate_ids:
         return 0
@@ -1109,7 +1100,6 @@ def _run_subtitles_task(session: Session, task: Task, output_dir: Path) -> None:
     _finish(session, task, message=f"{warmed} subtitles")
 
 
-_DETECT_ATTEMPT_CAP = 3  # total detection runs per episode before the manual retry gives up
 _TRUNCATION_SLACK_S = 10.0  # a window shorter than a sibling's by this much is a suspect
 _IMPROVEMENT_MIN_S = 5.0  # adopt a re-matched window only when meaningfully longer
 
@@ -1146,8 +1136,8 @@ def _run_intro_task(session: Session, task: Task) -> None:
         episode.intro_start, episode.intro_end = markers.intro_start, markers.intro_end
     if markers.outro_start is not None:
         episode.outro_start, episode.outro_end = markers.outro_start, markers.outro_end
-    episode.intro_checked = True  # detection ran; a plain rescan won't re-queue it
-    episode.detect_attempts += 1  # the manual retry gives up on a side after a few runs
+    episode.intro_checked = True  # detection ran; a settled season won't re-queue it
+    episode.detect_attempts += 1  # diagnostic run counter (how many times this episode ran)
     _season_consistency(session, episode.season_id)
     _fill_estimated_outros(session, episode.season_id)
     if markers.has_any():
@@ -1191,8 +1181,38 @@ def _rematch_side(
     return best
 
 
+_CONSISTENCY_ROUNDS_MAX = 4  # correct-and-hunt cycles per pass; a round must earn the next
+
+
+def _hunt_donor_order(
+    episode: Episode, donors: list[tuple[Episode, tuple[float, float]]]
+) -> list[tuple[Episode, tuple[float, float]]]:
+    """Donor order for the theme hunt: one donor per window-length KIND, nearest first.
+
+    A season can hold two window kinds side by side — a recap+opening double block and a
+    plain opening — and a target episode may only match one of them. Trying simply the
+    fullest few donors could draw all of one kind and miss, so lengths are clustered and
+    each cluster contributes its nearest donor, most common kind first."""
+    ordered = sorted(donors, key=lambda d: -(d[1][1] - d[1][0]))
+    clusters: list[list[tuple[Episode, tuple[float, float]]]] = []
+    for donor in ordered:
+        span = donor[1][1] - donor[1][0]
+        if clusters:
+            head = clusters[-1][0]
+            if (head[1][1] - head[1][0]) - span <= _TRUNCATION_SLACK_S:
+                clusters[-1].append(donor)
+                continue
+        clusters.append([donor])
+    clusters.sort(key=len, reverse=True)
+    picks = [
+        min(c, key=lambda d: (abs(d[0].number - episode.number), d[0].number))
+        for c in clusters
+    ]
+    return picks[:4]
+
+
 def _season_consistency(session: Session, season_id: int) -> int:
-    """Once the whole season is checked, re-match truncation suspects against fuller siblings.
+    """Once the whole season is checked, iterate correction and hunting to a fixpoint.
 
     A theme's length is constant among the episodes sharing it, so a detected window
     10+ seconds shorter than a sibling's is usually a truncated match — the first pairing
@@ -1203,10 +1223,25 @@ def _season_consistency(session: Session, season_id: int) -> int:
     Episodes still missing an intro get a displaced-theme hunt: the regular pass only
     searches the first minutes, but a premiere often plays the season's opening at the
     END or after a long cold open — a sibling's proven window serves as the template
-    and the WHOLE episode is searched (:func:`movora.intro.hunt_theme`)."""
+    and the WHOLE episode is searched (:func:`movora.intro.hunt_theme`).
+
+    The cycle repeats until a round improves nothing: a corrected window is a better
+    template and a hunted window is a new donor, so one round's find can enable the
+    next round's — the season converges within THIS detection run instead of across
+    manual re-runs."""
     episodes = [ep for ep in _season_episodes(session, season_id) if ep.media_files]
     if not episodes or any(not ep.intro_checked for ep in episodes):
         return 0
+    total = 0
+    for _ in range(_CONSISTENCY_ROUNDS_MAX):
+        fixed = _consistency_round(episodes)
+        total += fixed
+        if fixed == 0:
+            break
+    return total
+
+
+def _consistency_round(episodes: list[Episode]) -> int:
     fixed = 0
     intros = [
         (ep, ep.intro_end - ep.intro_start)
@@ -1253,13 +1288,8 @@ def _season_consistency(session: Session, season_id: int) -> int:
         if ep.intro_end is not None or not donors:
             continue
         path = Path(ep.media_files[0].path)
-        # The fullest window makes the strongest template; nearness breaks ties so a
-        # mid-season theme switch is hunted with the episode's own block first.
-        ranked = sorted(
-            (d for d in donors if d[0] is not ep),
-            key=lambda d: (-(d[1][1] - d[1][0]), abs(d[0].number - ep.number)),
-        )
-        for donor, window in ranked[:3]:
+        ranked = _hunt_donor_order(ep, [d for d in donors if d[0] is not ep])
+        for donor, window in ranked:
             found = hunt_theme(path, Path(donor.media_files[0].path), window)
             if found is not None:
                 ep.intro_start, ep.intro_end = found

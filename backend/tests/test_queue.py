@@ -51,37 +51,70 @@ def _session() -> Session:
     return create_session_factory(engine)()
 
 
-def test_enqueue_intro_one_task_per_unmarked_episode() -> None:
+def test_enqueue_intro_new_arrival_requeues_the_season_gaps() -> None:
+    """A season that just received a new file re-queues its old gaps alongside it — the
+    new sibling is the donor that can finally match them, and an upload must be handled
+    by the automatic chain without anyone pressing a detect button."""
     with _session() as session:
         library = Library(path="/x", name="x", kind=LibraryKind.SERIES)
         session.add(library)
         session.flush()
         series = Series(title="S", library=library)
         season = Season(series=series, number=1)
-        done = Episode(season=season, number=1, intro_end=80.0, intro_checked=True)  # has intro
-        # Checked, but detection found no intro: keeps intro_end NULL yet must NOT be re-queued.
+        complete = Episode(
+            season=season, number=1, intro_end=80.0, outro_start=1300.0, intro_checked=True
+        )
+        gap = Episode(season=season, number=2, intro_checked=True)  # checked, no markers
+        arrival = Episode(season=season, number=3)  # the freshly scanned upload
+        session.add_all(
+            [
+                series,
+                season,
+                complete,
+                gap,
+                arrival,
+                MediaFile(episode=complete, path="/x/e1.mkv"),
+                MediaFile(episode=gap, path="/x/e2.mkv"),
+                MediaFile(episode=arrival, path="/x/e3.mkv"),
+            ]
+        )
+        session.commit()
+
+        # The new arrival AND the gap episode queue; the complete one does not.
+        assert enqueue_intro(session, library.id) == 2
+        queued = set(
+            session.scalars(select(Task.media_file_id).where(Task.type == TaskType.INTRO))
+        )
+        assert queued == {gap.media_files[0].id, arrival.media_files[0].id}
+        # Re-running queues nothing while those tasks are still active.
+        assert enqueue_intro(session, library.id) == 0
+
+
+def test_enqueue_intro_settled_season_queues_nothing() -> None:
+    """With no new files, checked episodes stay untouched — including ones where no
+    marker was ever found (a rescan must never churn a converged season)."""
+    with _session() as session:
+        library = Library(path="/x", name="x", kind=LibraryKind.SERIES)
+        session.add(library)
+        session.flush()
+        series = Series(title="S", library=library)
+        season = Season(series=series, number=1)
+        done = Episode(season=season, number=1, intro_end=80.0, intro_checked=True)
         none_found = Episode(season=season, number=2, intro_checked=True)
-        todo = Episode(season=season, number=3)  # never checked -> the only one to queue
         session.add_all(
             [
                 series,
                 season,
                 done,
                 none_found,
-                todo,
                 MediaFile(episode=done, path="/x/e1.mkv"),
                 MediaFile(episode=none_found, path="/x/e2.mkv"),
-                MediaFile(episode=todo, path="/x/e3.mkv"),
             ]
         )
         session.commit()
 
-        # One task, for the never-checked episode only.
-        assert enqueue_intro(session, library.id) == 1
-        tasks = list(session.scalars(select(Task).where(Task.type == TaskType.INTRO)))
-        assert len(tasks) == 1 and tasks[0].media_file_id is not None
-        # Re-running queues nothing while that task is still active.
         assert enqueue_intro(session, library.id) == 0
+        assert session.scalar(select(Task)) is None
 
 
 def test_enqueue_intro_skips_movie_libraries() -> None:
@@ -98,7 +131,6 @@ def test_enqueue_intro_skips_movie_libraries() -> None:
         session.commit()
 
         assert enqueue_intro(session, library.id) == 0
-        assert enqueue_intro(session, library.id, retry_missing=True) == 0
         assert session.scalar(select(Task)) is None
 
 
@@ -138,146 +170,52 @@ def test_enqueue_intro_lays_rows_down_in_season_order() -> None:
         assert all(task.status == JobStatus.PENDING for task in tasks)
 
 
-def test_enqueue_intro_retry_missing_requeues_gaps() -> None:
+def test_enqueue_intro_new_arrival_replaces_leftover_rows() -> None:
+    """The gap episode re-queued by a new arrival gets a FRESH row — its old DONE/FAILED
+    leftovers are dropped, keeping one row per episode without freezing the drain order."""
     with _session() as session:
         library = Library(path="/x", name="x", kind=LibraryKind.SERIES)
         session.add(library)
         session.flush()
         series = Series(title="S", library=library)
         season = Season(series=series, number=1)
-        complete = Episode(
-            season=season, number=1, intro_end=80.0, outro_start=1300.0, intro_checked=True
-        )
-        no_outro = Episode(season=season, number=2, intro_end=75.0, intro_checked=True)
-        none_found = Episode(season=season, number=3, intro_checked=True)
+        gap = Episode(season=season, number=1, intro_checked=True)  # checked, no markers
+        arrival = Episode(season=season, number=2)
         session.add_all(
             [
                 series,
                 season,
-                complete,
-                no_outro,
-                none_found,
-                MediaFile(episode=complete, path="/x/e1.mkv"),
-                MediaFile(episode=no_outro, path="/x/e2.mkv"),
-                MediaFile(episode=none_found, path="/x/e3.mkv"),
+                gap,
+                arrival,
+                MediaFile(episode=gap, path="/x/e1.mkv"),
+                MediaFile(episode=arrival, path="/x/e2.mkv"),
             ]
         )
         session.commit()
-
-        # Rows from the previous detection run — one per episode, plus an old leftover
-        # duplicate for none_found. A retry must reuse these, not stack new rows. The
-        # no_outro row FAILED at the attempt cap — the manual click must revive it too.
         session.add_all(
             [
                 Task(
                     type=TaskType.INTRO,
-                    media_file_id=no_outro.media_files[0].id,
+                    media_file_id=gap.media_files[0].id,
                     status=JobStatus.FAILED,
                     attempts=3,
                 ),
                 Task(
                     type=TaskType.INTRO,
-                    media_file_id=none_found.media_files[0].id,
-                    status=JobStatus.DONE,
-                ),
-                Task(
-                    type=TaskType.INTRO,
-                    media_file_id=none_found.media_files[0].id,
+                    media_file_id=gap.media_files[0].id,
                     status=JobStatus.DONE,
                 ),
             ]
         )
         session.commit()
 
-        # The automatic (post-scan) form never retries checked episodes...
-        assert enqueue_intro(session, library.id) == 0
-        # ...the manual trigger retries exactly the ones missing a marker on either side.
-        assert enqueue_intro(session, library.id, retry_missing=True) == 2
+        assert enqueue_intro(session, library.id) == 2
         tasks = list(session.scalars(select(Task).where(Task.type == TaskType.INTRO)))
-        # One row per episode: DONE/FAILED rows were reset to PENDING, the leftover dropped.
         assert sorted(task.media_file_id for task in tasks if task.media_file_id) == sorted(
-            [no_outro.media_files[0].id, none_found.media_files[0].id]
+            [gap.media_files[0].id, arrival.media_files[0].id]
         )
         assert all(task.status == JobStatus.PENDING for task in tasks)
-        assert all(task.attempts == 0 for task in tasks)  # a manual retry starts fresh
-        # Queuing again while those are pending adds nothing.
-        assert enqueue_intro(session, library.id, retry_missing=True) == 0
-
-
-def test_retry_missing_needs_season_evidence_for_the_side() -> None:
-    """A live-action season with no title song anywhere must not be retried for intros
-    forever — a side is only re-queued when at least one sibling proves it detectable."""
-    with _session() as session:
-        library = Library(path="/x", name="x", kind=LibraryKind.SERIES)
-        session.add(library)
-        session.flush()
-        series = Series(title="S", library=library)
-        season = Season(series=series, number=1)
-        # No episode in the season has an intro; outros exist on two episodes.
-        with_outro = [
-            Episode(
-                season=season, number=n, intro_checked=True,
-                outro_start=2510.0, outro_end=2540.0,
-            )
-            for n in (1, 2)
-        ]
-        outro_gap = Episode(season=season, number=3, intro_checked=True)
-        session.add_all(
-            [
-                series,
-                season,
-                *with_outro,
-                outro_gap,
-                MediaFile(episode=with_outro[0], path="/x/e1.mkv"),
-                MediaFile(episode=with_outro[1], path="/x/e2.mkv"),
-                MediaFile(episode=outro_gap, path="/x/e3.mkv"),
-            ]
-        )
-        session.commit()
-
-        # Only the outro gap is retried (outros are proven in this season); the
-        # episodes missing just an intro are left alone — no sibling ever had one.
-        assert enqueue_intro(session, library.id, retry_missing=True) == 1
-        queued = list(
-            session.scalars(select(Task.media_file_id).where(Task.type == TaskType.INTRO))
-        )
-        assert queued == [outro_gap.media_files[0].id]
-
-
-def test_retry_missing_gives_up_after_the_attempt_cap() -> None:
-    """A premiere whose opening audio is simply not the season's opening keeps failing;
-    after the attempt cap the manual retry must stop re-queuing it."""
-    with _session() as session:
-        library = Library(path="/x", name="x", kind=LibraryKind.ANIME)
-        session.add(library)
-        session.flush()
-        series = Series(title="S", library=library)
-        season = Season(series=series, number=1)
-        proven = Episode(
-            season=season, number=2, intro_checked=True,
-            intro_end=90.0, outro_start=1324.0, outro_end=1414.0, detect_attempts=1,
-        )
-        exhausted = Episode(season=season, number=1, intro_checked=True, detect_attempts=3)
-        fresh = Episode(season=season, number=3, intro_checked=True, detect_attempts=1)
-        session.add_all(
-            [
-                series,
-                season,
-                proven,
-                exhausted,
-                fresh,
-                MediaFile(episode=proven, path="/x/e2.mkv"),
-                MediaFile(episode=exhausted, path="/x/e1.mkv"),
-                MediaFile(episode=fresh, path="/x/e3.mkv"),
-            ]
-        )
-        session.commit()
-
-        assert enqueue_intro(session, library.id, retry_missing=True) == 1
-        queued = list(
-            session.scalars(select(Task.media_file_id).where(Task.type == TaskType.INTRO))
-        )
-        assert queued == [fresh.media_files[0].id]
+        assert all(task.attempts == 0 for task in tasks)
 
 
 def test_fill_estimated_outros_inherits_season_consensus(
@@ -440,6 +378,95 @@ def test_season_consistency_hunts_a_displaced_opening(
         )
         assert normalize._season_consistency(session, season.id) == 1
         assert (premiere.intro_start, premiere.intro_end) == (1300.0, 1389.0)
+
+
+def test_season_consistency_iterates_to_a_fixpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One round's find enables the next round's: a hunted premiere becomes the season's
+    only full-length window, and the second round corrects the truncated siblings
+    against it — all within ONE detection run, not across manual re-runs."""
+    from movora import normalize
+
+    with _session() as session:
+        library = Library(path="/x", name="x", kind=LibraryKind.ANIME)
+        session.add(library)
+        session.flush()
+        series = Series(title="S", library=library)
+        season = Season(series=series, number=1)
+        premiere = Episode(season=season, number=1, intro_checked=True)  # no intro yet
+        short_a = Episode(
+            season=season, number=2, intro_checked=True, intro_start=0.0, intro_end=43.0
+        )
+        short_b = Episode(
+            season=season, number=3, intro_checked=True, intro_start=5.0, intro_end=48.0
+        )
+        session.add_all(
+            [
+                series,
+                season,
+                premiere,
+                short_a,
+                short_b,
+                MediaFile(episode=premiere, path="/x/e1.mkv"),
+                MediaFile(episode=short_a, path="/x/e2.mkv"),
+                MediaFile(episode=short_b, path="/x/e3.mkv"),
+            ]
+        )
+        session.commit()
+
+        monkeypatch.setattr(
+            normalize, "hunt_theme", lambda path, donor, window: (200.0, 289.0)
+        )
+        monkeypatch.setattr(normalize, "intro_segment", lambda path, neighbour: (0.0, 89.0))
+        assert normalize._season_consistency(session, season.id) == 3
+        assert (premiere.intro_start, premiere.intro_end) == (200.0, 289.0)  # round 1
+        assert (short_a.intro_start, short_a.intro_end) == (0.0, 89.0)  # round 2
+        assert (short_b.intro_start, short_b.intro_end) == (0.0, 89.0)
+
+
+def test_hunt_tries_one_donor_per_window_kind(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A season holding a recap+opening double block AND a plain opening: the fullest
+    donors are all the double kind, whose template cannot match a recap-less target —
+    the hunt must also reach the plain-opening kind."""
+    from movora import normalize
+
+    with _session() as session:
+        library = Library(path="/x", name="x", kind=LibraryKind.ANIME)
+        session.add(library)
+        session.flush()
+        series = Series(title="S", library=library)
+        season = Season(series=series, number=1)
+        target = Episode(season=season, number=1, intro_checked=True)
+        double = [
+            Episode(
+                season=season,
+                number=n,
+                intro_checked=True,
+                intro_start=0.0,
+                intro_end=129.0 + n,
+            )
+            for n in (2, 3, 4)
+        ]
+        plain = Episode(
+            season=season, number=10, intro_checked=True, intro_start=0.0, intro_end=90.0
+        )
+        files = [
+            MediaFile(episode=target, path="/x/e1.mkv"),
+            MediaFile(episode=plain, path="/x/e10.mkv"),
+            *(MediaFile(episode=ep, path=f"/x/e{ep.number}.mkv") for ep in double),
+        ]
+        session.add_all([series, season, target, plain, *double, *files])
+        session.commit()
+
+        monkeypatch.setattr(normalize, "intro_segment", lambda path, neighbour: None)
+        monkeypatch.setattr(
+            normalize,
+            "hunt_theme",
+            lambda path, donor, window: (0.0, 89.0) if window[1] - window[0] < 100 else None,
+        )
+        assert normalize._season_consistency(session, season.id) >= 1
+        assert (target.intro_start, target.intro_end) == (0.0, 89.0)
 
 
 def test_season_consistency_waits_for_the_whole_season(
