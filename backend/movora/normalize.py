@@ -39,6 +39,7 @@ from movora.db.models import (
     Episode,
     JobStatus,
     Library,
+    LibraryKind,
     MediaFile,
     MediaVariant,
     Season,
@@ -473,6 +474,9 @@ def enqueue_intro(session: Session, library_id: int, *, retry_missing: bool = Fa
     already checked (``intro_checked``) are skipped, so a rescan never re-queues them —
     including ones where no intro was found. One row per episode in the Tasks view.
 
+    A MOVIE library queues nothing: a movie has no season siblings whose shared audio a
+    fingerprint could ever match.
+
     ``retry_missing`` (the manual "detect" trigger) additionally re-queues checked episodes
     still missing a marker on a side that IS detectable in their season — i.e. at least one
     sibling already has that side. Without such evidence the season simply has no shared
@@ -480,7 +484,17 @@ def enqueue_intro(session: Session, library_id: int, *, retry_missing: bool = Fa
     forever only churns; a plain rescan stays cheap and never retries. Each episode gets a
     few detection runs in total (``_DETECT_ATTEMPT_CAP``): a side still missing after that
     is proven unmatchable (a premiere with a unique opening), not unlucky — so repeated
-    presses of the button eventually go quiet instead of re-churning the same files."""
+    presses of the button eventually go quiet instead of re-churning the same files.
+
+    Rows are always FRESH and laid down series -> season -> episode. The worker drains by
+    (priority, id), so a recycled row would keep its historic id and scatter one season's
+    episodes across the whole run (two siblings could run hours apart, looking skipped in
+    the Tasks view); fresh contiguous ids make the worker finish one season before starting
+    the next — and the season-consistency pass fires right as each season completes.
+    Already-active rows are left untouched."""
+    library = session.get(Library, library_id)
+    if library is None or library.kind == LibraryKind.MOVIE:
+        return 0
     # Read everything BEFORE adding any Task. A query run mid-loop (while earlier-added Task
     # rows are pending) would trigger an autoflush, upgrading to a write transaction that holds
     # the SQLite write lock and contends with the worker -> "database is locked". Resolving the
@@ -490,6 +504,7 @@ def enqueue_intro(session: Session, library_id: int, *, retry_missing: bool = Fa
         .join(Episode.season)
         .join(Season.series)
         .where(Series.library_id == library_id)
+        .order_by(Season.series_id, Season.number, Episode.number)
         .options(selectinload(Episode.media_files))
     )
     if retry_missing:
@@ -528,21 +543,15 @@ def enqueue_intro(session: Session, library_id: int, *, retry_missing: bool = Fa
     for media_file_id in candidate_ids:
         if media_file_id in active_ids:  # already in flight — don't double-queue
             continue
-        # A retry reuses the episode's newest finished row (and drops older leftovers)
-        # instead of stacking a new one, keeping the Tasks view at one row per episode.
-        # This also revives FAILED rows: an explicit detect click restarts them with a
-        # fresh attempt budget, even ones the automatic retry gave up on.
-        history = sorted(previous.get(media_file_id, ()), key=lambda task: task.id)
-        if history:
-            for extra in history[:-1]:
-                session.delete(extra)
-            _reset(history[-1])
-            history[-1].attempts = 0
-            history[-1].priority = PRIORITY_INTRO
-        else:
-            session.add(
-                Task(type=TaskType.INTRO, media_file_id=media_file_id, priority=PRIORITY_INTRO)
-            )
+        # Drop the episode's finished/failed history and add a fresh row (still one row
+        # per episode in the Tasks view). This also revives FAILED rows: an explicit
+        # detect click restarts them with a fresh attempt budget, even ones the
+        # automatic retry gave up on.
+        for old in previous.get(media_file_id, ()):
+            session.delete(old)
+        session.add(
+            Task(type=TaskType.INTRO, media_file_id=media_file_id, priority=PRIORITY_INTRO)
+        )
         queued += 1
     session.commit()
     return queued

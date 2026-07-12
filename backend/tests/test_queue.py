@@ -84,6 +84,60 @@ def test_enqueue_intro_one_task_per_unmarked_episode() -> None:
         assert enqueue_intro(session, library.id) == 0
 
 
+def test_enqueue_intro_skips_movie_libraries() -> None:
+    """A movie has no season siblings whose audio could match — detection is meaningless
+    there and must not clutter the Tasks view."""
+    with _session() as session:
+        library = Library(path="/m", name="m", kind=LibraryKind.MOVIE)
+        session.add(library)
+        session.flush()
+        series = Series(title="M", library=library)
+        season = Season(series=series, number=1)
+        movie = Episode(season=season, number=1)
+        session.add_all([series, season, movie, MediaFile(episode=movie, path="/m/m.mkv")])
+        session.commit()
+
+        assert enqueue_intro(session, library.id) == 0
+        assert enqueue_intro(session, library.id, retry_missing=True) == 0
+        assert session.scalar(select(Task)) is None
+
+
+def test_enqueue_intro_lays_rows_down_in_season_order() -> None:
+    """Task ids ARE the drain order (after priority), so rows are fresh and laid down
+    season -> episode: the worker finishes one season before starting the next. A
+    leftover row from an earlier run must not drag its episode out of order by keeping
+    its historic id."""
+    with _session() as session:
+        library = Library(path="/x", name="x", kind=LibraryKind.ANIME)
+        session.add(library)
+        session.flush()
+        series = Series(title="S", library=library)
+        s2 = Season(series=series, number=2)
+        s1 = Season(series=series, number=1)
+        # Deliberately created in shuffled order.
+        e22 = Episode(season=s2, number=2)
+        e11 = Episode(season=s1, number=1)
+        e21 = Episode(season=s2, number=1)
+        e12 = Episode(season=s1, number=2)
+        mf22 = MediaFile(episode=e22, path="/x/s2e2.mkv")
+        mf11 = MediaFile(episode=e11, path="/x/s1e1.mkv")
+        mf21 = MediaFile(episode=e21, path="/x/s2e1.mkv")
+        mf12 = MediaFile(episode=e12, path="/x/s1e2.mkv")
+        session.add_all([series, s2, s1, e22, e11, e21, e12, mf22, mf11, mf21, mf12])
+        session.commit()
+        session.add(Task(type=TaskType.INTRO, media_file_id=mf11.id, status=JobStatus.DONE))
+        session.commit()
+
+        assert enqueue_intro(session, library.id) == 4
+        tasks = list(
+            session.scalars(
+                select(Task).where(Task.type == TaskType.INTRO).order_by(Task.id)
+            )
+        )
+        assert [task.media_file_id for task in tasks] == [mf11.id, mf12.id, mf21.id, mf22.id]
+        assert all(task.status == JobStatus.PENDING for task in tasks)
+
+
 def test_enqueue_intro_retry_missing_requeues_gaps() -> None:
     with _session() as session:
         library = Library(path="/x", name="x", kind=LibraryKind.SERIES)
