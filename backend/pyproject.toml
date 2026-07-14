@@ -19,6 +19,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "ruff>=0.6", "mypy>=1.11"]
+tray = ["pystray>=0.19", "pillow>=10.0"]  # tools/movora_tray.pyw (Windows tray launcher)
 
 [build-system]
 requires = ["hatchling"]
