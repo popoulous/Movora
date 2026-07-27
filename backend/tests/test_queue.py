@@ -830,3 +830,170 @@ def test_enqueue_metadata_leaves_an_active_row_alone() -> None:
         tasks = list(session.scalars(select(Task).where(Task.type == TaskType.METADATA)))
         assert len(tasks) == 1
         assert tasks[0].status == JobStatus.RUNNING and tasks[0].progress == 40
+
+
+def test_hunt_recovers_an_intro_clipped_by_the_head_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An opening that starts late falls mostly outside the head window the regular pass
+    compares, so the match stops at the window edge and leaves a sliver behind. A sliver
+    is the same problem as a gap: the hunt must reach it and recover the full opening."""
+    from movora import normalize
+
+    with _session() as session:
+        library = Library(path="/x", name="x", kind=LibraryKind.ANIME)
+        session.add(library)
+        session.flush()
+        series = Series(title="S", library=library)
+        season = Season(series=series, number=1)
+        clipped = Episode(
+            season=season, number=4, intro_checked=True, intro_start=285.5, intro_end=297.4
+        )
+        donors = [
+            Episode(
+                season=season, number=n, intro_checked=True, intro_start=0.0, intro_end=89.4
+            )
+            for n in (2, 3)
+        ]
+        session.add_all(
+            [
+                series,
+                season,
+                clipped,
+                *donors,
+                MediaFile(episode=clipped, path="/x/e4.mkv"),
+                MediaFile(episode=donors[0], path="/x/e2.mkv"),
+                MediaFile(episode=donors[1], path="/x/e3.mkv"),
+            ]
+        )
+        session.commit()
+
+        monkeypatch.setattr(normalize, "intro_segment", lambda path, neighbour: None)
+        monkeypatch.setattr(
+            normalize, "hunt_theme", lambda path, donor, window: (285.7, 374.9)
+        )
+        assert normalize._season_consistency(session, season.id) >= 1
+        assert (clipped.intro_start, clipped.intro_end) == (285.7, 374.9)
+
+
+def test_hunt_leaves_a_full_length_intro_alone(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A full-length opening is never re-hunted: searching the whole episode costs a full
+    decode, and a marker that already spans the season's theme has nothing to gain."""
+    from movora import normalize
+
+    with _session() as session:
+        library = Library(path="/x", name="x", kind=LibraryKind.ANIME)
+        session.add(library)
+        session.flush()
+        series = Series(title="S", library=library)
+        season = Season(series=series, number=1)
+        episodes = [
+            Episode(
+                season=season, number=n, intro_checked=True, intro_start=0.0, intro_end=89.0
+            )
+            for n in (1, 2, 3)
+        ]
+        session.add_all(
+            [
+                series,
+                season,
+                *episodes,
+                *(MediaFile(episode=ep, path=f"/x/e{ep.number}.mkv") for ep in episodes),
+            ]
+        )
+        session.commit()
+
+        hunted: list[Path] = []
+
+        def _hunt(path: Path, donor: Path, window: tuple[float, float]) -> None:
+            hunted.append(path)
+            return None
+
+        monkeypatch.setattr(normalize, "intro_segment", lambda path, neighbour: None)
+        monkeypatch.setattr(normalize, "hunt_theme", _hunt)
+        normalize._season_consistency(session, season.id)
+        assert hunted == []
+        assert [(ep.intro_start, ep.intro_end) for ep in episodes] == [(0.0, 89.0)] * 3
+
+
+def test_truncated_outro_start_is_pulled_back_to_the_block() -> None:
+    """Dialogue mixed over the first half of the credits ends the match early: the window
+    still FINISHES with the season's block but starts a minute into it, so the skip button
+    would appear a minute late. The start is pulled back; the measured end stands."""
+    from movora import normalize
+
+    with _session() as session:
+        library = Library(path="/x", name="x", kind=LibraryKind.ANIME)
+        session.add(library)
+        session.flush()
+        series = Series(title="S", library=library)
+        season = Season(series=series, number=1)
+        block = [
+            Episode(
+                season=season,
+                number=n,
+                intro_checked=True,
+                outro_start=1324.4 + n / 10,
+                outro_end=1417.5,
+            )
+            for n in (1, 2, 6)
+        ]
+        truncated = Episode(
+            season=season, number=3, intro_checked=True, outro_start=1380.3, outro_end=1417.4
+        )
+        session.add_all(
+            [
+                series,
+                season,
+                truncated,
+                *block,
+                MediaFile(episode=truncated, path="/x/e3.mkv"),
+                *(MediaFile(episode=ep, path=f"/x/e{ep.number}.mkv") for ep in block),
+            ]
+        )
+        session.commit()
+
+        assert normalize._fill_estimated_outros(session, season.id) == 1
+        assert truncated.outro_start == pytest.approx(1324.6, abs=0.2)
+        assert truncated.outro_end == 1417.4  # measured, never overwritten
+        assert [ep.outro_start for ep in block] == pytest.approx([1324.5, 1324.6, 1325.0])
+
+
+def test_an_ending_with_its_own_finish_is_left_alone() -> None:
+    """An episode whose credits genuinely end earlier is NOT stretched to the block: only
+    a window that finishes with the block counts as the same ending."""
+    from movora import normalize
+
+    with _session() as session:
+        library = Library(path="/x", name="x", kind=LibraryKind.ANIME)
+        session.add(library)
+        session.flush()
+        series = Series(title="S", library=library)
+        season = Season(series=series, number=1)
+        block = [
+            Episode(
+                season=season,
+                number=n,
+                intro_checked=True,
+                outro_start=1324.5,
+                outro_end=1417.5,
+            )
+            for n in (1, 2, 6)
+        ]
+        own = Episode(
+            season=season, number=3, intro_checked=True, outro_start=1380.0, outro_end=1395.0
+        )
+        session.add_all(
+            [
+                series,
+                season,
+                own,
+                *block,
+                MediaFile(episode=own, path="/x/e3.mkv"),
+                *(MediaFile(episode=ep, path=f"/x/e{ep.number}.mkv") for ep in block),
+            ]
+        )
+        session.commit()
+
+        assert normalize._fill_estimated_outros(session, season.id) == 0
+        assert (own.outro_start, own.outro_end) == (1380.0, 1395.0)

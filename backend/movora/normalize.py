@@ -1102,6 +1102,8 @@ def _run_subtitles_task(session: Session, task: Task, output_dir: Path) -> None:
 
 _TRUNCATION_SLACK_S = 10.0  # a window shorter than a sibling's by this much is a suspect
 _IMPROVEMENT_MIN_S = 5.0  # adopt a re-matched window only when meaningfully longer
+_HUNT_SHORT_FRACTION = 0.5  # an intro under this share of the donor block is worth hunting
+_OUTRO_END_TOLERANCE_S = 5.0  # windows finishing this close belong to the same ending block
 
 
 def _intro_neighbours(session: Session, episode: Episode) -> list[Path]:
@@ -1220,10 +1222,11 @@ def _season_consistency(session: Session, season_id: int) -> int:
     only the siblings holding longer windows (nearest first) either recovers the full
     window or proves the short one real: a unique shortened theme keeps its markers.
 
-    Episodes still missing an intro get a displaced-theme hunt: the regular pass only
-    searches the first minutes, but a premiere often plays the season's opening at the
-    END or after a long cold open — a sibling's proven window serves as the template
-    and the WHOLE episode is searched (:func:`movora.intro.hunt_theme`).
+    Episodes missing an intro — or holding only a sliver of one — get a displaced-theme
+    hunt: the regular pass only searches the first minutes, but an opening often plays at
+    the END or after a long cold open, and then at most its first seconds fall inside that
+    head window. A sibling's proven window serves as the template and the WHOLE episode is
+    searched (:func:`movora.intro.hunt_theme`).
 
     The cycle repeats until a round improves nothing: a corrected window is a better
     template and a hunted window is a new donor, so one round's find can enable the
@@ -1285,13 +1288,28 @@ def _consistency_round(episodes: list[Episode]) -> int:
         if ep.intro_start is not None and ep.intro_end is not None
     ]
     for ep in episodes:
-        if ep.intro_end is not None or not donors:
+        if not donors:
+            continue
+        ranked = _hunt_donor_order(ep, [d for d in donors if d[0] is not ep])
+        if not ranked:
+            continue
+        own = (
+            None
+            if ep.intro_start is None or ep.intro_end is None
+            else ep.intro_end - ep.intro_start
+        )
+        # A sliver of a window is the same problem as no window at all: when an opening
+        # starts late, only its first seconds fall inside the head window the regular pass
+        # compares, so the match stops at the window edge. Hunt those too — the head pass
+        # cannot see past its own horizon, and only a longer find is adopted.
+        if own is not None and own >= max(w[1] - w[0] for _, w in ranked) * _HUNT_SHORT_FRACTION:
             continue
         path = Path(ep.media_files[0].path)
-        ranked = _hunt_donor_order(ep, [d for d in donors if d[0] is not ep])
         for donor, window in ranked:
             found = hunt_theme(path, Path(donor.media_files[0].path), window)
-            if found is not None:
+            if found is None:
+                continue
+            if own is None or found[1] - found[0] > own + _IMPROVEMENT_MIN_S:
                 ep.intro_start, ep.intro_end = found
                 fixed += 1
                 break
@@ -1309,7 +1327,13 @@ def _fill_estimated_outros(session: Session, season_id: int) -> int:
     majority, so a season that switches endings mid-run estimates from the right block.
     The estimate must fit the episode's own duration and land in its back half (a
     double-length special must not get a mid-content marker). Runs after every detection
-    task, so gaps fill as soon as three agreeing siblings exist."""
+    task, so gaps fill as soon as three agreeing siblings exist.
+
+    The same block also repairs a TRUNCATED ending: dialogue mixed over the first half of
+    the credits ends the fingerprint match early, leaving a window that finishes with the
+    season's block but starts a minute into it. When the end lines up with the block and
+    the start does not, the start is pulled back to the block's — the measured end always
+    stands, since only the start was cut short."""
     episodes = _season_episodes(session, season_id)
     pairs = [
         (ep, (ep.outro_start, ep.outro_end))
@@ -1323,16 +1347,25 @@ def _fill_estimated_outros(session: Session, season_id: int) -> int:
         return 0
     filled = 0
     for ep in episodes:
-        if not ep.intro_checked or ep.outro_start is not None or not ep.media_files:
+        if not ep.intro_checked or not ep.media_files:
             continue
         cluster = min(valid, key=lambda c: min(abs(have[i].number - ep.number) for i in c))
         est_start = statistics.median(windows[i][0] for i in cluster)
         est_end = statistics.median(windows[i][1] for i in cluster)
-        duration = intro_duration(Path(ep.media_files[0].path), None)
-        if duration is None or est_end > duration + 2.0 or est_start < duration / 2:
-            continue
-        ep.outro_start, ep.outro_end = est_start, min(est_end, duration)
-        filled += 1
+        if ep.outro_start is None:
+            duration = intro_duration(Path(ep.media_files[0].path), None)
+            if duration is None or est_end > duration + 2.0 or est_start < duration / 2:
+                continue
+            ep.outro_start, ep.outro_end = est_start, min(est_end, duration)
+            filled += 1
+        elif (
+            ep.outro_end is not None
+            and abs(ep.outro_end - est_end) <= _OUTRO_END_TOLERANCE_S
+            and ep.outro_start > est_start + _TRUNCATION_SLACK_S
+            and est_start < ep.outro_end
+        ):
+            ep.outro_start = est_start  # keep the measured end; only the start was cut short
+            filled += 1
     return filled
 
 
