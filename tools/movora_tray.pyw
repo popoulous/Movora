@@ -13,17 +13,23 @@ If another Movora instance is already serving (a manually started dev console),
 the launcher adopts it instead of fighting over the port — and takes over
 seamlessly the moment that instance goes away.
 
+It also keeps the LG TV's developer mode alive (see below), so the webOS client
+stays installed.
+
 Dependencies: pip install pystray pillow   (or: pip install -e backend[tray])
 """
 
 from __future__ import annotations
 
+import json
 import socket
 import subprocess
+import sys
 import threading
 import urllib.error
 import urllib.request
 import webbrowser
+from datetime import datetime
 from pathlib import Path
 
 import pystray
@@ -36,6 +42,17 @@ LOG_FILE = ROOT / "var" / "tray-backend.log"
 URL = "http://localhost:8000"
 WATCHDOG_INTERVAL_S = 5.0
 SINGLETON_PORT = 47653  # arbitrary loopback port held to prevent a second launcher
+
+# webOS uninstalls every app installed in developer mode once the session timer runs out
+# (1000 hours), so the TV client silently disappears. The EXTEND button in LG's Developer
+# Mode app just resets that timer, and the same reset is reachable over HTTP with the
+# session token the TV stores — so a daily call from here keeps the app installed for good.
+ENV_FILE = ROOT / ".env"
+DEV_TOKEN_KEY = "MOVORA_WEBOS_DEV_TOKEN"  # read from the TV: /var/luna/preferences/devmode_enabled
+DEVMODE_LOG = ROOT / "var" / "tray-devmode.log"
+LG_RESET_URL = "https://developer.lge.com/secure/ResetDevModeSession.dev?sessionToken={token}"
+LG_CHECK_URL = "https://developer.lge.com/secure/CheckDevModeSession.dev?sessionToken={token}"
+KEEPALIVE_INTERVAL_S = 24 * 60 * 60
 
 
 def _health_ok() -> bool:
@@ -100,6 +117,53 @@ class Server:
             threading.Event().wait(WATCHDOG_INTERVAL_S)
 
 
+def _dev_token() -> str | None:
+    """The TV's developer-mode session token, read from the (gitignored) .env."""
+    try:
+        lines = ENV_FILE.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    for line in lines:
+        key, _, value = line.partition("=")
+        if key.strip() == DEV_TOKEN_KEY:
+            return value.strip() or None
+    return None
+
+
+def _log_devmode(message: str) -> None:
+    DEVMODE_LOG.parent.mkdir(parents=True, exist_ok=True)
+    with open(DEVMODE_LOG, "a", encoding="utf-8") as log:
+        log.write(f"{datetime.now():%Y-%m-%d %H:%M:%S} {message}\n")
+
+
+def _lg_session_call(url: str, token: str) -> str:
+    # Both endpoints answer {"result", "errorCode", "errorMsg"}; on success errorMsg
+    # carries the payload worth logging — the remaining session time as HHH:MM:SS.
+    with urllib.request.urlopen(url.format(token=token), timeout=15) as resp:
+        payload = json.loads(resp.read().decode("utf-8"))
+    return f"{payload.get('result')} ({payload.get('errorMsg')})"
+
+
+def extend_dev_mode() -> str:
+    """Reset the TV's developer-mode timer; returns a one-line result for the log."""
+    token = _dev_token()
+    if token is None:
+        return f"skipped - set {DEV_TOKEN_KEY} in .env"
+    try:
+        reset = _lg_session_call(LG_RESET_URL, token)
+        remaining = _lg_session_call(LG_CHECK_URL, token)
+    except (urllib.error.URLError, OSError, ValueError) as err:
+        return f"failed - {err}"  # offline, or LG unreachable: the next round retries
+    return f"reset: {reset}, remaining: {remaining}"
+
+
+def keepalive() -> None:
+    """Extend the developer-mode session daily. Runs forever on a daemon thread."""
+    while True:
+        _log_devmode(extend_dev_mode())
+        threading.Event().wait(KEEPALIVE_INTERVAL_S)
+
+
 def _icon_image() -> Image.Image:
     try:
         return Image.open(ICON_PNG)
@@ -119,12 +183,16 @@ def main() -> None:
     server = Server()
     server.start()
     threading.Thread(target=server.watch, daemon=True).start()
+    threading.Thread(target=keepalive, daemon=True).start()
 
     def do_open(icon: pystray.Icon, item: pystray.MenuItem) -> None:
         webbrowser.open(URL)
 
     def do_restart(icon: pystray.Icon, item: pystray.MenuItem) -> None:
         threading.Thread(target=server.restart, daemon=True).start()
+
+    def do_extend(icon: pystray.Icon, item: pystray.MenuItem) -> None:
+        threading.Thread(target=lambda: _log_devmode(extend_dev_mode()), daemon=True).start()
 
     def do_quit(icon: pystray.Icon, item: pystray.MenuItem) -> None:
         server.stop()
@@ -137,6 +205,7 @@ def main() -> None:
         menu=pystray.Menu(
             pystray.MenuItem("Open Movora", do_open, default=True),
             pystray.MenuItem("Restart backend", do_restart),
+            pystray.MenuItem("Extend TV dev mode", do_extend),
             pystray.MenuItem("Quit (stop backend)", do_quit),
         ),
     )
@@ -145,4 +214,9 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    if "--extend-now" in sys.argv:  # one-shot, no tray: manual run or smoke test
+        outcome = extend_dev_mode()
+        _log_devmode(outcome)
+        print(outcome)
+    else:
+        main()

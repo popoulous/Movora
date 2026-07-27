@@ -159,6 +159,21 @@ Checks (also enforced in CI):
 - Backend: `ruff check .`, `mypy`, `pytest`.
 - Frontend: `npm run test` (Vitest), `npm run build` (tsc + bundle), `npm run e2e` (Playwright).
 
+### Windows tray launcher
+
+`tools/movora_tray.pyw` runs the server as a background process behind a system-tray
+icon — put a shortcut to it (via `pythonw.exe`) in `shell:startup` and Movora comes up
+with Windows. It lives in the user's session rather than in a service because mapped
+network drives, where the library usually sits, only exist for a logged-in user. Set
+`MOVORA_FRONTEND_DIST` and the backend serves the built web UI too, so one process
+covers everything. A watchdog restarts the backend if it dies, and if a dev console is
+already serving, the launcher adopts it instead of fighting for the port.
+
+It also keeps the LG TV's developer mode alive: webOS uninstalls apps installed that way
+once the 1000-hour session expires, so with `MOVORA_WEBOS_DEV_TOKEN` set it resets the
+timer daily (`--extend-now` does it once, from the command line). Install with
+`pip install -e "backend[tray]"`.
+
 ## Architecture
 
 Movora is built around stable interfaces (`ParserStrategy`, `MetadataProvider`,
