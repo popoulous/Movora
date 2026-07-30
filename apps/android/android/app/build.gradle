@@ -82,8 +82,11 @@ android {
         applicationId "com.movora"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        // Bumped per GitHub release, the same way apps/webos/appinfo.json is. versionCode
+        // must strictly increase for Android to accept an update over an installed build;
+        // versionName is what the user sees, and mirrors the release tag.
+        versionCode 2
+        versionName "1.1.8"
     }
     signingConfigs {
         debug {
