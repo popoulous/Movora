@@ -1,6 +1,6 @@
 {
   "id": "hu.movora.app",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "vendor": "Movora",
   "type": "web",
   "main": "index.html",
