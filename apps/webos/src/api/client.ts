@@ -5,6 +5,24 @@ import { detectLang } from "../i18n";
 // The UI language, appended to read requests so the server localizes metadata.
 const langParam = (): string => `?lang=${detectLang()}`;
 
+// fetch has no timeout of its own, so a server that moved to another address leaves
+// requests hanging and the screen spinning with nothing to explain it. Fail fast — the
+// error then points at Settings, where the server can be found again.
+const REQUEST_TIMEOUT_MS = 10_000;
+
+async function timedFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (cause) {
+    // An abort reads as a cryptic "Aborted" — say what actually happened.
+    throw controller.signal.aborted ? new Error("server unreachable (timeout)") : cause;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export type LibraryKind = "anime" | "movie" | "series";
 export type WatchStatus = "not_started" | "watching" | "completed";
 export type TaskStatus = "pending" | "running" | "done" | "failed";
@@ -209,23 +227,25 @@ export function createApiClient(baseUrl: string, token: string | null) {
 
   return {
     getHome: () =>
-      fetch(`${base}/api/home${langParam()}`, { headers: authHeaders() }).then(asJson<HomeData>),
+      timedFetch(`${base}/api/home${langParam()}`, { headers: authHeaders() }).then(
+        asJson<HomeData>,
+      ),
 
     getLibraries: () =>
-      fetch(`${base}/api/libraries`, { headers: authHeaders() }).then(asJson<Library[]>),
+      timedFetch(`${base}/api/libraries`, { headers: authHeaders() }).then(asJson<Library[]>),
 
     listSeries: (libraryId: number) =>
-      fetch(`${base}/api/libraries/${libraryId}/series${langParam()}`, {
+      timedFetch(`${base}/api/libraries/${libraryId}/series${langParam()}`, {
         headers: authHeaders(),
       }).then(asJson<SeriesSummary[]>),
 
     getSeries: (id: number) =>
-      fetch(`${base}/api/series/${id}${langParam()}`, { headers: authHeaders() }).then(
+      timedFetch(`${base}/api/series/${id}${langParam()}`, { headers: authHeaders() }).then(
         asJson<SeriesDetail>,
       ),
 
     getPlayback: (episodeId: number) =>
-      fetch(`${base}/api/episodes/${episodeId}/playback${langParam()}`, {
+      timedFetch(`${base}/api/episodes/${episodeId}/playback${langParam()}`, {
         headers: authHeaders(),
       }).then(asJson<PlaybackInfo>),
 
@@ -233,7 +253,7 @@ export function createApiClient(baseUrl: string, token: string | null) {
       episodeId: number,
       body: { position_seconds?: number; watched?: boolean; duration_seconds?: number },
     ) =>
-      fetch(`${base}/api/episodes/${episodeId}/watch-state`, {
+      timedFetch(`${base}/api/episodes/${episodeId}/watch-state`, {
         method: "PATCH",
         headers: jsonHeaders(),
         body: JSON.stringify(body),
@@ -241,19 +261,19 @@ export function createApiClient(baseUrl: string, token: string | null) {
 
     // v2a pairing endpoints — return 404 until backend implements them.
     pairStart: (deviceName: string) =>
-      fetch(`${base}/api/devices/pair/start`, {
+      timedFetch(`${base}/api/devices/pair/start`, {
         method: "POST",
         headers: jsonHeaders(),
         body: JSON.stringify({ device_name: deviceName }),
       }).then(asJson<PairStart>),
 
     pairStatus: (code: string) =>
-      fetch(`${base}/api/devices/pair/${code}/status`, { headers: authHeaders() }).then(
+      timedFetch(`${base}/api/devices/pair/${code}/status`, { headers: authHeaders() }).then(
         asJson<{ status: PairStatus; device_token?: string }>
       ),
 
     reportCapabilities: (body: CapabilityReportBody) =>
-      fetch(`${base}/api/devices/me/capabilities`, {
+      timedFetch(`${base}/api/devices/me/capabilities`, {
         method: "POST",
         headers: jsonHeaders(),
         body: JSON.stringify(body),

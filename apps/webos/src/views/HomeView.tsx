@@ -172,7 +172,13 @@ export default function HomeView({ onSeries, onPlay, onLibrary, onSettings }: Pr
             <Loader />
           </div>
         )}
-        {error && <p style={{ color: "#f87171" }}>{t("common.loadError", { error })}</p>}
+        {error && (
+          <div>
+            <p style={{ color: "#f87171" }}>{t("common.loadError", { error })}</p>
+            {/* The top nav stays reachable, so point at the way out rather than stranding. */}
+            <p style={{ color: theme.muted }}>{t("common.serverMovedHint")}</p>
+          </div>
+        )}
 
         {/* Continue watching — a row of resumable cards. */}
         {cont.length > 0 && (

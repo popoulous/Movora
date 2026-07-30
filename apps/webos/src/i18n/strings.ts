@@ -25,6 +25,7 @@ const en = {
   "common.back": "Back",
   "common.loading": "Loading…",
   "common.loadError": "Failed to load: {{error}}",
+  "common.serverMovedHint": "If the server moved, find it again under Settings → Re-scan server.",
   "common.play": "Play",
 
   "splash.loading": "Loading library…",
@@ -180,6 +181,7 @@ const hu: Record<Key, string> = {
   "common.back": "Vissza",
   "common.loading": "Betöltés…",
   "common.loadError": "Betöltési hiba: {{error}}",
+  "common.serverMovedHint": "Ha a szerver elköltözött, keresd meg újra: Beállítások → Szerver újrakeresése.",
   "common.play": "Lejátszás",
 
   "splash.loading": "Médiatár betöltése…",
@@ -333,6 +335,7 @@ const de: Record<Key, string> = {
   "common.back": "Zurück",
   "common.loading": "Wird geladen…",
   "common.loadError": "Laden fehlgeschlagen: {{error}}",
+  "common.serverMovedHint": "Wenn der Server umgezogen ist: Einstellungen → Server erneut suchen.",
   "common.play": "Abspielen",
 
   "splash.loading": "Mediathek wird geladen…",
@@ -486,6 +489,7 @@ const fr: Record<Key, string> = {
   "common.back": "Retour",
   "common.loading": "Chargement…",
   "common.loadError": "Échec du chargement : {{error}}",
+  "common.serverMovedHint": "Si le serveur a changé d'adresse : Réglages → Rechercher le serveur.",
   "common.play": "Lire",
 
   "splash.loading": "Chargement de la médiathèque…",
@@ -639,6 +643,7 @@ const es: Record<Key, string> = {
   "common.back": "Atrás",
   "common.loading": "Cargando…",
   "common.loadError": "Error al cargar: {{error}}",
+  "common.serverMovedHint": "Si el servidor cambió de dirección: Ajustes → Volver a buscar el servidor.",
   "common.play": "Reproducir",
 
   "splash.loading": "Cargando la biblioteca…",
@@ -792,6 +797,7 @@ const it: Record<Key, string> = {
   "common.back": "Indietro",
   "common.loading": "Caricamento…",
   "common.loadError": "Caricamento non riuscito: {{error}}",
+  "common.serverMovedHint": "Se il server ha cambiato indirizzo: Impostazioni → Cerca di nuovo il server.",
   "common.play": "Riproduci",
 
   "splash.loading": "Caricamento della libreria…",
@@ -945,6 +951,7 @@ const ja: Record<Key, string> = {
   "common.back": "戻る",
   "common.loading": "読み込み中…",
   "common.loadError": "読み込みに失敗しました：{{error}}",
+  "common.serverMovedHint": "サーバーが移動した場合は、設定 →「サーバーの再検索」で探してください。",
   "common.play": "再生",
 
   "splash.loading": "ライブラリを読み込み中…",
