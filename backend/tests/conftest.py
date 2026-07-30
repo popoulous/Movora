@@ -11,6 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+from movora import devmode as devmode_module
 from movora import normalize as normalize_module
 from movora.api import app as app_module
 from movora.api.deps import get_current_user
@@ -28,6 +29,9 @@ def _test_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
     # Offline metadata, and run the background workers inline for determinism.
     monkeypatch.setattr(app_module, "AniListProvider", lambda: _OfflineProvider())
     monkeypatch.setattr(normalize_module, "_run_in_thread", False)
+    # The developer .env may carry a real webOS token; keep the keepalive timer off so
+    # creating an app in a test never calls out to LG.
+    monkeypatch.setattr(devmode_module, "_run_in_thread", False)
 
 
 @pytest.fixture(autouse=True)

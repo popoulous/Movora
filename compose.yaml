@@ -14,6 +14,8 @@ services:
       # Set these in a .env file next to this compose (compose substitutes them here).
       MOVORA_SECRET_KEY: ${MOVORA_SECRET_KEY:-}
       MOVORA_TMDB_API_KEY: ${MOVORA_TMDB_API_KEY:-}
+      # Optional: keeps a side-loaded webOS TV client installed (see movora.devmode).
+      MOVORA_WEBOS_DEV_TOKEN: ${MOVORA_WEBOS_DEV_TOKEN:-}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]

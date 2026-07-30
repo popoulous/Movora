@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     cookie_secure: bool = False  # set True behind HTTPS (MOVORA_COOKIE_SECURE=true)
     tmdb_api_key: str | None = None  # free v3 key for film/series metadata (MOVORA_TMDB_API_KEY)
     rescan_interval_minutes: int = 60  # auto-rescan period (0 disables the timer)
+    # An LG TV's developer-mode session token: set it and the server extends the session
+    # daily, so webOS never uninstalls a side-loaded TV client (see movora.devmode).
+    webos_dev_token: str | None = None  # MOVORA_WEBOS_DEV_TOKEN
     # Cross-origin allow-list for clients NOT served same-origin (e.g. the webOS TV
     # app). Comma-separated, "*" allows any. The web UI is same-origin and unaffected;
     # every /api route still requires auth, so this never bypasses authentication.

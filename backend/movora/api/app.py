@@ -21,6 +21,7 @@ from movora.api.device_routes import router as device_router
 from movora.api.routes import router
 from movora.config import INSECURE_SECRET_KEY, Settings, get_settings
 from movora.db.base import create_db_engine, create_session_factory, init_db
+from movora.devmode import start_devmode_timer
 from movora.metadata import (
     AniListProvider,
     FallbackProvider,
@@ -104,6 +105,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.metadata_provider,
             settings.rescan_interval_minutes * 60,
         )
+        start_devmode_timer(settings.webos_dev_token)
         yield
 
     app = FastAPI(title=settings.app_name, version=__version__, lifespan=lifespan)

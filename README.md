@@ -169,10 +169,16 @@ network drives, where the library usually sits, only exist for a logged-in user.
 covers everything. A watchdog restarts the backend if it dies, and if a dev console is
 already serving, the launcher adopts it instead of fighting for the port.
 
-It also keeps the LG TV's developer mode alive: webOS uninstalls apps installed that way
-once the 1000-hour session expires, so with `MOVORA_WEBOS_DEV_TOKEN` set it resets the
-timer daily (`--extend-now` does it once, from the command line). Install with
-`pip install -e "backend[tray]"`.
+Install with `pip install -e "backend[tray]"`.
+
+### Keeping a side-loaded TV client installed
+
+webOS uninstalls every app installed in developer mode once the 1000-hour session
+expires — the TV client just disappears one day. Set `MOVORA_WEBOS_DEV_TOKEN` to the
+token the TV keeps in `/var/luna/preferences/devmode_enabled` and the server resets that
+timer daily, wherever it runs (Docker included). Without the variable nothing starts, and
+an expired session cannot be revived: developer mode has to be switched on again on the TV
+and the token re-read.
 
 ## Architecture
 
