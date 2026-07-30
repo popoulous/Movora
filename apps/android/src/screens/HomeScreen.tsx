@@ -15,6 +15,7 @@ import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
 import {mediaUrl, type HomeData, type HomeSeries, type Library} from '../api/client';
 import {Brand} from '../components/Brand';
+import {ConnectionError} from '../components/ConnectionError';
 import {Icon} from '../components/Icon';
 import {GradientButton} from '../components/GradientButton';
 import {useDevice} from '../context/DeviceContext';
@@ -31,6 +32,7 @@ export default function HomeScreen({navigation}: Props): React.JSX.Element {
   const [home, setHome] = useState<HomeData | null>(null);
   const [libraries, setLibraries] = useState<Library[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   const base = config?.serverUrl ?? '';
   const token = config?.deviceToken ?? null;
@@ -39,9 +41,10 @@ export default function HomeScreen({navigation}: Props): React.JSX.Element {
     if (!api) {
       return;
     }
+    setError(null); // a retry, or a switch to another server address, starts clean
     api.getHome().then(setHome).catch((e: unknown) => setError(String(e)));
     api.getLibraries().then(setLibraries).catch(() => undefined);
-  }, [api]);
+  }, [api, attempt]);
 
   const poster = useCallback(
     (s: HomeSeries) => mediaUrl(base, token, s.cover_image_url),
@@ -54,11 +57,7 @@ export default function HomeScreen({navigation}: Props): React.JSX.Element {
       : navigation.navigate('Series', {seriesId: s.id});
 
   if (error) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.error}>{t('common.loadError', {error})}</Text>
-      </View>
-    );
+    return <ConnectionError error={error} onRetry={() => setAttempt(n => n + 1)} />;
   }
   if (!home) {
     return (
@@ -248,7 +247,6 @@ const styles = StyleSheet.create({
   root: {flex: 1, backgroundColor: theme.bg},
   scrollContent: {paddingBottom: 40},
   center: {flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center'},
-  error: {color: '#f87171', padding: 24},
   header: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, marginBottom: 8},
   settings: {color: theme.muted, fontSize: 15},
 
