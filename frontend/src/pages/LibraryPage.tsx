@@ -31,7 +31,7 @@ const KIND_ICON: Record<LibraryKind, LucideIcon> = {
 const seriesTitle = (s: SeriesSummary): string => s.display_title ?? s.title;
 
 export function LibraryPage(): JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { id } = useParams();
   const libraryId = Number(id);
   const navigate = useNavigate();
@@ -67,7 +67,8 @@ export function LibraryPage(): JSX.Element {
       api.listSeries(libraryId).then(setSeries).catch(() => undefined);
     }, 3000);
     return () => clearInterval(timer);
-  }, [libraryId, running]);
+    // The server localizes the titles, so a language switch has to re-ask for them.
+  }, [libraryId, running, i18n.language]);
 
   const run = (action: () => Promise<void>, label: string): void => {
     setBusy(label);

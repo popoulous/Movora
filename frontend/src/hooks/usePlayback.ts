@@ -173,13 +173,14 @@ export function usePlayback(id: number): UsePlaybackReturn {
             : String(reason),
         ),
       );
-  }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+    // The episode title comes localized from the server, so re-ask on a language switch.
+  }, [id, i18n.language]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const seriesId = playback?.series_id;
   useEffect(() => {
     if (seriesId === undefined) return;
     api.getSeries(seriesId).then(setSeries).catch(() => undefined);
-  }, [seriesId]);
+  }, [seriesId, i18n.language]);
 
   const ordered = useMemo(
     () =>

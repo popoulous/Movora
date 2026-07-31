@@ -26,7 +26,7 @@ const KIND_ICON: Record<LibraryKind, LucideIcon> = {
 };
 
 export function HomePage(): JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { running } = useActivity();
   const { libraries } = useLibraries();
@@ -40,7 +40,9 @@ export function HomePage(): JSX.Element {
       api.getHome().then(setHome).catch(() => undefined);
     }, 3000);
     return () => clearInterval(timer);
-  }, [running]);
+    // Titles and descriptions come from the server in the UI language, so a language
+    // switch has to re-ask for them — translating the chrome alone leaves stale text.
+  }, [running, i18n.language]);
 
   if (error !== null) return <p className="text-sm text-red-400">{error}</p>;
   if (home === null) return <p className="text-sm text-neutral-500">{t("home.loading")}</p>;

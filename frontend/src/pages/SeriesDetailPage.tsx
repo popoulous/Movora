@@ -79,7 +79,9 @@ export function SeriesDetailPage(): JSX.Element {
         setSeasonId(ordered[0]?.id ?? null);
       })
       .catch((reason: unknown) => setError(String(reason)));
-  }, [seriesId]);
+    // The server localizes titles, descriptions and episode names, so a language switch
+    // has to re-ask for them — translating the chrome alone leaves stale text.
+  }, [seriesId, i18n.language]);
 
   const reload = useCallback(() => {
     api.getSeries(seriesId).then(setSeries).catch(() => undefined);
