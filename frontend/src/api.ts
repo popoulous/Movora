@@ -11,6 +11,9 @@ export interface Library {
   name: string;
   kind: LibraryKind;
   series_count: number;
+  // False when the library's storage isn't reachable (an unmounted share, a NAS that is
+  // off). Everything still lists from the database; playback is what breaks.
+  available: boolean;
 }
 
 export interface SeriesSummary {
@@ -254,13 +257,22 @@ export interface DeviceOptimization {
   series: SeriesOptimization[];
 }
 
+/** A failed request, carrying the status so callers can react to a specific one
+ *  (503 = the library's storage is unreachable) instead of parsing the message. */
+export class HttpError extends Error {
+  constructor(readonly status: number, statusText: string) {
+    super(`${status} ${statusText}`);
+    this.name = "HttpError";
+  }
+}
+
 // A 401 mid-session means the cookie expired; let the app drop back to the login gate.
 function checkOk(response: Response): void {
   if (response.status === 401) {
     window.dispatchEvent(new Event("movora:unauthorized"));
   }
   if (!response.ok) {
-    throw new Error(`${response.status} ${response.statusText}`);
+    throw new HttpError(response.status, response.statusText);
   }
 }
 

@@ -41,6 +41,8 @@ export default function HomeView({ onSeries, onPlay, onLibrary, onSettings }: Pr
       .catch(() => undefined);
   }, [api]);
 
+  const offline = libraries.filter((l) => !l.available).map((l) => l.name);
+
   const img = (url: string | null): string | undefined =>
     mediaUrl(config?.serverUrl ?? "", config?.deviceToken ?? null, url);
   const label = (s: HomeSeries): string => s.display_title ?? s.title;
@@ -178,6 +180,23 @@ export default function HomeView({ onSeries, onPlay, onLibrary, onSettings }: Pr
             {/* The top nav stays reachable, so point at the way out rather than stranding. */}
             <p style={{ color: theme.muted }}>{t("common.serverMovedHint")}</p>
           </div>
+        )}
+
+        {/* Storage the server can't reach: everything below still lists from the
+            database, so without this the only symptom would be playback failing. */}
+        {offline.length > 0 && (
+          <p
+            style={{
+              margin: "0 0 1.2rem",
+              padding: "0.7rem 1rem",
+              borderRadius: theme.radius,
+              border: "2px solid rgba(251,191,36,0.35)",
+              background: "rgba(251,191,36,0.12)",
+              color: "#fcd34d",
+            }}
+          >
+            {t("storage.offline", { libraries: offline.join(", ") })}
+          </p>
         )}
 
         {/* Continue watching — a row of resumable cards. */}

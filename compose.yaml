@@ -7,7 +7,19 @@ services:
     volumes:
       - movora-data:/data
       # Mount your media read-only; inside the app add libraries pointing at /media/...
-      - ${MOVORA_MEDIA:-./media}:/media:ro
+      #
+      # propagation: rslave matters when the media lives on a network share (NFS/CIFS).
+      # With Docker's default (rprivate) the container binds whatever is at the path the
+      # instant it starts: if the share mounts a moment later during boot, the container
+      # keeps an empty directory forever and every file looks missing. rslave lets mounts
+      # that appear on the host afterwards show up inside the container, so Movora starts
+      # without the share, reports it as unavailable, and heals itself when it returns.
+      - type: bind
+        source: ${MOVORA_MEDIA:-./media}
+        target: /media
+        read_only: true
+        bind:
+          propagation: rslave
     environment:
       # All generated data (db, transcodes, caches, thumbnails, log) lives in the volume.
       MOVORA_DATA_DIR: /data

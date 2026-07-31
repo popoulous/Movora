@@ -4,7 +4,14 @@ import { useNavigate } from "react-router-dom";
 
 import { useActivity } from "../ActivityContext";
 import { useAuth } from "../AuthContext";
-import { api, type Episode, type PlaybackInfo, type SeriesDetail, type SubtitleTrack } from "../api";
+import {
+  api,
+  type Episode,
+  HttpError,
+  type PlaybackInfo,
+  type SeriesDetail,
+  type SubtitleTrack,
+} from "../api";
 
 const SKIP_LANDING_MARGIN_S = 0.75; // skip lands a beat past the marker, never inside it
 
@@ -157,7 +164,15 @@ export function usePlayback(id: number): UsePlaybackReturn {
         const preferred = user?.preferred_language ?? i18n.language;
         setTrackId(pickDefaultTrack(info.subtitle_tracks, preferred)?.id ?? null);
       })
-      .catch((reason: unknown) => setError(String(reason)));
+      // 503 is the one failure worth naming: the share holding the file is unreachable,
+      // which says nothing about the episode and everything about the storage.
+      .catch((reason: unknown) =>
+        setError(
+          reason instanceof HttpError && reason.status === 503
+            ? t("storage.playbackOffline")
+            : String(reason),
+        ),
+      );
   }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const seriesId = playback?.series_id;

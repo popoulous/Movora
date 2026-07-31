@@ -29,7 +29,13 @@ import Video, {
 } from 'react-native-video';
 
 import {Icon} from '../components/Icon';
-import {mediaUrl, type Episode, type PlaybackInfo, type SeriesDetail} from '../api/client';
+import {
+  HttpError,
+  mediaUrl,
+  type Episode,
+  type PlaybackInfo,
+  type SeriesDetail,
+} from '../api/client';
 import {useDevice} from '../context/DeviceContext';
 import {useI18n, type Key} from '../i18n';
 import type {RootStackParamList} from '../navigation';
@@ -334,7 +340,18 @@ export default function PlayerScreen({navigation, route}: Props): React.JSX.Elem
           setError(i.variant_status === 'unavailable' ? t('player.unavailable') : null);
           api.getSeries(i.series_id).then(setSeries).catch(() => undefined);
         })
-        .catch((e: unknown) => !cancelled && setError(String(e)));
+        // 503 is the one failure worth naming: the share holding the file is gone, which
+        // says nothing about the episode and everything about the storage.
+        .catch((e: unknown) => {
+          if (cancelled) {
+            return;
+          }
+          setError(
+            e instanceof HttpError && e.status === 503
+              ? t('storage.playbackOffline')
+              : String(e),
+          );
+        });
     };
     load();
     return () => {

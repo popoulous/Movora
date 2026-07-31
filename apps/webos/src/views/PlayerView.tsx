@@ -1,6 +1,12 @@
 /* eslint-disable react/jsx-no-bind -- inline handlers are idiomatic for this list-heavy TV UI */
 import React, { useEffect, useRef, useState } from "react";
-import { type PlaybackInfo, type Episode, type SeriesDetail, mediaUrl } from "../api/client";
+import {
+  type PlaybackInfo,
+  type Episode,
+  HttpError,
+  type SeriesDetail,
+  mediaUrl,
+} from "../api/client";
 import { useDevice } from "../context/DeviceContext";
 import { useI18n, type Key } from "../i18n";
 import { theme } from "../theme";
@@ -240,7 +246,14 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
           ready(i);
         })
         .catch((e: unknown) => {
-          if (!cancelled) setError(String(e));
+          if (cancelled) return;
+          // 503 is the one failure worth naming: the share holding the file is gone,
+          // which says nothing about the episode and everything about the storage.
+          setError(
+            e instanceof HttpError && e.status === 503
+              ? t("storage.playbackOffline")
+              : String(e),
+          );
         });
     };
     load();
@@ -248,6 +261,9 @@ export default function PlayerView({ episodeId, onBack, onNext }: Props): React.
       cancelled = true;
       if (timer) window.clearTimeout(timer);
     };
+    // `t` is deliberately not a dependency: it changes identity on every render, and
+    // re-running this would restart playback loading.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api, episodeId]);
 
   // <track> elements can't load cross-origin (the backend is on another origin than the TV

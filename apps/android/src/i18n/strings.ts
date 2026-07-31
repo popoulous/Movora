@@ -22,6 +22,9 @@ const en = {
   'connection.title': 'Cannot reach the server',
   'connection.switch': 'Switch to this server',
   'connection.change': 'Change server',
+  'storage.offline':
+    "Storage unavailable: {{libraries}}. Browsing still works — playback won't, until it is back.",
+  'storage.playbackOffline': 'The storage holding this episode is unavailable right now.',
   'welcome.serverUrl': 'Server address',
   'welcome.deviceName': 'Device name',
   'welcome.pair': 'Pair',
@@ -113,6 +116,9 @@ const hu: Record<Key, string> = {
   'connection.title': 'Nem érem el a szervert',
   'connection.switch': 'Váltás erre a szerverre',
   'connection.change': 'Szerver módosítása',
+  'storage.offline':
+    'A tároló nem érhető el: {{libraries}}. A böngészés működik — a lejátszás nem, amíg vissza nem jön.',
+  'storage.playbackOffline': 'Az epizódot tároló meghajtó jelenleg nem érhető el.',
   'welcome.serverUrl': 'Szerver címe',
   'welcome.deviceName': 'Eszköz neve',
   'welcome.pair': 'Párosítás',
@@ -202,6 +208,9 @@ const de: Record<Key, string> = {
   'connection.title': 'Server nicht erreichbar',
   'connection.switch': 'Zu diesem Server wechseln',
   'connection.change': 'Server ändern',
+  'storage.offline':
+    'Speicher nicht erreichbar: {{libraries}}. Stöbern geht weiter — Wiedergabe erst, wenn er zurück ist.',
+  'storage.playbackOffline': 'Der Speicher mit dieser Folge ist derzeit nicht erreichbar.',
   'welcome.serverUrl': 'Serveradresse',
   'welcome.deviceName': 'Gerätename',
   'welcome.pair': 'Koppeln',
@@ -291,6 +300,9 @@ const fr: Record<Key, string> = {
   'connection.title': 'Serveur injoignable',
   'connection.switch': 'Basculer vers ce serveur',
   'connection.change': 'Changer de serveur',
+  'storage.offline':
+    "Stockage indisponible : {{libraries}}. La navigation fonctionne — pas la lecture, jusqu'à son retour.",
+  'storage.playbackOffline': 'Le stockage contenant cet épisode est actuellement indisponible.',
   'welcome.serverUrl': 'Adresse du serveur',
   'welcome.deviceName': "Nom de l'appareil",
   'welcome.pair': 'Associer',
@@ -380,6 +392,9 @@ const es: Record<Key, string> = {
   'connection.title': 'No se puede contactar con el servidor',
   'connection.switch': 'Cambiar a este servidor',
   'connection.change': 'Cambiar de servidor',
+  'storage.offline':
+    'Almacenamiento no disponible: {{libraries}}. Puedes navegar — la reproducción no, hasta que vuelva.',
+  'storage.playbackOffline': 'El almacenamiento con este episodio no está disponible ahora mismo.',
   'welcome.serverUrl': 'Dirección del servidor',
   'welcome.deviceName': 'Nombre del dispositivo',
   'welcome.pair': 'Vincular',
@@ -469,6 +484,9 @@ const it: Record<Key, string> = {
   'connection.title': 'Server non raggiungibile',
   'connection.switch': 'Passa a questo server',
   'connection.change': 'Cambia server',
+  'storage.offline':
+    'Archiviazione non disponibile: {{libraries}}. Puoi navigare — la riproduzione no, finché non torna.',
+  'storage.playbackOffline': "L'archiviazione che contiene questo episodio non è disponibile ora.",
   'welcome.serverUrl': 'Indirizzo del server',
   'welcome.deviceName': 'Nome del dispositivo',
   'welcome.pair': 'Associa',
@@ -558,6 +576,9 @@ const ja: Record<Key, string> = {
   'connection.title': 'サーバーに接続できません',
   'connection.switch': 'このサーバーに切り替える',
   'connection.change': 'サーバーを変更',
+  'storage.offline':
+    'ストレージに接続できません：{{libraries}}。閲覧はできますが、復帰するまで再生はできません。',
+  'storage.playbackOffline': 'このエピソードが保存されているストレージに現在接続できません。',
   'welcome.serverUrl': 'サーバーアドレス',
   'welcome.deviceName': 'デバイス名',
   'welcome.pair': 'ペアリング',

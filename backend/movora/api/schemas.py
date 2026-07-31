@@ -167,6 +167,10 @@ class LibraryRead(BaseModel):
     name: str
     kind: LibraryKind
     series_count: int = 0
+    # False when the library's storage can't be reached (an unmounted share, a NAS that
+    # is off). The content is still listed from the database; playback is what breaks,
+    # so the clients warn instead of failing with a bare error.
+    available: bool = True
 
 
 class EpisodeRead(BaseModel):

@@ -87,6 +87,7 @@ from movora.normalize import (
     start_workers,
     transcode_pids,
 )
+from movora.storage import storage_available
 from movora.subtitles import (
     SoftAssOrSrtResolver,
     discover_fonts_cached,
@@ -125,7 +126,7 @@ def create_library(
     request: Request,
     background: BackgroundTasks,
     admin: AdminDep,
-) -> Library:
+) -> LibraryRead:
     if session.scalar(select(Library).where(Library.path == payload.path)) is not None:
         raise HTTPException(status_code=409, detail="a library with this path already exists")
     library = Library(path=payload.path, name=payload.name, kind=payload.kind)
@@ -135,19 +136,29 @@ def create_library(
     # Automation-first: a SCAN task chains metadata + normalization right after adding.
     enqueue_scan(session, library.id)
     _run_worker(request, background)
-    return library
+    return _library_read(library)
+
+
+def _library_read(library: Library) -> LibraryRead:
+    """A library plus whether its storage answers right now (see movora.storage)."""
+    read = LibraryRead.model_validate(library)
+    read.available = storage_available(Path(library.path))
+    return read
 
 
 @router.get("/libraries", response_model=list[LibraryRead])
-def list_libraries(session: SessionDep, user: CurrentUserDep) -> list[Library]:
+def list_libraries(session: SessionDep, user: CurrentUserDep) -> list[LibraryRead]:
     allowed = accessible_library_ids(session, user)
-    return list(session.scalars(select(Library).where(Library.id.in_(allowed))))
+    return [
+        _library_read(library)
+        for library in session.scalars(select(Library).where(Library.id.in_(allowed)))
+    ]
 
 
 @router.patch("/libraries/{library_id}", response_model=LibraryRead)
 def update_library(
     library_id: int, payload: LibraryUpdate, session: SessionDep, admin: AdminDep
-) -> Library:
+) -> LibraryRead:
     library = session.get(Library, library_id)
     if library is None:
         raise HTTPException(status_code=404, detail="library not found")
@@ -157,7 +168,7 @@ def update_library(
         library.kind = payload.kind
     session.commit()
     session.refresh(library)
-    return library
+    return _library_read(library)
 
 
 @router.delete("/libraries/{library_id}", status_code=204)
@@ -596,6 +607,15 @@ def episode_playback(
     episode = media_file.episode
     season = episode.season
     series = season.series
+    # A file we can't find is either a share that went away or a file that was deleted,
+    # and the client can only say something useful if we tell it which. An original that
+    # was deliberately removed (delete_original) still plays from its local copy, so this
+    # only fires when nothing local can stand in for it.
+    missing = not Path(media_file.path).is_file()
+    if missing and media_file.normalized_path is None and not media_file.variants:
+        if not storage_available(Path(series.library.path)):
+            raise HTTPException(status_code=503, detail="library storage unavailable")
+        raise HTTPException(status_code=404, detail="media file missing")
     source = _playback_source(session, media_file, device)
     status = _variant_status(source)
     optimize_on = settings_store.get_bool(session, settings_store.DEVICE_PREFETCH)

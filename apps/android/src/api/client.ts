@@ -34,6 +34,21 @@ export interface Library {
   name: string;
   kind: LibraryKind;
   series_count: number;
+  // False when the library's storage isn't reachable (an unmounted share, a NAS that is
+  // off). Browsing still works — it comes from the database — but playback won't.
+  available: boolean;
+}
+
+/** A failed request, carrying the status so callers can react to a specific one
+ *  (503 = the library's storage is unreachable) instead of parsing the message. */
+export class HttpError extends Error {
+  readonly status: number;
+
+  constructor(status: number, statusText: string) {
+    super(`${status} ${statusText}`);
+    this.name = 'HttpError';
+    this.status = status;
+  }
 }
 
 export interface SeriesSummary {
@@ -237,7 +252,7 @@ export function createApiClient(baseUrl: string, token: string | null) {
       onUnauthorized();
     }
     if (!res.ok) {
-      throw new Error(`${res.status} ${res.statusText}`);
+      throw new HttpError(res.status, res.statusText);
     }
   }
 

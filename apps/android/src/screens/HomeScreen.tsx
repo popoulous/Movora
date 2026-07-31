@@ -46,6 +46,8 @@ export default function HomeScreen({navigation}: Props): React.JSX.Element {
     api.getLibraries().then(setLibraries).catch(() => undefined);
   }, [api, attempt]);
 
+  const offline = libraries.filter(l => !l.available).map(l => l.name);
+
   const poster = useCallback(
     (s: HomeSeries) => mediaUrl(base, token, s.cover_image_url),
     [base, token],
@@ -77,6 +79,16 @@ export default function HomeScreen({navigation}: Props): React.JSX.Element {
           <Text style={styles.settings}>{t('home.settings')}</Text>
         </Pressable>
       </View>
+
+      {/* Storage the server can't reach: everything below still lists from the database,
+          so without this the only symptom would be playback failing for no visible reason. */}
+      {offline.length > 0 && (
+        <View style={styles.offline}>
+          <Text style={styles.offlineText}>
+            {t('storage.offline', {libraries: offline.join(', ')})}
+          </Text>
+        </View>
+      )}
 
       {hero && (
         <Pressable style={styles.hero} onPress={() => openSeries(hero)}>
@@ -248,6 +260,8 @@ const styles = StyleSheet.create({
   scrollContent: {paddingBottom: 40},
   center: {flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center'},
   header: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, marginBottom: 8},
+  offline: {marginHorizontal: 20, marginBottom: 12, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(251,191,36,0.35)', backgroundColor: 'rgba(251,191,36,0.12)'},
+  offlineText: {color: '#fcd34d', fontSize: 13, lineHeight: 18},
   settings: {color: theme.muted, fontSize: 15},
 
   hero: {marginHorizontal: 20, marginTop: 8, borderRadius: theme.radius, overflow: 'hidden', height: 200},

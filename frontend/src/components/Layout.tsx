@@ -11,9 +11,10 @@ import {
   Plus,
   Settings,
   Sparkles,
+  TriangleAlert,
   Tv,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 
@@ -45,6 +46,10 @@ export function Layout(): JSX.Element {
   const { user, logout } = useAuth();
   const location = useLocation();
   const [libraries, setLibraries] = useState<Library[]>([]);
+  const offline = useMemo(
+    () => libraries.filter((l) => !l.available).map((l) => l.name),
+    [libraries],
+  );
   const [picking, setPicking] = useState(false);
   const tv = useTvMode();
   const [mobileOpen, setMobileOpen] = useState(false); // drawer on small screens
@@ -301,6 +306,15 @@ export function Layout(): JSX.Element {
             </div>
           </header>
           <main className="min-w-0 flex-1 overflow-auto px-4 pt-20 pb-6 sm:px-6">
+            {/* Storage the server can't reach: everything still lists from the database,
+                so without this the only symptom would be playback failing for no visible
+                reason. Named per library, because one share can go while another stays. */}
+            {offline.length > 0 && (
+              <div className="mb-5 flex items-start gap-3 rounded-[14px] border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm text-amber-200">
+                <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>{t("storage.offline", { libraries: offline.join(", ") })}</span>
+              </div>
+            )}
             <Outlet />
           </main>
         </div>

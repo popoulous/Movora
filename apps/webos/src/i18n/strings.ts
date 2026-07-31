@@ -26,6 +26,9 @@ const en = {
   "common.loading": "Loading…",
   "common.loadError": "Failed to load: {{error}}",
   "common.serverMovedHint": "If the server moved, find it again under Settings → Re-scan server.",
+  "storage.offline":
+    "Storage unavailable: {{libraries}}. Browsing still works — playback won't, until it is back.",
+  "storage.playbackOffline": "The storage holding this episode is unavailable right now.",
   "common.play": "Play",
 
   "splash.loading": "Loading library…",
@@ -182,6 +185,9 @@ const hu: Record<Key, string> = {
   "common.loading": "Betöltés…",
   "common.loadError": "Betöltési hiba: {{error}}",
   "common.serverMovedHint": "Ha a szerver elköltözött, keresd meg újra: Beállítások → Szerver újrakeresése.",
+  "storage.offline":
+    "A tároló nem érhető el: {{libraries}}. A böngészés működik — a lejátszás nem, amíg vissza nem jön.",
+  "storage.playbackOffline": "Az epizódot tároló meghajtó jelenleg nem érhető el.",
   "common.play": "Lejátszás",
 
   "splash.loading": "Médiatár betöltése…",
@@ -336,6 +342,9 @@ const de: Record<Key, string> = {
   "common.loading": "Wird geladen…",
   "common.loadError": "Laden fehlgeschlagen: {{error}}",
   "common.serverMovedHint": "Wenn der Server umgezogen ist: Einstellungen → Server erneut suchen.",
+  "storage.offline":
+    "Speicher nicht erreichbar: {{libraries}}. Stöbern geht weiter — Wiedergabe erst, wenn er zurück ist.",
+  "storage.playbackOffline": "Der Speicher mit dieser Folge ist derzeit nicht erreichbar.",
   "common.play": "Abspielen",
 
   "splash.loading": "Mediathek wird geladen…",
@@ -490,6 +499,9 @@ const fr: Record<Key, string> = {
   "common.loading": "Chargement…",
   "common.loadError": "Échec du chargement : {{error}}",
   "common.serverMovedHint": "Si le serveur a changé d'adresse : Réglages → Rechercher le serveur.",
+  "storage.offline":
+    "Stockage indisponible : {{libraries}}. La navigation fonctionne — pas la lecture, jusqu'à son retour.",
+  "storage.playbackOffline": "Le stockage contenant cet épisode est actuellement indisponible.",
   "common.play": "Lire",
 
   "splash.loading": "Chargement de la médiathèque…",
@@ -644,6 +656,9 @@ const es: Record<Key, string> = {
   "common.loading": "Cargando…",
   "common.loadError": "Error al cargar: {{error}}",
   "common.serverMovedHint": "Si el servidor cambió de dirección: Ajustes → Volver a buscar el servidor.",
+  "storage.offline":
+    "Almacenamiento no disponible: {{libraries}}. Puedes navegar — la reproducción no, hasta que vuelva.",
+  "storage.playbackOffline": "El almacenamiento con este episodio no está disponible ahora mismo.",
   "common.play": "Reproducir",
 
   "splash.loading": "Cargando la biblioteca…",
@@ -798,6 +813,9 @@ const it: Record<Key, string> = {
   "common.loading": "Caricamento…",
   "common.loadError": "Caricamento non riuscito: {{error}}",
   "common.serverMovedHint": "Se il server ha cambiato indirizzo: Impostazioni → Cerca di nuovo il server.",
+  "storage.offline":
+    "Archiviazione non disponibile: {{libraries}}. Puoi navigare — la riproduzione no, finché non torna.",
+  "storage.playbackOffline": "L'archiviazione che contiene questo episodio non è disponibile ora.",
   "common.play": "Riproduci",
 
   "splash.loading": "Caricamento della libreria…",
@@ -952,6 +970,9 @@ const ja: Record<Key, string> = {
   "common.loading": "読み込み中…",
   "common.loadError": "読み込みに失敗しました：{{error}}",
   "common.serverMovedHint": "サーバーが移動した場合は、設定 →「サーバーの再検索」で探してください。",
+  "storage.offline":
+    "ストレージに接続できません：{{libraries}}。閲覧はできますが、復帰するまで再生はできません。",
+  "storage.playbackOffline": "このエピソードが保存されているストレージに現在接続できません。",
   "common.play": "再生",
 
   "splash.loading": "ライブラリを読み込み中…",

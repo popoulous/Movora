@@ -305,6 +305,11 @@ const en = {
     pos_high: "High",
     next: "Next",
   },
+  storage: {
+    offline:
+      "Storage unavailable: {{libraries}}. Browsing still works — playback won't, until it is back.",
+    playbackOffline: "The storage holding this episode is unavailable right now.",
+  },
 };
 
 const hu: typeof en = {
@@ -611,6 +616,11 @@ const hu: typeof en = {
     pos_mid: "Közép",
     pos_high: "Fent",
     next: "Következő",
+  },
+  storage: {
+    offline:
+      "A tároló nem érhető el: {{libraries}}. A böngészés működik — a lejátszás nem, amíg vissza nem jön.",
+    playbackOffline: "Az epizódot tároló meghajtó jelenleg nem érhető el.",
   },
 };
 
