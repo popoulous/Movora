@@ -2,15 +2,22 @@ import { ChevronDown } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
-const LANGUAGES = [
-  { code: "en", label: "EN" },
-  { code: "hu", label: "HU" },
-];
+import { LANGS } from "../i18n";
+
+const LANG_NAMES: Record<string, string> = {
+  hu: "Magyar",
+  en: "English",
+  de: "Deutsch",
+  fr: "Français",
+  es: "Español",
+  it: "Italiano",
+  ja: "日本語",
+};
 
 export function LanguageMenu(): JSX.Element {
   const { i18n, t } = useTranslation();
   const [open, setOpen] = useState(false);
-  const current = i18n.language.startsWith("hu") ? "hu" : "en";
+  const current = LANGS.find((code) => i18n.language.startsWith(code)) ?? "en";
 
   const choose = (code: string): void => {
     void i18n.changeLanguage(code);
@@ -31,18 +38,16 @@ export function LanguageMenu(): JSX.Element {
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 z-50 mt-2 w-28 rounded-lg bg-[#120e1d] p-1 shadow-xl ring-1 ring-white/10">
-            {LANGUAGES.map((language) => (
+          <div className="absolute right-0 z-50 mt-2 w-36 rounded-lg bg-[#120e1d] p-1 shadow-xl ring-1 ring-white/10">
+            {LANGS.map((code) => (
               <button
-                key={language.code}
-                onClick={() => choose(language.code)}
+                key={code}
+                onClick={() => choose(code)}
                 className={`block w-full rounded-md px-3 py-1.5 text-left text-sm transition ${
-                  current === language.code
-                    ? "bg-white/10 text-white"
-                    : "text-neutral-300 hover:bg-white/5"
+                  current === code ? "bg-white/10 text-white" : "text-neutral-300 hover:bg-white/5"
                 }`}
               >
-                {language.label}
+                {LANG_NAMES[code]}
               </button>
             ))}
           </div>
