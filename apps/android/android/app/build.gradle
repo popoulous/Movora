@@ -85,8 +85,8 @@ android {
         // Bumped per GitHub release, the same way apps/webos/appinfo.json is. versionCode
         // must strictly increase for Android to accept an update over an installed build;
         // versionName is what the user sees, and mirrors the release tag.
-        versionCode 3
-        versionName "1.1.9"
+        versionCode 4
+        versionName "1.1.10"
     }
     signingConfigs {
         debug {
