@@ -156,6 +156,15 @@ export function Layout(): JSX.Element {
     return undefined;
   }, [running, loadLibraries]);
 
+  // A share that went away usually comes back on its own (the NAS boots, the mount
+  // lands). Keep asking while anything is offline so the warning clears itself instead
+  // of sitting there until the user happens to navigate.
+  useEffect(() => {
+    if (offline.length === 0) return undefined;
+    const id = setInterval(loadLibraries, 15000);
+    return () => clearInterval(id);
+  }, [offline.length, loadLibraries]);
+
   const onAdded = (library: Library): void => {
     setPicking(false);
     loadLibraries();

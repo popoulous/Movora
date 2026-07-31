@@ -43,6 +43,17 @@ export default function HomeView({ onSeries, onPlay, onLibrary, onSettings }: Pr
 
   const offline = libraries.filter((l) => !l.available).map((l) => l.name);
 
+  // A share that went away usually comes back on its own (the NAS boots, the mount
+  // lands). Keep asking while anything is offline so the warning clears itself instead
+  // of sitting there until the user happens to leave the screen and return.
+  useEffect(() => {
+    if (!api || offline.length === 0) return undefined;
+    const id = window.setInterval(() => {
+      api.getLibraries().then(setLibraries).catch(() => undefined);
+    }, 15000);
+    return () => window.clearInterval(id);
+  }, [api, offline.length]);
+
   const img = (url: string | null): string | undefined =>
     mediaUrl(config?.serverUrl ?? "", config?.deviceToken ?? null, url);
   const label = (s: HomeSeries): string => s.display_title ?? s.title;

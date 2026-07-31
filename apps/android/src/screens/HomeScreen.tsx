@@ -48,6 +48,19 @@ export default function HomeScreen({navigation}: Props): React.JSX.Element {
 
   const offline = libraries.filter(l => !l.available).map(l => l.name);
 
+  // A share that went away usually comes back on its own (the NAS boots, the mount
+  // lands). Keep asking while anything is offline so the warning clears itself instead
+  // of sitting there until the user happens to leave the screen and return.
+  useEffect(() => {
+    if (!api || offline.length === 0) {
+      return undefined;
+    }
+    const id = setInterval(() => {
+      api.getLibraries().then(setLibraries).catch(() => undefined);
+    }, 15000);
+    return () => clearInterval(id);
+  }, [api, offline.length]);
+
   const poster = useCallback(
     (s: HomeSeries) => mediaUrl(base, token, s.cover_image_url),
     [base, token],
