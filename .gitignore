@@ -241,7 +241,11 @@ frontend/tsconfig.tsbuildinfo
 
 # webOS app build output (the TV app now lives under apps/webos)
 apps/webos/dist/
-apps/webos/node_modules/
+
+# Dependencies and IDE state, wherever they land — the repo root picks up a stray
+# node_modules from tooling, and JetBrains writes .idea/ next to whatever you open.
+node_modules/
+.idea/
 
 # Local dev launcher scripts (Windows)
 /dev-backend.bat
