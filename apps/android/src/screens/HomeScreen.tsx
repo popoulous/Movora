@@ -27,7 +27,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
 export default function HomeScreen({navigation}: Props): React.JSX.Element {
   const {api, config} = useDevice();
-  const {t} = useI18n();
+  const {t, lang} = useI18n();
   const insets = useSafeAreaInsets();
   const [home, setHome] = useState<HomeData | null>(null);
   const [libraries, setLibraries] = useState<Library[]>([]);
@@ -44,7 +44,8 @@ export default function HomeScreen({navigation}: Props): React.JSX.Element {
     setError(null); // a retry, or a switch to another server address, starts clean
     api.getHome().then(setHome).catch((e: unknown) => setError(String(e)));
     api.getLibraries().then(setLibraries).catch(() => undefined);
-  }, [api, attempt]);
+    // Titles come localized from the server, so re-ask on a language switch.
+  }, [api, attempt, lang]);
 
   const offline = libraries.filter(l => !l.available).map(l => l.name);
 

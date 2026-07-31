@@ -24,7 +24,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Series'>;
 
 export default function SeriesScreen({navigation, route}: Props): React.JSX.Element {
   const {api, config} = useDevice();
-  const {t} = useI18n();
+  const {t, lang} = useI18n();
   const insets = useSafeAreaInsets();
   const {seriesId} = route.params;
   const [series, setSeries] = useState<SeriesDetail | null>(null);
@@ -38,7 +38,8 @@ export default function SeriesScreen({navigation, route}: Props): React.JSX.Elem
       return;
     }
     api.getSeries(seriesId).then(setSeries).catch((e: unknown) => setError(String(e)));
-  }, [api, seriesId]);
+    // Titles come localized from the server, so re-ask on a language switch.
+  }, [api, seriesId, lang]);
 
   const [seasonIdx, setSeasonIdx] = useState(0);
   const seasons = useMemo(

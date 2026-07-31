@@ -41,7 +41,7 @@ export default function SeriesView({
   onBack,
 }: Props): React.JSX.Element {
   const { api, config } = useDevice();
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [series, setSeries] = useState<SeriesDetail | null>(null);
   const [libraries, setLibraries] = useState<Library[]>([]);
   const [selectedSeason, setSelectedSeason] = useState(0);
@@ -64,7 +64,8 @@ export default function SeriesView({
       })
       .catch((e: unknown) => setError(String(e)));
     api.getLibraries().then(setLibraries).catch(() => undefined);
-  }, [api, seriesId]);
+    // Titles come localized from the server, so re-ask on a language switch.
+  }, [api, seriesId, lang]);
 
   const img = (url: string | null): string | undefined =>
     mediaUrl(config?.serverUrl ?? "", config?.deviceToken ?? null, url);

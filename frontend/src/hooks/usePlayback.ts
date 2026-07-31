@@ -173,8 +173,10 @@ export function usePlayback(id: number): UsePlaybackReturn {
             : String(reason),
         ),
       );
-    // The episode title comes localized from the server, so re-ask on a language switch.
-  }, [id, i18n.language]); // eslint-disable-line react-hooks/exhaustive-deps
+    // Deliberately NOT keyed on the language: this effect resets playback state, so
+    // re-running it would restart the video. The series fetch below carries the
+    // localized episode titles, and that one is safe to redo.
+  }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const seriesId = playback?.series_id;
   useEffect(() => {

@@ -32,7 +32,7 @@ const FILTER_KEY: Record<Filter, Key> = {
 
 export default function LibraryScreen({navigation, route}: Props): React.JSX.Element {
   const {api, config} = useDevice();
-  const {t} = useI18n();
+  const {t, lang} = useI18n();
   const insets = useSafeAreaInsets();
   const {libraryId, name} = route.params;
   const {width: winW} = useWindowDimensions();
@@ -53,7 +53,8 @@ export default function LibraryScreen({navigation, route}: Props): React.JSX.Ele
       return;
     }
     api.listSeries(libraryId).then(setSeries).catch((e: unknown) => setError(String(e)));
-  }, [api, libraryId]);
+    // Titles come localized from the server, so re-ask on a language switch.
+  }, [api, libraryId, lang]);
 
   const shown = useMemo(
     () =>

@@ -61,13 +61,10 @@ export function I18nProvider({children}: {children: React.ReactNode}): React.JSX
   const [lang, setLangState] = useState<Lang>(deviceLang);
 
   useEffect(() => {
-    activeLang = lang; // keep the API client's ?lang= in sync
-  }, [lang]);
-
-  useEffect(() => {
     AsyncStorage.getItem(STORAGE_KEY)
       .then(saved => {
         if (saved && isLang(saved)) {
+          activeLang = saved;
           setLangState(saved);
         }
       })
@@ -76,6 +73,10 @@ export function I18nProvider({children}: {children: React.ReactNode}): React.JSX
 
   const value = useMemo<I18nValue>(() => {
     const setLang = (next: Lang): void => {
+      // Synchronously, not in an effect: screens re-fetch localized metadata when `lang`
+      // changes, and child effects run before the provider's — an effect here would let
+      // that re-fetch go out with the previous language.
+      activeLang = next;
       setLangState(next);
       void AsyncStorage.setItem(STORAGE_KEY, next);
     };

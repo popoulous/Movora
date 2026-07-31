@@ -22,7 +22,7 @@ const CONT_W = 300;
 
 export default function HomeView({ onSeries, onPlay, onLibrary, onSettings }: Props): React.JSX.Element {
   const { api, config } = useDevice();
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [data, setData] = useState<HomeData | null>(null);
   const [libraries, setLibraries] = useState<Library[]>([]);
   const [libsLoaded, setLibsLoaded] = useState(false);
@@ -39,7 +39,8 @@ export default function HomeView({ onSeries, onPlay, onLibrary, onSettings }: Pr
         setLibsLoaded(true);
       })
       .catch(() => undefined);
-  }, [api]);
+    // Titles come localized from the server, so re-ask on a language switch.
+  }, [api, lang]);
 
   const offline = libraries.filter((l) => !l.available).map((l) => l.name);
 

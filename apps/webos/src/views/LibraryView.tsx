@@ -34,7 +34,7 @@ export default function LibraryView({
   onBack,
 }: Props): React.JSX.Element {
   const { api, config } = useDevice();
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [all, setAll] = useState<SeriesSummary[]>([]);
   const [libraries, setLibraries] = useState<Library[]>([]);
   const [loadedFor, setLoadedFor] = useState<number | null>(null);
@@ -56,7 +56,8 @@ export default function LibraryView({
       })
       .catch((e: unknown) => setError(String(e)));
     api.getLibraries().then(setLibraries).catch(() => undefined);
-  }, [api, libraryId]);
+    // Titles come localized from the server, so re-ask on a language switch.
+  }, [api, libraryId, lang]);
 
   const img = (url: string | null): string | undefined =>
     mediaUrl(config?.serverUrl ?? "", config?.deviceToken ?? null, url);
