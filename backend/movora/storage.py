@@ -14,15 +14,20 @@ from pathlib import Path
 
 
 def storage_available(root: Path) -> bool:
-    """True when the library root is readable and holds at least one entry.
+    """True when the library root is there and can be listed.
 
-    An empty directory counts as unavailable on purpose: that is exactly what an
-    unmounted share looks like from the inside, and a library worth listing is never
-    empty. The same reasoning guards the scanner from pruning everything (see
-    ``scanner._prune_missing``).
+    Listing is the probe; what the listing contains is not. A share that went away takes
+    the library folder with it — the mount point falls back to the bare directory
+    underneath, so the folder no longer exists — and a share that hung answers the read
+    with an error. An existing folder that happens to hold nothing is just an empty
+    library, which is what deleting the last file leaves behind. The scanner leans on the
+    same answer before it prunes (see ``scanner._prune_missing``).
     """
     try:
         with os.scandir(root) as entries:
-            return next(entries, None) is not None
+            # Read one entry: opening a directory can succeed against a dead network
+            # handle, and only the first read surfaces the error.
+            next(entries, None)
     except OSError:
         return False
+    return True

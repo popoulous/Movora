@@ -28,6 +28,7 @@ from movora.domain import ParsedFields
 from movora.ffprobe import probe_container_title
 from movora.interfaces import ParserStrategy
 from movora.parsing import parser_for
+from movora.storage import storage_available
 
 MEDIA_EXTENSIONS = {".mkv", ".mp4", ".m4v", ".avi", ".webm"}
 # Sub-folders that hold extras/menus/credits, not numbered episodes — skipped.
@@ -152,11 +153,13 @@ def _prune_missing(
     file's generated artifacts (normalized mp4, device variants, thumbnail, preserved
     assets) are deleted too so nothing is left behind as garbage.
 
-    Safety: if the library root is unreachable or no media was found at all, the drive is
-    almost certainly just offline (e.g. an unplugged external/network disk) rather than
-    every file having been deleted — never wipe the library and its watch history then.
+    Safety: if the library's storage doesn't answer, the drive is offline (e.g. an
+    unplugged external/network disk) rather than every file having been deleted — never
+    wipe the library and its watch history then. Finding nothing on a storage that does
+    answer is a different thing: the library really was emptied, and its entries have to
+    go, or the last deleted file would linger as a card that plays nothing.
     """
-    if not root.exists() or not on_disk:
+    if not storage_available(root):
         return
     for media_file in session.scalars(
         select(MediaFile)

@@ -1,3 +1,4 @@
+import shutil
 from pathlib import Path
 
 from sqlalchemy import select
@@ -223,7 +224,7 @@ def test_scan_populates_hierarchy_and_is_idempotent(tmp_path: Path) -> None:
         assert scan_library(session, library, title_prober=lambda path: None) == []
 
 
-def test_rescan_prunes_deleted_files_but_not_when_offline(tmp_path: Path) -> None:
+def test_rescan_prunes_deleted_files_down_to_an_empty_library(tmp_path: Path) -> None:
     root = _library_with_files(tmp_path)
     engine = create_db_engine(":memory:")
     init_db(engine)
@@ -244,11 +245,32 @@ def test_rescan_prunes_deleted_files_but_not_when_offline(tmp_path: Path) -> Non
         assert [m.path for m in remaining] == [str(files[1])]
         assert len(list(session.scalars(select(Episode)))) == 1
 
-        # Safety: when every media file is gone (the drive likely went offline), prune
-        # nothing rather than wiping the library.
+        # And the last one goes too: an emptied library is an empty library, not a
+        # symptom. Keeping the entry would leave a card behind that plays nothing.
         files[1].unlink()
         scan_library(session, library, title_prober=lambda path: None)
-        assert len(list(session.scalars(select(MediaFile)))) == 1  # kept, not wiped
+        assert list(session.scalars(select(MediaFile))) == []
+
+
+def test_rescan_keeps_everything_when_the_storage_is_offline(tmp_path: Path) -> None:
+    """Safety: an unreachable share is not a deleted library — never wipe the entries
+    (and the watch history hanging off them) because the disk stopped answering."""
+    root = _library_with_files(tmp_path)
+    engine = create_db_engine(":memory:")
+    init_db(engine)
+    session_factory = create_session_factory(engine)
+
+    with session_factory() as session:
+        library = Library(path=str(root), name="Anime", kind=LibraryKind.ANIME)
+        session.add(library)
+        session.commit()
+        scan_library(session, library, title_prober=lambda path: None)
+        assert len(list(session.scalars(select(MediaFile)))) == 2
+
+        shutil.rmtree(root)  # the share went away, taking the library folder with it
+
+        scan_library(session, library, title_prober=lambda path: None)
+        assert len(list(session.scalars(select(MediaFile)))) == 2  # kept, not wiped
 
 
 def test_scan_groups_by_folder_and_skips_extras(tmp_path: Path) -> None:

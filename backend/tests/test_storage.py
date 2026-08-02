@@ -8,6 +8,7 @@ availability flag, and a 503 that says "the storage is gone" rather than "unknow
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -24,16 +25,18 @@ def test_a_populated_directory_is_available(tmp_path: Path) -> None:
 
 
 def test_a_missing_directory_is_unavailable(tmp_path: Path) -> None:
+    # This is what an unmounted share leaves behind: the mount point falls back to the
+    # bare directory underneath, so the library folder is not there at all.
     assert storage_available(tmp_path / "nope") is False
 
 
-def test_an_empty_directory_is_unavailable(tmp_path: Path) -> None:
-    # An unmounted share looks exactly like this from the inside, and a library worth
-    # listing is never empty — so treat it as gone rather than as suddenly emptied.
+def test_an_empty_directory_is_available(tmp_path: Path) -> None:
+    # Deleting the last file leaves an empty library, not a broken one. Reading emptiness
+    # as an outage cried wolf on a healthy share.
     empty = tmp_path / "empty"
     empty.mkdir()
 
-    assert storage_available(empty) is False
+    assert storage_available(empty) is True
 
 
 def _library(client: TestClient, media: Path) -> dict[str, object]:
@@ -51,9 +54,21 @@ def test_libraries_report_storage_that_went_away(tmp_path: Path) -> None:
     client = TestClient(create_app(Settings(database_path=tmp_path / "t.db")))
     assert _library(client, media)["available"] is True
 
-    (media / "Show - 01.mkv").unlink()  # the share is still mounted but now empty
+    shutil.rmtree(media)  # the share went away, taking the library folder with it
 
     assert client.get("/api/libraries").json()[0]["available"] is False
+
+
+def test_an_emptied_library_is_not_an_outage(tmp_path: Path) -> None:
+    media = tmp_path / "media"
+    media.mkdir()
+    (media / "Show - 01.mkv").write_bytes(b"x")
+    client = TestClient(create_app(Settings(database_path=tmp_path / "t.db")))
+    assert _library(client, media)["available"] is True
+
+    (media / "Show - 01.mkv").unlink()  # made room on the share; the share is fine
+
+    assert client.get("/api/libraries").json()[0]["available"] is True
 
 
 def test_playback_says_the_storage_is_gone_not_that_the_file_vanished(
@@ -68,7 +83,7 @@ def test_playback_says_the_storage_is_gone_not_that_the_file_vanished(
     detail = client.get(f"/api/series/{series[0]['id']}").json()
     episode_id = detail["seasons"][0]["episodes"][0]["id"]
 
-    (media / "Show - 01.mkv").unlink()  # storage unreachable: the root is empty now
+    shutil.rmtree(media)  # storage unreachable: the library folder is gone with it
 
     response = client.get(f"/api/episodes/{episode_id}/playback")
     assert response.status_code == 503
